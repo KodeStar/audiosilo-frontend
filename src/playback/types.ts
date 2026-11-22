@@ -336,10 +336,17 @@ export interface PlaybackService {
   /**
    * Native: the book the engine's last report named (the module's `BookReport`), else null.
    * Valid inside the service's listeners, for the report being handled. The store drops a
-   * report of a book it does not hold (`reportedOtherBook`). Absent on the web; null while
-   * casting.
+   * report of a book it does not hold (`reportedOtherBook`). Absent on the web; while casting,
+   * the book loaded on the receiver once it landed there (the route switch's word, else null).
    */
   reportedBook?(): BookRef | null;
+  /**
+   * The route switch asks this as a Cast session begins: where the loaded book is when the
+   * phone's engine holds another book than the store's (Android: the car started one that was
+   * not adopted, so the engine's own place is that book's), as the place the store's book shows
+   * at its own speed, else null. Optional: only the route switch hands a book over.
+   */
+  onLoadedPlace?(handler: (() => PlaybackSnapshot | null) | null): void;
   getSnapshot(): PlaybackSnapshot;
   subscribe(listener: (snapshot: PlaybackSnapshot) => void): () => void;
 }

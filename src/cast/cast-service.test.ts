@@ -148,6 +148,26 @@ describe('castState', () => {
 });
 
 describe('CastPlaybackService', () => {
+  it('names the book it gave the receiver, by a load or a queue it adopted, none after a reset', async () => {
+    const t = setup();
+    expect(t.svc.loadedBook()).toBeNull();
+    await t.svc.load(TRACKS, 0, 0, [], BOOK);
+    expect(t.svc.loadedBook()).toEqual(BOOK);
+    await t.svc.reset();
+    expect(t.svc.loadedBook()).toBeNull();
+    await t.svc.adoptQueue(TRACKS, BOOK);
+    expect(t.svc.loadedBook()).toEqual(BOOK);
+  });
+
+  // The queue a session that ends hands back to the phone carries the chapters it was loaded
+  // with (Android builds the engine's items from them).
+  it('gives back the queue it loaded with its chapters', async () => {
+    const t = setup();
+    const chapters = [{ fileIndex: 0, startInFile: 0, endInFile: 60, title: 'One' }];
+    await t.svc.load(TRACKS, 0, 0, chapters, BOOK);
+    expect(t.svc.loadedQueue()).toEqual({ tracks: TRACKS, chapters, book: BOOK });
+  });
+
   it('finding 11: an adopted transcoded item keeps the offset its stream started at', async () => {
     const t = setup({ transcode: true });
     const status: CastMediaStatus = {

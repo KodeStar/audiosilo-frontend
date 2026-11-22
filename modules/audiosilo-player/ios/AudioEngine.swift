@@ -125,11 +125,13 @@ final class AudioEngine: NSObject {
   }
 
   /// An event to JS. A transport report (`bookReports`) names the book it is of (`book`, when
-  /// `load` named one: JS's `BookReport`, which says why).
+  /// `load` named one: JS's `BookReport`, which says why), and the tag of that load (`load`,
+  /// when JS gave one), so JS drops a report of a load a later one superseded.
   private func send(_ name: String, _ body: [String: Any]) {
     var body = body
     if Self.bookReports.contains(name), let b = loadedBook {
       body["book"] = b.event
+      if let tag = book?.load { body["load"] = tag }
     }
     emit(name, body)
   }

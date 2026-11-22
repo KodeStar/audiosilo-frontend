@@ -2,8 +2,8 @@ import { NativeModule, requireNativeModule } from 'expo';
 
 import type {
   AudiosiloPlayerModuleEvents,
-  BookRef,
   LoadedBook,
+  LoadTag,
   NativeChapter,
   NativeTrack,
   PendingBookmark,
@@ -20,13 +20,14 @@ declare class AudiosiloPlayerModule extends NativeModule<AudiosiloPlayerModuleEv
    * (Android makes each a clipped media item; iOS maps the file place onto them); omit/empty
    * for file-per-item. `book` names the book: Android's `getLoadedBook`, and on iOS
    * CarPlay's playing indicator. A binary that predates it throws on a 5th argument, so
-   * `service.native.ts` passes it only when `getLoadedBook` exists (the two ship together). */
+   * `service.native.ts` passes it only when `getLoadedBook` exists (the two ship together).
+   * Its `load` tags this load: the queue's reports carry it back (`BookReport.load`). */
   load(
     tracks: NativeTrack[],
     startIndex: number,
     positionInTrack: number,
     chapters?: NativeChapter[],
-    book?: BookRef,
+    book?: LoadTag,
   ): Promise<void>;
   play(): Promise<void>;
   pause(): Promise<void>;

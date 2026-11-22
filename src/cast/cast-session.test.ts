@@ -130,6 +130,64 @@ describe('startCastSync', () => {
     stop();
   });
 
+  it("keeps a new session waiting for the phone load when the previous receiver's read returns", async () => {
+    const phoneLoad = Promise.withResolvers<void>();
+    const router = routed({ ...localEngine(), load: () => phoneLoad.promise });
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    const first = remote();
+    driver.fire({ type: 'started', remote: first });
+    await flush();
+    const finalRead = Promise.withResolvers<null>();
+    jest.mocked(first.readStatus).mockReturnValueOnce(finalRead.promise);
+    driver.fire({ type: 'ending' });
+    // The car brings the route home while the session's final read is still out.
+    await expect(endCastForCar(driver)).resolves.toBe(true);
+
+    const load = router.load([], 0, 0);
+    const next = remote();
+    driver.fire({ type: 'started', remote: next });
+    await flush();
+    expect(router.beginningCast()).toBe(true);
+    driver.fire({ type: 'ended' });
+    finalRead.resolve(null);
+    await flush();
+    expect(useCast.getState().status).toBe('connected');
+    expect(router.beginningCast()).toBe(true);
+    phoneLoad.resolve();
+    await load;
+    await flush();
+    await router.play();
+    expect(next.play).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("keeps a resumed session on the route when the previous receiver's read returns", async () => {
+    const router = routed(localEngine());
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    const first = remote();
+    driver.fire({ type: 'started', remote: first });
+    await flush();
+    const finalRead = Promise.withResolvers<null>();
+    jest.mocked(first.readStatus).mockReturnValueOnce(finalRead.promise);
+    driver.fire({ type: 'ending' });
+    driver.fire({ type: 'ended' });
+    await flush();
+    expect(router.isCasting()).toBe(true); // the hand-back still needs the receiver's place
+
+    const next = remote();
+    driver.fire({ type: 'resumed', remote: next });
+    await flush();
+    finalRead.resolve(null);
+    await flush();
+    await router.play();
+    expect(next.play).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it('a session that ended before the stores were ready never becomes the route', async () => {
     const driver = fakeDriver();
     const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
@@ -140,6 +198,23 @@ describe('startCastSync', () => {
     const router = routed(localEngine());
     await flush();
     expect(router.castRoute()).toBeNull();
+    stop();
+  });
+
+  it('ends a session that took the route between its ending and its end', async () => {
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    driver.fire({ type: 'started', remote: remote() });
+    await flush();
+    driver.fire({ type: 'ending' });
+    const router = routed(localEngine()); // the stores' engine arrives as the session ends
+    await flush();
+    expect(router.castRoute()).not.toBeNull();
+    driver.fire({ type: 'ended' });
+    await flush();
+    expect(router.castRoute()).toBeNull();
+    expect(router.isCasting()).toBe(false);
     stop();
   });
 
@@ -286,5 +361,30 @@ describe('endCastForCar (finding 9)', () => {
     const driver = fakeDriver();
     await expect(endCastForCar(driver)).resolves.toBe(false);
     expect(driver.endSession).not.toHaveBeenCalled();
+  });
+
+  // A session waiting for the phone's load (`beginningCast`) would take the route, and the
+  // car's play with it, once that load landed.
+  it('ends a session still waiting to take the route, which then never takes it', async () => {
+    const held: { land: () => void } = { land: () => {} };
+    const router = routed({
+      ...localEngine(),
+      load: () =>
+        new Promise<void>((resolve) => {
+          held.land = resolve;
+        }),
+    });
+    const start = router.load([], 0, 0);
+    const cast = { detach: jest.fn() };
+    const begin = router.beginCast(cast as never);
+    expect(router.beginningCast()).toBe(true);
+    const driver = fakeDriver();
+    await expect(endCastForCar(driver)).resolves.toBe(true);
+    expect(driver.endSession).toHaveBeenCalledWith(true);
+    held.land();
+    await start;
+    await begin;
+    expect(router.isCasting()).toBe(false);
+    expect(cast.detach).toHaveBeenCalled();
   });
 });

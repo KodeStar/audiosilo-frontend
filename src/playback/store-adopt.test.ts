@@ -21,6 +21,12 @@ let playAsked: (() => void) | null = null;
  * set (`onRateChange`). */
 let remoteMove: ((trackIndex: number, positionInTrack: number) => void) | null = null;
 let rateChange: ((rate: number) => void) | null = null;
+/** The route switch's word of a load it made itself (`onOwnLoad`). */
+let ownLoad: ((trackIndex: number, position: number, loaded: Promise<unknown>) => void) | null =
+  null;
+/** The route switch's ask for the loaded book's place as a Cast session begins
+ * (`onLoadedPlace`). */
+let loadedPlace: (() => PlaybackSnapshot | null) | null = null;
 /** The book the engine's last report named (`reportedBook`); null: it named none. */
 let engineBook: BookRef | null = null;
 const mockSvc = {
@@ -34,6 +40,12 @@ const mockSvc = {
   }),
   onRateChange: jest.fn((handler: typeof rateChange) => {
     rateChange = handler;
+  }),
+  onOwnLoad: jest.fn((handler: typeof ownLoad) => {
+    ownLoad = handler;
+  }),
+  onLoadedPlace: jest.fn((handler: typeof loadedPlace) => {
+    loadedPlace = handler;
   }),
   setup: jest.fn(async () => {}),
   configure: jest.fn(async () => {}),
@@ -129,6 +141,7 @@ import { useSettings } from '@/stores/settings';
 import {
   engineOtherBook,
   engineOtherBookPlays,
+  FAULT_HOLD_MS,
   landingOf,
   onOtherBookPlays,
   onOtherBookReported,
@@ -1817,10 +1830,13 @@ describe('a play asked from outside of another book after playback stopped', () 
 
   /** B adopted paused (at `at`, else its second file, 30 s), then stopped (`error`); the
    * engine asked to play S, still loading; S's adoption under way, its book still being read.
-   * Returns the read's answer. `reread`: the car sync's read of the engine as it lands. */
+   * Returns the read's answer. `reread`: the car sync's read of the engine as it lands.
+   * `heard`: the place of the engine's unnamed `loading` report before the adoption began
+   * (B's own unless a test says S's). */
   async function askedForS(
     at: { trackIndex: number; position: number } = { trackIndex: 1, position: 30 },
     reread?: () => Promise<ReturnType<typeof loadedB> | null>,
+    heard: { trackIndex: number; position: number } = at,
   ): Promise<() => Promise<boolean>> {
     useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
     await usePlayer.getState().adoptLoaded(loadedB({ playing: false, ...at }));
@@ -1828,7 +1844,7 @@ describe('a play asked from outside of another book after playback stopped', () 
     usePlayer.setState({ snapshot: { ...snapshot, state: 'error' } });
     jest.clearAllMocks();
     playAsked?.();
-    pushSnapshot(snap('loading', at.trackIndex, at.position));
+    pushSnapshot(snap('loading', heard.trackIndex, heard.position));
     const answers: (() => void)[] = [];
     mockFetchQuery.mockImplementation(
       (opts: unknown) =>
@@ -1946,6 +1962,28 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(usePlayer.getState().nowPlaying?.path).toBe('S');
   });
 
+  // An adoption that gives up once another landed meanwhile leaves no hold on the book that
+  // one adopted: the engine holds that book, and its unnamed reports are its own.
+  it('holds nothing of a book adopted while an earlier adoption was under way', async () => {
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    const adoptingS = usePlayer.getState().adoptLoaded(loadedS);
+    await flushMicrotasks();
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    expect(await usePlayer.getState().adoptLoaded(loadedB({ playing: false }))).toBe(true);
+    for (const answer of answers) answer();
+    expect(await adoptingS).toBe(false);
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B');
+    pushSnapshot(snap('paused', 1, 40));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 40 });
+  });
+
   // The car sync's read of the engine can answer before that reload lands in it, still naming
   // S: the adoption gives up all the same, as the engine holds B once the load lands (taken, S
   // would be the store's book with B's unnamed reports saved as its place).
@@ -1962,6 +2000,396 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(usePlayer.getState()).toMatchObject({
       nowPlaying: { path: 'B' },
       snapshot: { state: 'playing', trackIndex: 1, position: 31 },
+    });
+  });
+
+  // FE-ANDROID-5: the adoption gave up (the engine read again holds nothing it names) with the
+  // play still followed, and the app's Pause in the watchdog's grace ended that play: the
+  // engine's unnamed reports, still S's, were then taken, and saved, as B's place.
+  it("holds an unnamed other book's reports after its adoption gave up and a Pause", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    expect(usePlayer.getState().nowPlaying?.path).toBe('B');
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+    });
+    pushSnapshot(snap('paused', 1, 80));
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
+    await flushMicrotasks();
+    // The car plays S on: still none of B's.
+    pushSnapshot(snap('playing', 1, 81));
+    jest.advanceTimersByTime(LOCAL_SAVE_MS);
+    await flushMicrotasks();
+    expectNothingSaved();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+    });
+    // A stop saves nothing of S as B's either.
+    await usePlayer.getState().stop();
+    expectNothingSaved();
+  });
+
+  // The listener's own move of B during that hold is B's, saved; never asked of the engine,
+  // which holds S.
+  it("saves the store's book's own move made during that hold", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    await usePlayer.getState().seekBook(150);
+    await flushMicrotasks();
+    expect(mockSvc.seekTo).not.toHaveBeenCalled();
+    expect(mockSvc.skipToTrack).not.toHaveBeenCalled();
+    expect(savedPaths()).toEqual(['B']);
+  });
+
+  // That hold ends once a report names a book again (the store's own here): its reports are
+  // B's from there, saved as such.
+  it('takes the reports again once one names the store’s book after that hold', async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    pushSnapshot(snap('paused', 1, 40));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 40 });
+    engineBook = null;
+    pushSnapshot(snap('paused', 1, 41));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 41 });
+  });
+
+  // Also when that report names the other book: a later one that names none (a queue loaded
+  // without a book, a Cast receiver) is not held for it again.
+  it('holds no unnamed report again after one named the other book during that hold', async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'S' };
+    pushSnapshot(snap('playing', 1, 80));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 30 });
+    engineBook = null;
+    pushSnapshot(snap('paused', 1, 41));
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 41 });
+  });
+
+  // And once the store loads its own book (a play press reloads it): its unnamed reports are
+  // its own, its play heard.
+  it("takes the store's book's unnamed reports once a play press reloaded it after that hold", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    pushSnapshot(snap('playing', 1, 31));
+    await flushMicrotasks();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'playing', trackIndex: 1, position: 31 },
+    });
+  });
+
+  // The engine's unnamed `loading` report of S, heard before S's adoption began, was taken as
+  // B's place. B stands where it was when the play was asked from the moment the adoption
+  // begins: the listener's speed change, which lifts the hold on B's saves, saved S's place
+  // as B's, during the adoption and after a Pause in the watchdog's grace alike (a place past
+  // B's own: one well before it the resume floor refused, the speed going unsaved).
+  it("saves the store's book where it stood on a speed change after a Pause, never the other book's place", async () => {
+    const read = await askedForS(undefined, async () => null, { trackIndex: 1, position: 80 });
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 30 });
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+    });
+    expectNothingSaved();
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+  });
+
+  it("saves the store's book where it stood on a speed change during the adoption", async () => {
+    const read = await askedForS(undefined, undefined, { trackIndex: 1, position: 80 });
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+    expect(await read()).toBe(true);
+  });
+
+  // A play press after that Pause reloads B where it stood, never at S's place.
+  it("reloads the store's book where it stood on a play press after a Pause", async () => {
+    const read = await askedForS(undefined, async () => null, { trackIndex: 1, position: 80 });
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect((mockSvc.load as jest.Mock).mock.calls[0].slice(1, 3)).toEqual([1, 30]);
+  });
+
+  // The sleep timer stops whatever plays (FE-ANDROID-4): the other book's play is known from
+  // its held reports though they name none, so the timer counts down on it (`onOtherBookPlays`)
+  // and the store's `pause` reaches the engine while the store's book shows paused.
+  it("knows an unnamed other book plays during that hold, and the store's pause stops it", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    pushSnapshot(snap('paused', 0, 80));
+    expect(engineOtherBookPlays()).toBe(false);
+    const told = jest.fn();
+    const off = onOtherBookPlays(told);
+    try {
+      jest.clearAllMocks();
+      // The car plays S on.
+      pushSnapshot(snap('playing', 0, 81));
+      expect(engineOtherBookPlays()).toBe(true);
+      expect(told).toHaveBeenCalledTimes(1);
+      // A buffer of a book heard playing is still its play.
+      pushSnapshot(snap('loading', 0, 82));
+      expect(engineOtherBookPlays()).toBe(true);
+      expect(told).toHaveBeenCalledTimes(1);
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'paused', position: 30 });
+      await usePlayer.getState().pause();
+      expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+      pushSnapshot(snap('paused', 0, 82));
+      expect(engineOtherBookPlays()).toBe(false);
+      expect(told).toHaveBeenCalledTimes(2);
+      // The shake in the timer's grace plays that book again, never a reload of B.
+      expect(await resumeOtherBook()).toBe(true);
+      expect(mockSvc.play).toHaveBeenCalledTimes(1);
+      expect(mockSvc.load).not.toHaveBeenCalled();
+      expectNothingSaved();
+    } finally {
+      off();
+    }
+  });
+
+  // Nothing of it once the hold is over (a play press reloaded B): B's own unnamed play is
+  // the store's book's, not another's.
+  it("reads no other book's play once the store's book was reloaded after that hold", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 81));
+    expect(engineOtherBookPlays()).toBe(true);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    expect(engineOtherBookPlays()).toBe(false);
+    pushSnapshot(snap('playing', 1, 31));
+    expect(engineOtherBookPlays()).toBe(false);
+    expect(await resumeOtherBook()).toBe(false);
+  });
+
+  // The route switch loads B back into the phone's engine by itself (the book could not be
+  // cast, a session ended): the engine is B's from that load, and its reports, naming none,
+  // were held as S's for good, B's place never saved again.
+  it("takes the store's book's unnamed reports once the route switch loaded it during that hold", async () => {
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    ownLoad?.(1, 30, Promise.resolve());
+    await flushMicrotasks();
+    pushSnapshot(snap('paused', 1, 30));
+    pushSnapshot(snap('playing', 1, 31));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({
+      state: 'playing',
+      trackIndex: 1,
+      position: 31,
+    });
+  });
+
+  // A Cast session that begins during that hold hands B over from B's own place, at B's
+  // speed (the route switch asks, `onLoadedPlace`): the engine's place is S's.
+  it("gives the route switch the store's book's place during that hold, none without one", async () => {
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    expect(loadedPlace?.()).toBeNull();
+    const read = await askedForS(undefined, async () => null);
+    expect(await read()).toBe(false);
+    await usePlayer.getState().toggle();
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 81));
+    expect(loadedPlace?.()).toMatchObject({
+      state: 'paused',
+      trackIndex: 1,
+      position: 30,
+      rate: 1.5,
+    });
+    // The receiver's reports name B (the route switch's word): the hold is over.
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    pushSnapshot(snap('paused', 1, 30));
+    expect(loadedPlace?.()).toBeNull();
+  });
+
+  /** The item and chapter fetches wait: each answers when its function in the list is called. */
+  function heldFetches(): (() => void)[] {
+    const answers: (() => void)[] = [];
+    mockFetchQuery.mockImplementation(
+      (opts: unknown) =>
+        new Promise((resolve) => {
+          const key = (opts as { queryKey: unknown[] }).queryKey;
+          answers.push(() => resolve(key[0] === 'item' ? book : chapters));
+        }),
+    );
+    return answers;
+  }
+
+  /** B adopted paused at (1, 30); the engine asked to play from outside (no error, so no play
+   * followed) and its unnamed report at `heard` taken; S's adoption then begins and
+   * gives up (the engine read again names nothing). Returns once it gave up. */
+  async function askedForSWhilePaused(heard: {
+    trackIndex: number;
+    position: number;
+    state?: PlaybackState;
+  }) {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    jest.clearAllMocks();
+    playAsked?.();
+    pushSnapshot(snap(heard.state ?? 'loading', heard.trackIndex, heard.position));
+    const answers = heldFetches();
+    const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
+    await flushMicrotasks();
+    // From the moment the adoption begins, B stands where it was.
+    const during = usePlayer.getState().snapshot;
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(false);
+    return during;
+  }
+
+  // FE-ANDROID-5: B stood paused (not stopped in error), so the play asked from outside was not
+  // followed and left no place to stand B at: S's unnamed report, taken as B's before its
+  // adoption began, stayed B's place, and a speed change saved it as B's.
+  it("stands a paused store's book where it was when another book's adoption begins", async () => {
+    const during = await askedForSWhilePaused({ trackIndex: 1, position: 80 });
+    expect(during).toMatchObject({ trackIndex: 1, position: 30 });
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { trackIndex: 1, position: 30 },
+    });
+    await usePlayer.getState().setRate(2);
+    await flushMicrotasks();
+    expect(savedPaths()).toEqual(['B']);
+    expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
+  });
+
+  it.each(['ready', 'playing'] as const)(
+    'restores the paused book when the car reports %s without naming its book before adoption',
+    async (state) => {
+      const during = await askedForSWhilePaused({ trackIndex: 1, position: 80, state });
+      expect(during).toMatchObject({ state: 'paused', trackIndex: 1, position: 30 });
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'paused',
+        trackIndex: 1,
+        position: 30,
+      });
+    },
+  );
+
+  // Not once the store's book played from that ask (the lock screen's play of B itself): its
+  // place is its own from there, and a later adoption of another book leaves it.
+  it("keeps the place a paused store's book played to before another book's adoption", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().adoptLoaded(loadedB({ playing: false }));
+    playAsked?.();
+    pushSnapshot(snap('loading', 1, 30));
+    pushSnapshot(snap('playing', 1, 31));
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
+    pushSnapshot(snap('playing', 1, 60));
+    engineBook = null;
+    pushSnapshot(snap('paused', 1, 60));
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });
+    const answers = heldFetches();
+    const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(false);
+  });
+
+  // FE-ANDROID-5: the store's book had faulted (its engine ran off the asked file) when the car
+  // played S, whose reports name none. The fault's check ran before the hold, so S's play was
+  // paused again and B reloaded over it. The hold wins, during the adoption and once it gave up.
+  it("neither pauses nor reloads over an unnamed other book while the store's book is faulted", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    await usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 50);
+    await flushMicrotasks();
+    // The engine runs off its asked file into the next: a fault, paused there.
+    pushSnapshot(snap('playing', 1, 0.4));
+    jest.advanceTimersByTime(FAULT_HOLD_MS);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalled();
+    pushSnapshot(snap('paused', 1, 0.5));
+    await flushMicrotasks();
+    jest.clearAllMocks();
+    // The car plays S; its adoption is under way.
+    const answers = heldFetches();
+    playAsked?.();
+    const adopting = usePlayer.getState().adoptLoaded(loadedS, async () => null);
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 6));
+    await flushMicrotasks();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    // It gives up: the engine holds S all the same, and S plays on.
+    for (const answer of answers) answer();
+    expect(await adopting).toBe(false);
+    pushSnapshot(snap('playing', 0, 7));
+    await flushMicrotasks();
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    expect(mockSvc.load).not.toHaveBeenCalled();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'error' },
+    });
+  });
+
+  // An adoption that began after the store's own start asked for its load (so not marked
+  // `ownLoad`) gives up, and the engine is the start's book from that load: its unnamed
+  // reports are that book's, never held as the other book's.
+  it("holds nothing after an adoption that gave up while the store's own load was out", async () => {
+    useDownloads.setState({ entries: { 'c1:2:B': downloadedB() } });
+    let land!: () => void;
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          land = resolve;
+        }),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, twoFileBook, twoFileChapters, 0);
+    await flushMicrotasks();
+    expect(mockSvc.load).toHaveBeenCalledTimes(1);
+    expect(await usePlayer.getState().adoptLoaded(loadedS)).toBe(false);
+    land();
+    await starting;
+    await flushMicrotasks();
+    pushSnapshot(snap('playing', 0, 3));
+    await flushMicrotasks();
+    expect(usePlayer.getState()).toMatchObject({
+      nowPlaying: { path: 'B' },
+      snapshot: { state: 'playing', trackIndex: 0, position: 3 },
     });
   });
 

@@ -2143,11 +2143,27 @@ media GETs only.
   after it landed (the events and the load's answer are two channels), is dropped whole in the
   service until a report names another book (`name`), so it is never read as the car's book
   (a Pause or a place of the loaded book); a reload of the same book before then keeps it
-  dropped. The store drops a report of a book it does not hold
+  dropped. Every load is also tagged (FE-ANDROID-5): `load`'s `book` carries `load`, a number
+  of this JS run's (past the time the service was made), which Android keeps on the queue's
+  items (`MediaItems.KEY_LOAD`) and iOS beside the book, and every report of that queue carries
+  it back (`BookReport.load`). A tagged report of a load a later one superseded is dropped
+  whole, whatever book it names (A, then B, then A again: B's late reports, which the one slot
+  above lets through); a report of the latest load ends the watch. A `reset` takes a number of
+  its own and stands as a load does, so a tagged report of the queue it unloaded, heard after
+  it, is dropped too (the engine's own word after a reset names no book and carries no tag).
+  A tag an earlier run of the JS gave (Android: the service played on, and this run adopted
+  its queue) is below every one of this run's: its reports are taken until this run loads or
+  resets, and dropped after (the adopted book loaded again names the same book, so the rule
+  above lets its old queue's late tick through).
+  A report with no tag (an
+  older binary, a queue the Android service loaded itself) keeps the rule above, and an older
+  binary ignores the record field. The store drops a report of a book it does not hold
   (`reportedOtherBook`: one the car or a resumption started, or the one its own load
   replaces while that load holds the store), telling the car sync instead (`onOtherBookReported`, which adopts it on
-  Android). A report that names none (an older binary, a queue loaded without a book, the
-  web, a Cast receiver) is taken as before. **Feature-detect every function added after the first shipped
+  Android). On Android, a report that loses the queue's book name can be the first event
+  of a car start. The store holds it while the car sync identifies the queue (Car below).
+  Any other report that names none (iOS, the web, a Cast receiver) is taken as before.
+  **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
   Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
   passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
@@ -3339,7 +3355,47 @@ media GETs only.
   (`ownLoadTakesEngine` in `playBook` and `retry`: the adoption reads a book the engine no
   longer holds and gives up, also when its read of the engine came before that load landed,
   and the reports are the store's book's, its start heard), nor while the store holds no
-  book (a Cast session resumed with none loaded, the web's too: taken as before).
+  book (a Cast session resumed with none loaded, the web's too: taken as before). An
+  adoption of another book that gives up while the reports name none leaves the engine
+  holding that book all the same (FE-ANDROID-5, `unnamedOther`; not while a load or a start
+  of the store's holds the engine, `ownLoadHoldsEngine`, whose book it is from that load): its
+  reports stay held and the store's book's place is not saved (`persist`, unless the listener
+  moved it or set its speed since), past the end of the followed outside play (a Pause in
+  the watchdog's grace, `clearPlaybackIntent`), until a report names a book again or the
+  store loads or holds another (`ownLoadTakesEngine`, `switchBook`).
+  An unnamed report taken as the store's book's before the adoption began left the other
+  book's place in the snapshot, so the store's book shows where it stood when the play was
+  asked from the moment the adoption begins (`standWhereAsked`, the watchdog's
+  `stoodWhenAsked`): a speed change, during the adoption or after a Pause in the grace, saves
+  that place, and a play press reloads there, never the other book's place past it. So does a
+  play asked from outside while the store's book stood still (paused, not in error), which the
+  store does not follow. Its place is kept (`pausedAsk`) until a playing report names the
+  store's book, the car sync confirms it, or the store takes the engine for its own play,
+  load or adoption. On Android, losing the name from the store's queue, or receiving an
+  unnamed report during that outside play while the car sync listens, holds the car's file,
+  place and moves from the first report. The car sync also checks a file change, a play
+  started outside the app or a remote seek on an unnamed queue. With no car sync listening
+  (a binary without the car functions) nothing could identify the queue, and the report is
+  taken as before.
+  The previous book's listening ends at its own place. When the engine identifies the
+  store's book, the pending check takes the file and position from that same read. An
+  unnamed seek can count once a read begun after it confirms the book. A named seek on
+  the store's book takes effect immediately.
+  These holds come before a faulted book's stop (`loadedFaulted`), as a named other book's
+  report does: a faulted store's book never pauses the other book's play nor reloads over it.
+  Whether that unnamed book plays is kept from its held reports (`unnamedPlays`), so
+  `engineOtherBookPlays` is true for it too: the sleep timer counts down on it, the store's
+  `pause` stops it, and `resumeOtherBook` plays it again.
+  The route switch's own load of the store's book (`onOwnLoad`: a cast that ended or failed)
+  ends the hold as the store's own load does, or that book's reports stayed held for good.
+  A Cast session that begins while the engine holds another book (named or not) hands the
+  store's book over from the place and speed the store shows, paused (`onLoadedPlace`, asked
+  by `RoutedPlaybackService.beginCast`: the router's own snapshot is the other book's, and is
+  the store's place from then, so a session that ends mid-switch hands that place back; a
+  store's book with no place to hand over, ended, still unloads the phone's engine), and
+  the receiver's reports name the book loaded there (the router's `reportedBook`, the
+  receiver's own `loadedBook`, null only while a load is on its way to the receiver or
+  nothing is loaded), which ends the hold.
   The store's `pause` is "stop the sound" (the sleep timer): while the store's book shows
   playing or loading, the engine pauses whatever it plays, the other book too, and the
   store's book shows paused; while it shows paused and the engine plays the other book
@@ -4463,7 +4519,27 @@ on first need). NOT device-verified (no Cast device yet).
   and forwards only that route's snapshots, so the store, `book-queue` and `progress-sync` drive
   a cast exactly as they drive the phone. Switching is a pause on one side and a paused load on
   the other: the router emits `paused` at the handed-over place (the store saves it); a cast
-  started while playing plays on, and the phone never plays by itself when a cast ends.
+  started while playing plays on, and the phone never plays by itself when a cast ends. While
+  the phone's engine holds another book than the store's (Android: the car's, not adopted) the
+  place handed over is the store's (`onLoadedPlace`), paused, and that other book stops with
+  the phone's engine; the receiver's reports name the book loaded there (`reportedBook`, by
+  `CastPlaybackService.loadedBook`, never the queue an adoption remembered mid-handover). A
+  session that begins while the store's own load is on its way into the phone's engine waits
+  for it to land (`localLoad`), so that book goes over from its own place, never the place of
+  the book the load replaced; a session ended or replaced meanwhile never becomes the route
+  (it is detached), and `endCastForCar` ends one still waiting (`beginningCast`), so the car's
+  play never moves to the TV once that load lands. The wait is bounded (`LOCAL_LOAD_WAIT_MS`):
+  a load that never lands (or fails) goes over paused from where it was asked to start, the
+  latest load's when a second tap replaced it. A play or pause the store asks while a handover
+  is on its way (its start plays the book once its load landed, just as such a session hands
+  it over) is the receiver's once the book lands there (`handoverAsk`), never the phone
+  engine's the handover unloads. A session that ends hands back the book the receiver holds
+  (`loadedQueue`, with its chapters; mid-handover the one handed over), at the receiver's
+  place, named (`handingBack`) for its report and while the phone loads it: when that is not
+  the store's book (an adoption landed mid-handover) the store holds it as another book's and
+  is told of no load of its own. The final receiver read ends only the session it belongs
+  to. A session that begins waits for the previous receiver's hand-back (one an earlier end
+  started included) and checks it still owns the route change before taking over.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes

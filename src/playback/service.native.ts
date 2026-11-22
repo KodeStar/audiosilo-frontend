@@ -92,6 +92,21 @@ class NativePlaybackService implements PlaybackService {
    * (`name`), never read as the loaded book's nor as another book the engine plays (the
    * car's), so the store's Pause and place are the loaded book's. */
   private replaced: string | null = null;
+  /** The tags of this run's loads (`load`): each takes the next number past `lastLoad`, from
+   * one past `loadBase` (the time this service was made, so a tag an earlier run of the JS gave
+   * the engine is below every one of this run's). `standing`: the loads asked since the last
+   * one that landed, that one first, none that failed. `loadFloor`: the latest of them, below
+   * which a tagged report is of a superseded load (`name`); 0 while none stands (this run has
+   * loaded and reset nothing yet, so the queue an earlier run left in the engine, adopted, is
+   * the one it holds, and its reports are taken). A load that fails leaves the list, so the
+   * floor goes back to the latest load still standing, also when two that overlap both fail
+   * (a floor put back to the first one's tag would drop every report of the load before it).
+   * A `reset` takes a number of its own and stands as a load does: no report carries it, so
+   * every tagged report still on its way is of a queue the reset unloaded, and is dropped. */
+  private readonly loadBase = Date.now();
+  private lastLoad = this.loadBase;
+  private standing: number[] = [];
+  private loadFloor = 0;
   /** The app's own moves out (`seekTo`, `skipToTrack`), and when the latest was made: their
    * ticks are never held (`progress`, `ownMoveOut`). */
   private moving = 0;
@@ -123,14 +138,25 @@ class NativePlaybackService implements PlaybackService {
     this.held = null;
   }
   /** Take the book a report names, before the report itself; false when the report is to be
-   * dropped whole, as it names the book a load replaced (`replaced`). A report naming any other
-   * book ends that, as the engine's reports come in order: the replaced book's late ones are
-   * over, and one naming it later is a new play of it (the car). Another book than the last
+   * dropped whole. A report tagged with a load (`load`, `isLoadTag`: one of this run's, or of
+   * an earlier run of the JS, whose queue this run adopted) is dropped when a later load
+   * superseded it (its tag below `loadFloor`: sent before that load, heard after it), whatever
+   * book it names (FE-ANDROID-5: on A, then B, then A again, the one slot below let B's late
+   * reports pass; an adopted book loaded again, its old queue's late tick named the same
+   * book); one of the latest load ends the watch below. A report with no such tag (an older
+   * binary, a queue the Android service loaded itself) is dropped
+   * when it names the book a load replaced (`replaced`). A report naming any other book ends
+   * that, as the engine's reports come in order: the replaced book's late ones are over, and
+   * one naming it later is a new play of it (the car). Another book than the last
    * one named starts the measure afresh: a tick held back, or the last one taken, was the
    * other book's. The same book keeps the object it was named by (`reportedBook`). */
-  private name(book: unknown): boolean {
+  private name(book: unknown, load: unknown): boolean {
     const named = nativeBookOf(book);
     const key = named && contentKeyOf(named);
+    if (named && this.isLoadTag(load)) {
+      if (load < this.loadFloor) return false;
+      this.replaced = null;
+    }
     if (key && this.replaced !== null) {
       if (key === this.replaced) return false;
       this.replaced = null;
@@ -142,6 +168,28 @@ class NativePlaybackService implements PlaybackService {
     }
     this.named = named;
     return true;
+  }
+  /** The tag of a load (or a reset) asked now: it stands, and is the floor (`loadFloor`). */
+  private nextLoad(): number {
+    const tag = ++this.lastLoad;
+    this.standing.push(tag);
+    this.loadFloor = tag;
+    return tag;
+  }
+  /** That load failed: it stands no more, and the floor is the latest one that does. */
+  private loadFailed(tag: number) {
+    this.standing = this.standing.filter((t) => t !== tag);
+    this.loadFloor = this.standing[this.standing.length - 1] ?? 0;
+  }
+  /** That load landed: every one asked before it is superseded for good, failed or not. */
+  private loadLanded(tag: number) {
+    this.standing = this.standing.filter((t) => t >= tag);
+  }
+  /** Is `load` a tag the floor measures: one of this run's loads, or of an earlier run's (below
+   * `loadBase`, so below every load of this run)? Not one past this run's latest (a clock set
+   * back since the run that gave it): told apart from no load, it is taken as untagged. */
+  private isLoadTag(load: unknown): load is number {
+    return typeof load === 'number' && load > 0 && load <= this.lastLoad;
   }
 
   /**
@@ -291,8 +339,8 @@ class NativePlaybackService implements PlaybackService {
   async setup() {
     if (this.setupDone) return;
     this.subscriptions.push(
-      AudiosiloPlayer.addListener('onState', ({ state, playWhenReady, book }) => {
-        if (!this.name(book)) return;
+      AudiosiloPlayer.addListener('onState', ({ state, playWhenReady, book, load }) => {
+        if (!this.name(book, load)) return;
         // Android: the engine turned to wanting to play, or stopped (asked by anyone), told
         // first.
         if (typeof playWhenReady === 'boolean') {
@@ -305,8 +353,8 @@ class NativePlaybackService implements PlaybackService {
         this.update({ state });
       }),
       AudiosiloPlayer.addListener('onProgress', (tick) => {
-        const { position, duration, silenceSaved, book } = tick;
-        if (!this.name(book)) return;
+        const { position, duration, silenceSaved, book, load } = tick;
+        if (!this.name(book, load)) return;
         const file = nativeNumber(tick.trackIndex, -1);
         this.progress(position, duration, Number.isInteger(file) && file >= 0 ? file : undefined);
         // Absent on binaries older than Smart Speed.
@@ -314,8 +362,8 @@ class NativePlaybackService implements PlaybackService {
           this.silenceSaved?.(silenceSaved);
         }
       }),
-      AudiosiloPlayer.addListener('onTrackChange', ({ index, book }) => {
-        if (!this.name(book)) return;
+      AudiosiloPlayer.addListener('onTrackChange', ({ index, book, load }) => {
+        if (!this.name(book, load)) return;
         this.fileChanged(index);
       }),
       // The engine already moved (the lock screen, a headset, the car): the store hears of
@@ -324,9 +372,9 @@ class NativePlaybackService implements PlaybackService {
       // held for it (`progress`) is replaced, its length kept: a move into another file lands
       // in a tick with that file's length. The listeners take the place whatever the handler
       // does.
-      AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position, book }) => {
+      AudiosiloPlayer.addListener('onRemoteMove', ({ trackIndex, position, book, load }) => {
         if (!Number.isFinite(trackIndex) || !Number.isFinite(position)) return;
-        if (!this.name(book)) return;
+        if (!this.name(book, load)) return;
         const duration = this.held?.duration ?? this.snapshot.duration;
         this.dropHeld();
         this.setPlace({ trackIndex, position, duration }, Date.now());
@@ -336,9 +384,9 @@ class NativePlaybackService implements PlaybackService {
           this.emit();
         }
       }),
-      AudiosiloPlayer.addListener('onRateChange', ({ rate, book }) => {
+      AudiosiloPlayer.addListener('onRateChange', ({ rate, book, load }) => {
         if (!Number.isFinite(rate) || rate <= 0) return;
-        if (!this.name(book)) return;
+        if (!this.name(book, load)) return;
         this.update({ rate });
         this.rateChange?.(rate);
       }),
@@ -363,9 +411,10 @@ class NativePlaybackService implements PlaybackService {
     // chapters are the per-chapter clips: Android builds clipped media items from them, iOS
     // drives its chapter lock screen with them. PlaybackChapter and NativeChapter are the
     // same shape, so they pass straight through. `book` goes only to a binary that takes it
-    // (see `moduleTakesBook`).
+    // (see `moduleTakesBook`), tagged with this load (`name`).
     const native = tracks.map(toNativeTrack);
     const told = book && moduleTakesBook() ? book : null;
+    const tag = this.nextLoad();
     // From the ask on, a report of the book the engine held is that book's last (`name`). A
     // reload of the same book keeps one a load before it replaced, as no report has named
     // another book since: that book's late reports may still be on their way. A load of that
@@ -376,15 +425,20 @@ class NativePlaybackService implements PlaybackService {
     else if (was && was !== key) this.replaced = was;
     try {
       if (told) {
-        await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters ?? [], told);
+        await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters ?? [], {
+          ...bookRefOf(told),
+          load: tag,
+        });
       } else {
         await AudiosiloPlayer.load(native, startIndex, positionInTrack, chapters);
       }
     } catch (err) {
       // Not loaded: the engine may still hold that book, and its reports are its own.
       this.replaced = null;
+      this.loadFailed(tag);
       throw err;
     }
+    this.loadLanded(tag);
     // The engine holds this queue now: the report below is its book's, as the engine's own
     // reports name it from here.
     this.named = told ? bookRefOf(told) : null;
@@ -453,7 +507,17 @@ class NativePlaybackService implements PlaybackService {
     }
   }
   async reset() {
-    await AudiosiloPlayer.reset();
+    // The queue is unloaded from the ask on: a tagged report of it heard after this (sent
+    // before the reset reached the engine) is dropped (`name`), never taken as the place or
+    // state of an engine that holds nothing, or of the book loaded next.
+    const tag = this.nextLoad();
+    try {
+      await AudiosiloPlayer.reset();
+    } catch (err) {
+      this.loadFailed(tag);
+      throw err;
+    }
+    this.loadLanded(tag);
     this.named = null;
     this.replaced = null;
     this.update({ ...INITIAL_SNAPSHOT, rate: this.snapshot.rate });

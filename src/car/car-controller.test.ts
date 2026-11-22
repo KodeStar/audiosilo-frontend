@@ -127,6 +127,7 @@ let mockEngineOther: { connectionId: string; libraryId: number; path: string } |
 let mockEngineHolds = false;
 /** The store's word that the engine reported another book (`onOtherBookReported`). */
 let mockOtherBookReported: ((news: OtherBookNews) => void) | null = null;
+const mockConfirmBook = jest.fn();
 jest.mock('@/playback/store', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { create } = require('zustand');
@@ -143,6 +144,7 @@ jest.mock('@/playback/store', () => {
     followsOutsidePlay: () => mockOutsidePlay,
     engineOtherBook: () => mockEngineOther,
     engineHoldsOtherBook: () => mockEngineHolds,
+    pendingBookConfirmation: () => mockConfirmBook,
     onOtherBookReported: (listener: (news: OtherBookNews) => void) => {
       mockOtherBookReported = listener;
       return () => {
@@ -2576,6 +2578,7 @@ describe('adopting the service’s book (Android)', () => {
     });
     stop = startCarSync();
     await settle();
+    expect(mockConfirmBook).toHaveBeenCalledWith(loaded);
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
 
     usePlayer.setState({
@@ -2585,6 +2588,19 @@ describe('adopting the service’s book (Android)', () => {
     });
     await settle();
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
+  });
+
+  it('adopts the store’s own book when its pending check finds another file order', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockNative.getLoadedBook.mockResolvedValue(loaded);
+    mockConfirmBook.mockReturnValueOnce('adopt');
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0, 100] } },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(mockConfirmBook).toHaveBeenCalledWith(loaded);
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
   });
 
   it('adopts a book the car switched to while another was loaded', async () => {
@@ -2619,6 +2635,7 @@ describe('adopting the service’s book (Android)', () => {
     mockOtherBookReported?.('moved');
     await settle();
     expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
+    expect(mockConfirmBook).not.toHaveBeenCalled();
     // Not on iOS, whose engine only ever holds what the store loaded.
     stop();
     (usePlayer.getState().adoptLoaded as jest.Mock).mockClear();

@@ -30,7 +30,19 @@ export type NativeState = 'idle' | 'loading' | 'ready' | 'playing' | 'paused' | 
  * `load` was given, or the one the Android service loaded itself), so JS drops a report of a
  * book it does not hold. Absent from binaries that predate it and for a queue loaded without
  * a book (JS then takes the report as before). */
-export type BookReport = { book?: BookRef };
+export type BookReport = {
+  book?: BookRef;
+  /** The load the report is of: the `load` tag `load`'s `book` carried (`LoadTag`), so JS
+   * drops a report of a load a later one superseded (sent before it, heard after). Only with
+   * `book`; absent from binaries that predate it and for a queue the Android service loaded
+   * itself (the car, a resumption). */
+  load?: number;
+};
+
+/** `load`'s `book` with the tag of that load (`load`), which the engine's reports of the queue
+ * carry back (`BookReport.load`). A binary that predates the tag ignores it (a record reads
+ * only the fields it declares). */
+export type LoadTag = BookRef & { load?: number };
 
 /** `playWhenReady` (Android only): whether the engine wants to play, so the app hears of a
  * play asked from outside it (the car, a headset). Absent on iOS and on older binaries. */

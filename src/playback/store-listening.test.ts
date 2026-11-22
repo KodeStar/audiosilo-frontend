@@ -11,12 +11,16 @@ import type { BookRef, PlaybackService, PlaybackSnapshot, PlaybackState } from '
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
 let remoteMove: (trackIndex: number, position: number) => void = () => {};
+let playAsked: () => void = () => {};
 let landed: () => void = () => {};
 /** The book the engine's last report named (`reportedBook`); null: it named none. */
 let engineBook: BookRef | null = null;
 const mockSvc = {
   reportedBook: jest.fn(() => engineBook),
   onRemoteSeek: jest.fn(),
+  onPlayAsked: jest.fn((cb: () => void) => {
+    playAsked = cb;
+  }),
   onRemoteMove: jest.fn((cb: (trackIndex: number, position: number) => void) => {
     remoteMove = cb;
   }),
@@ -203,6 +207,8 @@ jest.mock('@/api/connection-clients', () => ({
 }));
 
 /* eslint-disable import/first */
+import { Platform } from 'react-native';
+
 import { qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import * as reachability from '@/api/reachability';
@@ -224,8 +230,12 @@ import {
   cutListeningSpanNow,
   flushHistoryOnHide,
   holdSaves,
+  localMoveCount,
+  onOtherBookReported,
+  pendingBookConfirmation,
   saveLoadedPlace,
   selectBookLength,
+  selectBookPosition,
   standByPlace,
   teardownBeforeTokenRevoke,
   usePlayer,
@@ -686,6 +696,235 @@ describe('with listening_sync', () => {
       endedAt: new Date(switchedAt).toISOString(),
     });
     expect(mockStoreOpenSpan).not.toHaveBeenCalled();
+  });
+
+  describe('an Android Auto start before the store adopts the car book', () => {
+    const os = Platform.OS;
+    const own = { connectionId: 'c1', libraryId: 2, path: 'Phone' };
+    const car = { connectionId: 'c1', libraryId: 2, path: folder };
+    const phoneBook = { ...book, rel_path: own.path, duration: 4000 };
+    const phoneChapters: ChaptersResponse = {
+      ...chapters,
+      path: own.path,
+      duration: 4000,
+      files: [1400, 1400, 1200].map((duration, seq) => ({
+        rel_path: `Phone/${seq + 1}.mp3`,
+        seq,
+        duration,
+        format: 'mp3',
+        size: 1,
+      })),
+      chapters: [],
+    };
+    const phoneTick = (state: PlaybackState, position: number) => ({
+      ...snap(state, 0, position),
+      duration: 1400,
+    });
+
+    /** The car sync's listener, as a binary with the car functions always has one. */
+    let offCarSync = () => {};
+
+    beforeEach(() => {
+      Platform.OS = 'android';
+      offCarSync = onOtherBookReported(() => {});
+      const entry = downloadedEntry();
+      const third = { rel_path: `${folder}/3.mp3`, seq: 2, duration: 300, format: 'mp3', size: 1 };
+      entry.manifest = {
+        ...entry.manifest,
+        book: { ...book, duration: 400 },
+        chapters: { ...chapters, duration: 400, files: [...chapters.files, third], chapters: [] },
+        files: [...entry.manifest.files, { relPath: third.rel_path, localUri: 'file:///d/3.mp3' }],
+      };
+      useDownloads.setState({ entries: { [`c1:2:${folder}`]: entry } });
+    });
+    afterEach(() => {
+      offCarSync();
+      Platform.OS = os;
+    });
+
+    it.each([
+      { state: 'paused', stood: 188.003, jumped: 2977.41, move: true, phoneNamed: true },
+      { state: 'paused', stood: 268.936, jumped: 3085.62, move: false, phoneNamed: true },
+      { state: 'playing', stood: 350.134, jumped: 2919.09, move: true, phoneNamed: true },
+      { state: 'playing', stood: 350.134, jumped: 2919.09, move: true, phoneNamed: false },
+    ] as const)(
+      'keeps the $state book at $stood through adoption (phone reports named $phoneNamed)',
+      async ({ state, stood, jumped, move, phoneNamed }) => {
+        await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, stood);
+        engineBook = phoneNamed ? own : null;
+        pushSnapshot(phoneTick('playing', stood));
+        pushSnapshot(phoneTick(state, stood));
+        await settle();
+        const moves = localMoveCount();
+        const told = jest.fn();
+        const off = onOtherBookReported(told);
+        const shown = new Set<number>();
+        const unwatch = usePlayer.subscribe((s) => {
+          if (s.nowPlaying?.path === own.path) shown.add(selectBookPosition(s));
+        });
+        try {
+          engineBook = null;
+          if (state === 'paused' && move) playAsked();
+          // Media3 can report the new queue's position before the car asks to play.
+          const position = jumped - 2800; // file 3 on the phone book's timeline
+          const carTick = { ...snap(state, 2, position), duration: 300 };
+          pushSnapshot(carTick);
+          if (state === 'paused' && !move) playAsked();
+          if (move) remoteMove(2, position);
+          pushSnapshot({ ...carTick, state: 'playing' });
+          await settle();
+          expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 0, position: stood });
+          expect(localMoveCount()).toBe(moves);
+          expect(told).toHaveBeenCalled();
+          jest.advanceTimersByTime(8_000);
+          expect(
+            await usePlayer.getState().adoptLoaded({
+              ...car,
+              trackIndex: 2,
+              position,
+              rate: 1,
+              playing: true,
+            }),
+          ).toBe(true);
+          await settle();
+          expect(usePlayer.getState().nowPlaying?.path).toBe(car.path);
+          expect([...shown].every((position) => position === stood)).toBe(true);
+          expect(mockClosed.filter((s) => s.path === own.path).map((s) => s.to.pos)).toEqual([
+            stood,
+          ]);
+          expect(mockAppended).toEqual([]);
+          expect(mockWriteMirror.mock.calls.map(([save]) => save)).not.toContainEqual(
+            expect.objectContaining({ path: own.path, position: jumped }),
+          );
+          pushSnapshot({ ...carTick, state: 'paused', position: position + 1 });
+          await settle();
+          expect(mockClosed.at(-1)).toMatchObject({
+            path: car.path,
+            to: { filePos: position + 1 },
+          });
+        } finally {
+          unwatch();
+          off();
+        }
+      },
+    );
+
+    it("counts the car UI's seek on the phone book while an outside play is pending", async () => {
+      await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, 188.003);
+      engineBook = own;
+      pushSnapshot(phoneTick('playing', 188.003));
+      pushSnapshot(phoneTick('paused', 188.003));
+      playAsked();
+      const moves = localMoveCount();
+      remoteMove(0, 42);
+      pushSnapshot(phoneTick('paused', 42));
+      await settle();
+      expect(localMoveCount()).toBe(moves + 1);
+      expect(usePlayer.getState().snapshot.position).toBe(42);
+      expect(mockAppended).toContainEqual(
+        expect.objectContaining({ path: own.path, from_pos: 42, to_pos: 42 }),
+      );
+    });
+
+    it('counts a seek on the queue that lost its name once the read confirms the book', async () => {
+      await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, 300);
+      engineBook = own;
+      pushSnapshot(phoneTick('playing', 300));
+      await settle();
+      // The engine holds the phone book again in a queue that names none, and is moved back.
+      engineBook = null;
+      const moves = localMoveCount();
+      remoteMove(0, 100);
+      pushSnapshot(phoneTick('playing', 100));
+      expect(usePlayer.getState().snapshot.position).toBe(300);
+      pendingBookConfirmation()?.({ ...own, trackIndex: 0, position: 101, rate: 1, playing: true });
+      await settle();
+      expect(localMoveCount()).toBe(moves + 1);
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 101 });
+    });
+
+    it('takes an unnamed outside play of the paused book while no car sync listens', async () => {
+      offCarSync();
+      await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, 188.003);
+      engineBook = null;
+      pushSnapshot(phoneTick('playing', 188.003));
+      pushSnapshot(phoneTick('paused', 188.003));
+      await settle();
+      // A headset play on a binary without the car functions: nothing could identify it.
+      playAsked();
+      pushSnapshot(phoneTick('playing', 189));
+      await settle();
+      expect(pendingBookConfirmation()).toBeNull();
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 189 });
+    });
+
+    it('counts an unnamed seek once the engine confirms the paused book owns it', async () => {
+      await usePlayer
+        .getState()
+        .adoptLoaded({ ...car, trackIndex: 0, position: 30, rate: 1, playing: false });
+      playAsked();
+      pushSnapshot(snap('loading', 0, 30));
+      const beforeSeek = pendingBookConfirmation();
+      const moves = localMoveCount();
+      remoteMove(0, 15);
+      pushSnapshot(snap('playing', 0, 15));
+      const afterSeek = pendingBookConfirmation();
+      const confirmed = { ...car, trackIndex: 0, position: 16, rate: 1, playing: true };
+      beforeSeek?.({ ...confirmed, position: 30 });
+      expect(localMoveCount()).toBe(moves);
+      expect(usePlayer.getState().snapshot.position).toBe(30);
+      afterSeek?.(confirmed);
+      await settle();
+      expect(localMoveCount()).toBe(moves + 1);
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 16 });
+      expect(mockAppended).toContainEqual(expect.objectContaining({ path: car.path, to_pos: 16 }));
+    });
+
+    it('keeps a seek in the app made while the engine was identifying the book', async () => {
+      const loaded = { ...car, trackIndex: 0, position: 30, rate: 1, playing: false };
+      await usePlayer.getState().adoptLoaded(loaded);
+      playAsked();
+      pushSnapshot(snap('loading', 0, 30));
+      const confirm = pendingBookConfirmation();
+      const moves = localMoveCount();
+      await usePlayer.getState().seekBook(12);
+      expect(mockSvc.skipToTrack).not.toHaveBeenCalled();
+      confirm?.(loaded);
+      await settle();
+      expect(mockSvc.skipToTrack).toHaveBeenCalledWith(0, 12);
+      expect(localMoveCount()).toBe(moves + 1);
+      expect(usePlayer.getState().snapshot.position).toBe(12);
+    });
+
+    it('keeps the book ended when the read confirms an engine that played it out', async () => {
+      const loaded = { ...car, trackIndex: 0, position: 30, rate: 1, playing: false };
+      await usePlayer.getState().adoptLoaded(loaded);
+      playAsked();
+      pushSnapshot(snap('loading', 0, 30));
+      const end = { ...snap('ended', 2, 300), duration: 300 };
+      pushSnapshot(end);
+      const confirm = pendingBookConfirmation();
+      (mockSvc.getSnapshot as jest.Mock).mockImplementation(() => ({ ...end }));
+      try {
+        confirm?.({ ...loaded, trackIndex: 2, position: 300 });
+        await settle();
+        expect(usePlayer.getState().snapshot).toMatchObject({ state: 'ended', trackIndex: 2 });
+      } finally {
+        (mockSvc.getSnapshot as jest.Mock).mockImplementation(() => ({ ...INITIAL }));
+      }
+    });
+
+    it('requires adoption before taking a confirmed place in a different file order', async () => {
+      const loaded = { ...car, trackIndex: 0, position: 30, rate: 1, playing: false };
+      await usePlayer.getState().adoptLoaded(loaded);
+      playAsked();
+      pushSnapshot(snap('playing', 2, 45));
+      const confirm = pendingBookConfirmation();
+      expect(
+        confirm?.({ ...loaded, trackIndex: 2, position: 45, files: [`${folder}/3.mp3`, ...order] }),
+      ).toBe('adopt');
+      expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 0, position: 30 });
+    });
   });
 
   it('the 15 s tick cuts the span while reachable; the next one continues', async () => {

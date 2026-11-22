@@ -53,6 +53,9 @@ class BookRecord : Record {
   @Field var connectionId: String = ""
   @Field var libraryId: Double = 0.0
   @Field var path: String = ""
+  /** This load's tag (JS's `LoadTag`), carried back on the queue's reports; absent from an
+   * older JS bundle. */
+  @Field var load: Double? = null
 }
 
 class ConfigRecord : Record {
@@ -122,14 +125,14 @@ class AudiosiloPlayerModule : Module() {
   @Volatile private var observingCarConnection = false
 
   private val sink = object : PlayerEventSink {
-    override fun remoteMove(fileIndex: Int, position: Double, book: BookRef?) {
-      pendingRemoteMove = RemoteMove(fileIndex, position, book)
+    override fun remoteMove(fileIndex: Int, position: Double, book: BookRef?, load: Double?) {
+      pendingRemoteMove = RemoteMove(fileIndex, position, book, load)
       handler.removeCallbacks(remoteMoveFallback)
       handler.postDelayed(remoteMoveFallback, REMOTE_MOVE_FALLBACK_MS)
     }
 
-    override fun rateChange(rate: Double, book: BookRef?) {
-      sendEvent("onRateChange", rateChangeEvent(rate, book))
+    override fun rateChange(rate: Double, book: BookRef?, load: Double?) {
+      sendEvent("onRateChange", rateChangeEvent(rate, book, load))
     }
 
     override fun remoteBookmark(fileIndex: Int, position: Double, book: BookRef?, relPath: String?) {
@@ -138,9 +141,9 @@ class AudiosiloPlayerModule : Module() {
       sendEvent("onRemoteBookmark", place + (book?.toEvent() ?: emptyMap()))
     }
 
-    override fun playerFailed(book: BookRef?) {
+    override fun playerFailed(book: BookRef?, load: Double?) {
       // The service has just stopped it wanting to play (`onEngineFailed`).
-      sendEvent("onState", failedStateEvent(book))
+      sendEvent("onState", failedStateEvent(book, load))
     }
 
     override fun carConnection(connected: Boolean) {
@@ -280,7 +283,7 @@ class AudiosiloPlayerModule : Module() {
         val clips = chapters.orEmpty().map { ClipSpec(it.fileIndex, it.startInFile, it.endInFile, it.title) }
         val ref = book?.takeIf { it.connectionId.isNotEmpty() && it.path.isNotEmpty() }
           ?.let { BookRef(it.connectionId, it.libraryId.toLong(), it.path) }
-        val queue = MediaItems.buildQueue(specs, clips, ref, startIndex, position)
+        val queue = MediaItems.buildQueue(specs, clips, ref, startIndex, position, load = book?.load)
         // The old queue goes before the new one prepares (fe#202): setting a new queue on a
         // prepared player keeps the old items' extractors (a long m4b's sample tables, two at
         // a chapter boundary) alive while the new ones load, a heap peak a small device can't
@@ -621,9 +624,13 @@ class AudiosiloPlayerModule : Module() {
     sendEvent("onRemoteMove", move.toEvent())
   }
 
-  /** The book a controller event's report is of: the controller's current item's
-   * ([reportedBook]). The service's reports (a remote move, a speed, a failure) name its own. */
-  private fun reported(): Map<String, Any> = reportedBook(MediaItems.bookOf(controller?.currentMediaItem))
+  /** The book a controller event's report is of, and the load tag: the controller's current
+   * item's ([reportedBook]). The service's reports (a remote move, a speed, a failure) name its
+   * own. */
+  private fun reported(): Map<String, Any> {
+    val item = controller?.currentMediaItem
+    return reportedBook(MediaItems.bookOf(item), MediaItems.loadOf(item))
+  }
 
   private fun emitState() {
     val c = controller ?: return

@@ -142,11 +142,14 @@ describe('the native engine, Phase 6 events', () => {
 });
 
 describe("the native engine's load", () => {
-  it('names the book to a Phase 6 binary', async () => {
+  it('names the book to a Phase 6 binary, tagged with the load', async () => {
     const svc = await setUp(true);
     await svc.load(tracks, 1, 10, [], book);
     expect((mockModule.load as jest.Mock).mock.calls[0]).toHaveLength(5);
-    expect((mockModule.load as jest.Mock).mock.calls[0][4]).toEqual(book);
+    expect((mockModule.load as jest.Mock).mock.calls[0][4]).toEqual({
+      ...book,
+      load: expect.any(Number),
+    });
   });
 
   it('keeps to four arguments on an older binary (more would throw there)', async () => {
@@ -274,6 +277,150 @@ describe('the book a report names', () => {
     await svc.load(tracks, 0, 0, [], other);
     send('onProgress', { position: 40, duration: 100, book: other });
     expect(svc.reportedBook!()).toEqual(other);
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
+  // FE-ANDROID-5: one slot of the book a load replaced. On A, then B, then A again, the last
+  // load of A ended the watch for A, and B's late reports (sent before it, heard after) passed
+  // as another book's, read by the store as the car's. Every load is tagged (`load`), and a
+  // report of a load a later one superseded is dropped.
+  it('drops a late report of a superseded load, by its load tag, on A then B then A', async () => {
+    const svc = await setUp();
+    const loads = () =>
+      (mockModule.load as jest.Mock).mock.calls.map((c) => (c[4] as { load: number }).load);
+    await svc.load(tracks, 0, 0, [], book);
+    await svc.load(tracks, 0, 0, [], other);
+    await svc.load(tracks, 0, 7, [], book);
+    const [a1, b, a2] = loads();
+    expect(a1).toBeLessThan(b);
+    expect(b).toBeLessThan(a2);
+    const heard: [string | undefined, string, number][] = [];
+    svc.subscribe((s) => heard.push([svc.reportedBook!()?.path, s.state, s.position]));
+    const moved = jest.fn();
+    svc.onRemoteMove!(moved);
+    send('onTrackChange', { index: 0, book: other, load: b });
+    send('onState', { state: 'playing', book: other, load: b });
+    send('onProgress', { position: 40, duration: 100, book: other, load: b });
+    send('onRemoteMove', { trackIndex: 0, position: 41, book: other, load: b });
+    // The first load of A is superseded too.
+    send('onProgress', { position: 90, duration: 100, book, load: a1 });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(moved).not.toHaveBeenCalled();
+    expect(heard).toEqual([]);
+    // The last load's own reports are taken.
+    send('onState', { state: 'playing', book, load: a2 });
+    send('onProgress', { position: 8, duration: 100, book, load: a2 });
+    expect(heard).toEqual([
+      ['A', 'playing', 7],
+      ['A', 'playing', 8],
+    ]);
+    // A report with no tag (a queue the car's service loaded itself) names its book as before.
+    send('onState', { state: 'playing', book: other });
+    expect(svc.reportedBook!()).toEqual(other);
+  });
+
+  it('takes an untagged report as before, and one with a tag past its own loads', async () => {
+    const svc = await setUp();
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    // An untagged report of the loaded book (an older binary) is taken.
+    send('onProgress', { position: 3, duration: 100, book });
+    expect(svc.getSnapshot().position).toBe(3);
+    // A tag past every load of this run (an earlier run's, the clock set back since) can't be
+    // told from this run's: taken as untagged.
+    send('onProgress', { position: 4, duration: 100, book, load: a + 1_000 });
+    expect(svc.getSnapshot().position).toBe(4);
+  });
+
+  // The queue an earlier run of the JS left in the engine (Android: the service played on, and
+  // this run adopted it) carries that run's tag, below every one of this run's. Its reports are
+  // the engine's until this run loads or resets; a late one heard after that named the same
+  // book the load did (an adopted book loaded again in another file order, or at a chapter),
+  // so nothing dropped it and its place was read as the new queue's.
+  it("takes an earlier run's queue until this run loads, and drops its late reports after", async () => {
+    const svc = await setUp();
+    send('onState', { state: 'playing', book, load: 1 });
+    send('onProgress', { position: 30, duration: 100, book, load: 1 });
+    expect(svc.reportedBook!()).toEqual(book);
+    expect(svc.getSnapshot()).toMatchObject({ state: 'playing', position: 30 });
+    // A load that fails leaves that queue in the engine: still taken.
+    (mockModule.load as jest.Mock).mockRejectedValueOnce(new Error('no'));
+    await expect(svc.load(tracks, 0, 0, [], book)).rejects.toThrow('no');
+    send('onProgress', { position: 31, duration: 100, book, load: 1 });
+    expect(svc.getSnapshot().position).toBe(31);
+    // The same book loaded again: the old queue's late tick is dropped.
+    await svc.load(tracks, 1, 5, [], book);
+    send('onProgress', { position: 32, duration: 100, trackIndex: 0, book, load: 1 });
+    expect(svc.getSnapshot()).toMatchObject({ trackIndex: 1, position: 5 });
+  });
+
+  it('takes a superseded load’s reports again once the load after it failed', async () => {
+    const svc = await setUp();
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    (mockModule.load as jest.Mock).mockRejectedValueOnce(new Error('no'));
+    await expect(svc.load(tracks, 0, 0, [], other)).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book, load: a });
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
+  // Two loads out at once that both fail, the first one first: the floor goes back past both,
+  // never to the first one's tag (every report of the load the engine still holds would be
+  // dropped as superseded).
+  it('takes the standing load’s reports again once two overlapping loads after it failed', async () => {
+    const svc = await setUp();
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    const rejects: ((err: Error) => void)[] = [];
+    const pending = () =>
+      new Promise<void>((_, reject) => {
+        rejects.push(reject);
+      });
+    (mockModule.load as jest.Mock).mockImplementationOnce(pending).mockImplementationOnce(pending);
+    const b = svc.load(tracks, 0, 0, [], other);
+    const c = svc.load(tracks, 0, 0, [], book);
+    rejects[0](new Error('no'));
+    await expect(b).rejects.toThrow('no');
+    rejects[1](new Error('no'));
+    await expect(c).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book, load: a });
+    expect(svc.getSnapshot().position).toBe(40);
+  });
+
+  // A reset supersedes the load before it as a later load does: a report of that queue sent
+  // before the reset and heard after it was taken as the place and state of an engine that
+  // holds nothing.
+  it('drops a late report of the load a reset unloaded', async () => {
+    const svc = await setUp();
+    mockModule.reset = jest.fn(async () => {});
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    await svc.reset();
+    send('onState', { state: 'playing', book, load: a });
+    send('onProgress', { position: 40, duration: 100, book, load: a });
+    expect(svc.reportedBook!()).toBeNull();
+    expect(svc.getSnapshot()).toMatchObject({ state: 'idle', position: 0 });
+    // The engine's own word after the reset names no book and carries no tag: taken.
+    send('onState', { state: 'idle' });
+    expect(svc.getSnapshot().state).toBe('idle');
+    // And the next load's reports are its own.
+    await svc.load(tracks, 0, 5, [], book);
+    const b = ((mockModule.load as jest.Mock).mock.calls[1][4] as { load: number }).load;
+    send('onProgress', { position: 90, duration: 100, book, load: a });
+    expect(svc.getSnapshot().position).toBe(5);
+    send('onProgress', { position: 6, duration: 100, book, load: b });
+    expect(svc.getSnapshot().position).toBe(6);
+  });
+
+  it('takes the loaded queue’s reports again once a reset failed', async () => {
+    const svc = await setUp();
+    mockModule.reset = jest.fn(async () => {
+      throw new Error('no');
+    });
+    await svc.load(tracks, 0, 0, [], book);
+    const a = ((mockModule.load as jest.Mock).mock.calls[0][4] as { load: number }).load;
+    await expect(svc.reset()).rejects.toThrow('no');
+    send('onProgress', { position: 40, duration: 100, book, load: a });
     expect(svc.getSnapshot().position).toBe(40);
   });
 
