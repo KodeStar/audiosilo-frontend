@@ -51,16 +51,7 @@ private func distinctFilesFromChapters(_ chapters: [Chapter]) -> [(path: String,
   return order.map { ($0, durations[$0] ?? 0) }
 }
 
-/// A chapter's whole-book start: the summed positive durations of the files before it plus its
-/// in-file start. Located by `file_path`, else a valid `file_index`, else 0 files before (never
-/// the server's `book_offset`, which some books send as 0 for every chapter).
-func chapterBookOffset(_ files: [FileSpec], _ ch: Chapter) -> Double {
-  let upto = max(0, fileIndexOf(files, ch))
-  var acc = 0.0
-  for i in 0..<min(upto, files.count) where files[i].duration > 0 { acc += files[i].duration }
-  return acc + ch.start
-}
-
+/// The index of a chapter's file in `files`: by `file_path`, else a valid `file_index`, else -1.
 private func fileIndexOf(_ files: [FileSpec], _ ch: Chapter) -> Int {
   files.firstIndex { $0.path == ch.filePath } ?? (files.indices.contains(ch.fileIndex) ? ch.fileIndex : -1)
 }

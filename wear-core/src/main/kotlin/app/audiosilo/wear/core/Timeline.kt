@@ -52,18 +52,7 @@ private fun distinctFilesFromChapters(chapters: List<Chapter>): List<Pair<String
   return durations.map { it.key to it.value }
 }
 
-/**
- * A chapter's whole-book start: the summed positive durations of the files before it plus its
- * in-file start. Located by `file_path`, else a valid `file_index`, else 0 files before (never the
- * server's `book_offset`, which some books send as 0 for every chapter).
- */
-fun chapterBookOffset(files: List<FileSpec>, ch: Chapter): Double {
-  val upto = fileIndexOf(files, ch)
-  var acc = 0.0
-  for (i in 0 until min(upto, files.size)) if (files[i].duration > 0) acc += files[i].duration
-  return acc + ch.start
-}
-
+/** The index of a chapter's file in `files`: by `file_path`, else a valid `file_index`, else -1. */
 private fun fileIndexOf(files: List<FileSpec>, ch: Chapter): Int {
   val byPath = files.indexOfFirst { it.path == ch.filePath }
   return if (byPath >= 0) byPath else if (ch.fileIndex in files.indices) ch.fileIndex else -1

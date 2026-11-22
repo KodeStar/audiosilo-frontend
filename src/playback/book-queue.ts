@@ -291,7 +291,7 @@ export function buildBookQueue(
   }
 
   // Recompute each chapter's whole-book offset from our own file durations +
-  // the in-file start (see chapterBookOffset). The server's book_offset is
+  // the in-file start (its file by `fileIndexOf`). The server's book_offset is
   // unreliable for some on-demand indexed books (comes back 0 for every
   // chapter), which otherwise makes chapter detection resolve to the last one.
   const chapters: Chapter[] = rawChapters.map((ch) => {
@@ -603,7 +603,7 @@ export function chapterCountdowns(
  *
  * "Nearest qualifying end", not "first qualifying array element": it must not assume the
  * chapters are in ascending order of position, because nothing guarantees they are.
- * `buildBookQueue` recomputes every `book_offset` through `chapterBookOffset`, whose
+ * `buildBookQueue` recomputes every `book_offset` from its file (`fileIndexOf`), whose
  * `file_index` fallback degrades to 0 preceding files for an out-of-range index - so
  * stale or duplicated chapter metadata yields ends that are not monotonic. Reading the
  * array order as position order there would let this disagree with `chapterCountdowns`
