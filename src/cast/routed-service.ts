@@ -196,6 +196,9 @@ export class RoutedPlaybackService implements PlaybackService {
     // place. It goes over from where its load put it, so the session waits for that.
     const asked = this.localLoad ? await this.localLoadLands(beginning) : null;
     if (this.beginning === beginning && this.cast) await this.endRoute(this.cast);
+    // An earlier end's hand-back still loading the phone: the book goes over from where it
+    // lands, never from the reset engine's start, and that load never lands after the reset.
+    if (this.beginning === beginning && this.ending) await this.ending;
     if (this.beginning !== beginning) return;
     this.beginning = null;
     // Asked while the phone is still the route: the store reads the phone's last report. A

@@ -923,13 +923,40 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     const waiting = t.router.beginCast(replaced as unknown as CastPlaybackService);
     await settle();
     const newest = fakeCast();
-    await t.router.beginCast(newest as unknown as CastPlaybackService);
-    expect(t.router.castRoute()).toBe(newest);
+    const taking = t.router.beginCast(newest as unknown as CastPlaybackService);
+    await settle();
+    expect(newest.load).not.toHaveBeenCalled(); // waits for the hand-back to land
     handBack.land();
     await waiting;
+    await taking;
     expect(t.router.castRoute()).toBe(newest);
     expect(replaced.detach).toHaveBeenCalledTimes(1);
     expect(replaced.load).not.toHaveBeenCalled();
+    expect(newest.calls).toContain('cast.load(1,120)');
+  });
+
+  // An ended session's hand-back still loading the phone when the next session begins: the
+  // book goes over from the place handed back, and the phone's engine is reset after that load.
+  it('hands a book over from where an earlier hand-back lands', async () => {
+    const t = setup();
+    await playingLocally(t);
+    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    const handBack = heldLocalLoad(t);
+    const ending = t.router.endCast();
+    await settle();
+    const next = fakeCast();
+    const taking = t.router.beginCast(next as unknown as CastPlaybackService);
+    await settle();
+    expect(next.load).not.toHaveBeenCalled();
+    handBack.land();
+    await ending;
+    await taking;
+    expect(t.router.castRoute()).toBe(next);
+    expect(next.calls).toContain('cast.load(1,120)');
+    const calls = t.local.calls;
+    expect(calls.lastIndexOf('local.reset')).toBeGreaterThan(
+      calls.lastIndexOf('local.load(1,120)'),
+    );
   });
 
   // The store's start plays its book once the load landed (after its speed), which is when a

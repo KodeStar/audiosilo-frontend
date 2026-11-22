@@ -4521,8 +4521,8 @@ on first need). NOT device-verified (no Cast device yet).
   place, named (`handingBack`) for its report and while the phone loads it: when that is not
   the store's book (an adoption landed mid-handover) the store holds it as another book's and
   is told of no load of its own. The final receiver read ends only the session it belongs
-  to. A session waiting for the previous receiver's hand-back checks it still owns the
-  route change before taking over.
+  to. A session that begins waits for the previous receiver's hand-back (one an earlier end
+  started included) and checks it still owns the route change before taking over.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes
