@@ -232,7 +232,7 @@ final class Outbox {
     guard kept.accountId == accountId else { return }
     kept.books.merge(cuts, uniquingKeysWith: SentPlace.newer)
     savePlaces(kept)
-    places.recover(kept.books.compactMapValues(\.place))
+    places.recoverCuts(kept.books.compactMapValues(\.place))
   }
 
   /// Record fresh cuts as they enter the queue. A retry or a late upload answer cannot reorder them.

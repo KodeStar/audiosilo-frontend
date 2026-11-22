@@ -3957,8 +3957,9 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   update time, corrected for server clock skew, is later than the local place; taken, it becomes
   the watch's place (`LocalPlace.fromRow`), so a play that saves none still leaves it. The outbox keeps
   each book's last heard cut in `sent-places.json`, written atomically as it queues spans, before
-  either uploader sends them. Removing a download or finishing a book drops its cut. While older
-  listening still waits, a marker keeps it from restoring that cut. Signing out removes the file.
+  either uploader sends them. Removing a download, finishing a book or taking a finished row drops
+  its cut. While older listening still waits, a marker keeps it from restoring that cut. Signing
+  out removes the file.
   On relaunch the outbox recovers the signed-in account's cuts and the last heard cut per book in
   queue order. A newer local place still wins. Another device's place is
   offered (Jump / Stay) under `offerOf` and the throttles, only from a live answer, also for a
@@ -4245,8 +4246,9 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
   its file when empty. Both watches use `Resume.plan`'s `clockSkewMs` for their own newer row
-  and recover the last heard cuts. Wear's `Outbox.recoverListening` uses `PlaceStore.recoverCuts`
-  and a separate fallback file (`sentPlacesFile`, `accountId`). Also Wear-only are `SpanRecorder.forgetAccount` and
+  and recover the last heard cuts with `PlaceStore.recoverCuts`: Wear's `Outbox.recoverListening`
+  from the queue and a separate fallback file (`sentPlacesFile`, `accountId`), the Apple Watch's
+  `Outbox.restorePlaces` from the queue and `sent-places.json`. Also Wear-only are `SpanRecorder.forgetAccount` and
   `AccountRules.awaitSignOut` in place of the Apple Watch's `signOut` gate. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json`, `places.json` and `sent-places.json`, whose loss

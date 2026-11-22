@@ -295,7 +295,8 @@ final class PlaceStore {
   func place(_ ref: BookRef) -> LocalPlace? { places[ref.key] }
 
   /// A cut can reach the outbox before its place lands. A later local move or speed change stands.
-  func recover(_ cuts: [String: LocalPlace]) {
+  /// Wear's `recoverCuts`, given each book's last heard cut already.
+  func recoverCuts(_ cuts: [String: LocalPlace]) {
     let restored = places.merging(cuts, uniquingKeysWith: LocalPlace.newer)
     guard restored != places else { return }
     places = restored
