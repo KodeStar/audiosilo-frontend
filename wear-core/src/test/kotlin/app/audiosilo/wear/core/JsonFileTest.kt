@@ -377,6 +377,29 @@ class DurableRateTest {
     assertEquals(keptAt, place.at)
   }
 
+  // A play after a pause opened after the pause's event was queued, so a wall clock set back
+  // between the two must not hide it either (its `from` is the loaded place, not a cut's).
+  @Test
+  fun aWallClockSetBackDoesNotHideAPlayAfterAPause() {
+    val first = Launch()
+    first.recover()
+    first.spans.open(book, at(0.0), 1.0)
+    clock.advance(12.0)
+    first.spans.close(at(12.0))
+    clock.advance(-3600.0)
+    first.spans.open(book, at(12.0), 1.0)
+    clock.advance(5.0)
+    first.tick(17.0, keepDue = true, cutDue = false)
+    val keptAt = clock.now
+    // A kill.
+    val next = Launch()
+    assertEquals(12.0, next.places.place(ref)!!.position, 0.0)
+    next.recover()
+    val place = next.places.place(ref)!!
+    assertEquals(17.0, place.position, 0.0)
+    assertEquals(keptAt, place.at)
+  }
+
   // fe#285: a kill between the cut's append and the next span's write leaves the closed span in
   // its file at its last keep; its own event, already in the outbox, says where it ended.
   @Test

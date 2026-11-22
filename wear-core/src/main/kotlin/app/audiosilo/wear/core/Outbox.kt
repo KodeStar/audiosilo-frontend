@@ -96,9 +96,10 @@ class Outbox(
         // The queue already accounts for this span before its finish, even if the clock went back.
         if (closed != null && cuts[key] is SentPlace.Finished) return@recover
         places.recover(left, closed) { place ->
-          // A cut's still-open successor is later in write order, even across a clock change.
-          // An independent sent cut may be newer if the old span's removal failed.
-          val followsQueue = closed == null && left.fromHeard && previous is SentPlace.Heard && previous == cuts[key]
+          // A span still open on disk was written after every cut the queue on disk holds (one
+          // writer, in order), even across a clock change: a cut's successor or a play after a
+          // pause. An independent sent cut may be newer if the old span's removal failed.
+          val followsQueue = closed == null && previous is SentPlace.Heard && previous == cuts[key]
           val heard = SentPlace.Heard(place)
           val accepted = followsQueue || previous == null || previous.newer(heard) == heard
           if (accepted) carried = key to heard

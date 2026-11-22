@@ -336,6 +336,8 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
    * heard.
    * Never by the clock: while a span is open its book's place is saved only as it opens (a cut, a
    * seek), so the span the kill left is the newer, and a wall clock set back since would hide it.
+   * `accepts` (the outbox's rule) can still refuse it: a removal or finish marker, or a sent cut
+   * kept apart from the queue and newer than the span.
    */
   @Synchronized
   fun recover(span: OpenSpan, closed: SpanEvent? = null, accepts: (LocalPlace) -> Boolean = { true }) {
