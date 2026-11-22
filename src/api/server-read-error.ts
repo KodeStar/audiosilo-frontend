@@ -11,13 +11,15 @@ export class ServerReadError extends Error {
 
 export type RefusedServer = { connectionId: string; proxy: boolean };
 
-/** Which sign-in needs attention when this connection's own /server query failed. */
+/** Which sign-in needs attention when this connection's own /server query failed. The
+ * server answers /server to anyone, so a 403 there is never its own: whatever its body,
+ * something in front turned the device away, and signing in to AudioSilo again can't help.
+ * A 401 read as the server's (`fromProxy` false) has already flagged the sign-in. */
 export function refusedServer(
   connectionId: string,
   serverError: unknown,
 ): RefusedServer | undefined {
-  return serverError instanceof ApiError &&
-    (serverError.status === 401 || serverError.status === 403)
-    ? { connectionId, proxy: serverError.fromProxy }
-    : undefined;
+  if (!(serverError instanceof ApiError)) return undefined;
+  if (serverError.status === 403) return { connectionId, proxy: true };
+  return serverError.status === 401 ? { connectionId, proxy: serverError.fromProxy } : undefined;
 }

@@ -5631,9 +5631,13 @@ under their empty state).
   first card). A capability-gated read whose flag is unknown because its `/server` read is
   held (or failed) with nothing kept takes that read's state (`useCapabilityQuery`:
   `isPaused`, or `ServerReadError`, whose cause belongs to the gate. A gated resource's own
-  404 therefore still means gone. An access refusal shows sign-in or the proxy's notice.
+  404 therefore still means gone. An access refusal shows sign-in or the proxy's notice
+  (`refusedServer`: a 403 on the public `/server` is always something in front of the
+  server; the proxy's notice gives way to sign-in once the connection needs it).
   Refetch asks `/server` again with the caller's options. Mounting a second gate after a
-  failure keeps the failure until an explicit retry or a refresh (fe#270). A section that keeps a list checks `isError` with
+  failure keeps the failure until an explicit retry or a refresh (fe#270); the foreground
+  refresh drops a failed `/server` nobody watches (`forgetUnobservedServerFailures`), so the
+  next screen asks. A section that keeps a list checks `isError` with
   `!data` too: a failed re-read keeps what it holds. Favourites (its page and the Folders
   row), Home's See all and Home's Recently added, with no row to show, ask
   `useUnreadAll({ rows, offline, error: unreadError })` of their fan-out (`offline`: a
