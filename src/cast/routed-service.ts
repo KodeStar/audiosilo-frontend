@@ -384,7 +384,7 @@ export class RoutedPlaybackService implements PlaybackService {
           cut,
         ]);
         // Stopped (`stopBeginning`), also once the load landed first.
-        if (outcome === 'stopped' || this.beginning !== beginning) return null;
+        if (this.beginning !== beginning) return null;
         // A load that replaced this one meanwhile is the one to wait for (a superseded load
         // can fail: the newer one took the engine).
         const next = this.localLoad === loading ? null : this.localLoad;

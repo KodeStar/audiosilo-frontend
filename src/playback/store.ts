@@ -212,8 +212,9 @@ type AskedMark = ListenerMark & { np: NowPlaying; snapshot: PlaybackSnapshot };
  * stood then. The engine may have started another book whose reports name none (an older
  * binary, a car play from an old snapshot), taken as the store's book's place until that
  * book's adoption begins, which stands the store's book here again (`standWhereAsked`), as
- * `outsidePlay` does for one in error. Over once the store's book plays, the store asks a play
- * of its own (`beginPlaybackAttempt`), or another start or adoption takes the engine.
+ * `outsidePlay` does for one in error. Over once a playing report names the store's book (an
+ * unnamed one may be the car's), the store asks a play of its own (`beginPlaybackAttempt`), or
+ * its own load or adoption takes the engine (`ownLoadTakesEngine`).
  */
 let pausedAsk: AskedMark | null = null;
 /**

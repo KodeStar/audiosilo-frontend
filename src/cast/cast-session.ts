@@ -84,7 +84,7 @@ export function startCastSync(
   let stopped = false;
   /** A connect still awaiting the stores gives way when a session replaces it or ends. */
   let generation = 0;
-  // The driver's session, including one still waiting to become the route.
+  // The driver's live session, including one still waiting to become the route.
   let session = currentRouter()?.castSession() ?? null;
   /** The receiver being read for hand-back, kept until the driver reports its end. */
   let ending: {
@@ -113,12 +113,7 @@ export function startCastSync(
         // The app back from the background (iOS suspends the sender there): the same
         // session, already the route. Read where the receiver got to.
         const existing = router.castRoute();
-        if (
-          existing &&
-          existing === session &&
-          existing !== ending?.session &&
-          type === 'resumed'
-        ) {
+        if (existing && existing === session && type === 'resumed') {
           void existing.refresh();
           return;
         }
@@ -159,12 +154,14 @@ export function startCastSync(
         currentRouter()?.checkpoint();
         break;
       case 'ending':
-        // A last read of the receiver's place while the session can still answer.
+        // A last read of the receiver's place while the session can still answer. The
+        // session is the driver's no longer: a resume after this is a new one.
         ending = {
           generation,
           session,
           read: currentRouter()?.castRoute()?.refresh() ?? Promise.resolve(),
         };
+        session = null;
         break;
       case 'ended': {
         const router = currentRouter();
