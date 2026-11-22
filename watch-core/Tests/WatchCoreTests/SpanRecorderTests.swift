@@ -277,6 +277,10 @@ final class SpanRecorderTests: XCTestCase {
     r.cut(book, at: at(24), playing: true, speed: 1)
     XCTAssertEqual(store.saves.map { $0?.start }, [.continue])
     store.saves.removeAll()
+    clock.advance(5)
+    r.move(book, to: at(40), from: at(29), playing: true, speed: 1)
+    XCTAssertEqual(store.saves.map { $0?.start }, [.jump])
+    store.saves.removeAll()
     r.cut(book, at: at(24), playing: false, speed: 1)
     XCTAssertEqual(store.saves.map { $0?.start }, [nil])
   }

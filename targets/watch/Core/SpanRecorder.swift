@@ -274,7 +274,7 @@ final class SpanRecorder {
   /// Close the open span at `at` (nil: where it was last seen) into the outbox. Returns it.
   /// `stoppedAt`: when the audio stopped, for a stop noticed late (the system paused the
   /// player while the app was suspended); never after now, never before the span's start.
-  /// A playing cut or Stay replaces the stored span as it opens its successor.
+  /// A playing cut, move or Stay replaces the stored span as it opens its successor.
   @discardableResult
   func close(at: SpanEnd?, stoppedAt: Date? = nil, clearStore: Bool = true) -> OpenSpan? {
     guard var closing = span else {
@@ -333,7 +333,7 @@ final class SpanRecorder {
             playing: Bool, speed: Double)
   {
     let before = from ?? span?.to
-    let closed = close(at: before)
+    let closed = close(at: before, clearStore: !playing || target == nil)
     guard let target else { return }
     let why = reason ?? (before.map { target.pos < $0.pos - 1 } == true ? .movedBack : .jump)
     if closed != nil && playing {
