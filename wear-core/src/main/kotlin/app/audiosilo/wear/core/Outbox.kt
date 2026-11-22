@@ -146,8 +146,12 @@ class Outbox(
   private fun recordPlacesLocked(add: List<ListeningEvent>) {
     val account = placeAccount ?: return
     val cuts = SentPlace.lastIn(add)
-    if (cuts.isEmpty()) return
     val kept = keptLocked(account)
+    if (cuts.isEmpty()) {
+      // The queue changed all the same, so a prune waiting on the old one gives up: ask again.
+      if (kept.books.values.any { it !is SentPlace.Heard }) savePlacesLocked(kept)
+      return
+    }
     savePlacesLocked(kept.copy(books = kept.books + cuts))
   }
 

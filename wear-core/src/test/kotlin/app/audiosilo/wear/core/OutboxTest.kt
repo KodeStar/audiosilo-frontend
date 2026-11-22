@@ -101,6 +101,28 @@ class OutboxTest {
     assertFalse(sentFile.exists())
   }
 
+  // A marker retires once the queue it was checked against lands. An append with no cut (an
+  // `unfinish`) changes that queue too, so it is checked again rather than left on disk.
+  @Test
+  fun anAppendWithoutACutStillRetiresAMarkerWaitingOnTheWriter() = runBlocking {
+    var release: Runnable? = null
+    val writer = DurableWriter(retryAfter = { _, retry -> release = retry })
+    var held = true
+    writer.submit { !held }
+    assertFalse(writer.drain())
+    val box = launch(writer)
+    restore(box)
+    box.forgetPlace(ref)
+    assertEquals(SentPlace.Removed, sentBooks()[ref.key])
+    box.append(listOf(FinishEvent("unfinish", "unfinish", ref.libraryId, "Another book", "2026-10-25T07:40:00Z")))
+    held = false
+    release!!.run()
+    assertTrue(writer.drain())
+    // A POST nobody answers waits for both writers and changes nothing else.
+    box.flush(FakeTransport { throw java.io.IOException("offline") })
+    assertEquals(emptySet<String>(), sentBooks().keys)
+  }
+
   @Test
   fun onlyFreshHearingReplacesARemovalEvenIfTheOldCutIsAnsweredLate() {
     val box = launch()
