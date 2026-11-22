@@ -214,9 +214,9 @@ type AskedMark = ListenerMark & { np: NowPlaying; snapshot: PlaybackSnapshot };
  * store takes the engine for its own play, load or adoption.
  */
 let pausedAsk: AskedMark | null = null;
-/** Android names each report from a named media item. Once the store has heard its own
- * queue by name, a report without it can be the first word of a car queue, even before
- * playWhenReady changes. An adoption can take over a queue whose items name no book. */
+/** The store's book's key once an Android report named it. A later report that names no
+ * book then comes from another queue (a car start), even before the engine plays it, and
+ * is held (`reportedOtherBook`). Null for a queue whose items never named a book. */
 let namedQueue: string | null = null;
 const unnamedQueue = Symbol('unnamed Android queue');
 type OtherQueue = string | typeof unnamedQueue;
@@ -292,6 +292,10 @@ const unnamedOtherHolds = (): boolean =>
  * way reads a book the engine no longer holds, and its reports are the store's book's. */
 function ownLoadTakesEngine() {
   for (const a of adopting) a.ownLoad = true;
+  forgetEngineHolds();
+}
+/** The engine holds the store's book from here: no hold of another book's reports stands. */
+function forgetEngineHolds() {
   unnamedOther = null;
   unnamedPlays = false;
   pausedAsk = null;
@@ -3576,11 +3580,7 @@ function switchBook(request: PlayRequest) {
   // a stop of this one, the same book started again included, saves its own place.
   pendingStopSave = null;
   // The engine holds this book from here (its load, or the adoption of it).
-  unnamedOther = null;
-  unnamedPlays = false;
-  pausedAsk = null;
-  namedQueue = null;
-  unnamedCheck = null;
+  forgetEngineHolds();
   playGeneration++;
   lastPlayRequest = request; // so retry() can re-run resume
   resumeLookupFailed = false;
@@ -4039,8 +4039,7 @@ async function createService(): Promise<PlaybackService> {
     // save, a place that book never had. So is one at the download's index while the
     // hot-swap moves the playing file (`swapHold`).
     // And so is a move of another book the engine holds (`heldForAnother`).
-    if (loadingBook || (np && heldBySwap(np, trackIndex))) return;
-    if (heldForAnother()) return;
+    if (loadingBook || heldForAnother() || (np && heldBySwap(np, trackIndex))) return;
     // A checkpoint is no move, only the engine's place (Cast, as iOS suspends the app): a
     // faulted engine's, or one in a later file held as a run off the asked one, is not the
     // book's place, and the fault stands.
