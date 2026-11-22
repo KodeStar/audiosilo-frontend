@@ -196,6 +196,8 @@ export function requestEpisodeFetch(
     const moved =
       pending.opts.position !== opts.position ||
       pending.opts.track !== opts.track ||
+      pending.opts.file?.path !== opts.file?.path ||
+      pending.opts.file?.pos !== opts.file?.pos ||
       pending.opts.speed !== opts.speed;
     // Not once it is starting: the start already took its place.
     if (moved && pending.phase !== 'starting') {

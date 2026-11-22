@@ -10,6 +10,7 @@ import {
   chapterEndPosition,
   endsShortOfBook,
   fileDurationOf,
+  filePlaceIn,
   type FileSpec,
   locate,
   nextChapterEnd,
@@ -18,6 +19,9 @@ import {
   synthesizeChapters,
   toBookPosition,
 } from '@/playback/book-queue';
+import { chapterList, rowAt } from '@/components/book/book-page-model';
+import { stepSegment } from '@/components/player/transport';
+import vectors from '../../watch-core/Tests/WatchCoreTests/Fixtures/timeline-ties.json';
 import { toNativeTrack } from '@/playback/types';
 
 // A fake client exposing only what the queue builder calls.
@@ -358,6 +362,20 @@ describe('buildChapterClips', () => {
     expect(buildChapterClips(specs, chapters).map((c) => c.fileIndex)).toEqual([0, 1]);
   });
 
+  it('plays native chapter clips in file order when tied markers arrive in reverse order', () => {
+    const specs = [spec('one.mp3', 0), spec('two.mp3', 80)];
+    const chapters = [
+      chapter({ file_path: 'two.mp3', title: 'Two' }),
+      chapter({ file_path: 'one.mp3', title: 'One', start: 0, end: 10 }),
+      chapter({ file_path: 'one.mp3', title: 'One continued', start: 10, end: 30 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([
+      { fileIndex: 0, startInFile: 0, endInFile: 10, title: 'One' },
+      { fileIndex: 0, startInFile: 10, endInFile: 0, title: 'One continued' },
+      { fileIndex: 1, startInFile: 0, endInFile: 0, title: 'Two' },
+    ]);
+  });
+
   it('falls back to [] if any chapter cannot be mapped to a file (avoids a broken queue)', () => {
     const specs = [spec('a.m4b', 100)];
     const chapters = [
@@ -450,6 +468,88 @@ describe('synthesizeChapters', () => {
 describe('timeline math', () => {
   const offsets = [0, 60, 160];
 
+  it.each(vectors)('$name (shared with watchOS and Wear OS)', (v) => {
+    const files = v.durations.map((duration, seq) => ({
+      rel_path: `p${seq}`,
+      seq,
+      duration,
+      size: 1,
+      format: 'mp3',
+    }));
+    // A marker is [file, start] or [file, start, end].
+    const chapters = v.markers.map(([f, start, end], index) =>
+      chapter({
+        index,
+        file_index: index === v.missingPathAt ? f : 0,
+        file_path: index === v.missingPathAt ? '' : `p${f}`,
+        start,
+        ...(end !== undefined ? { end } : {}),
+      }),
+    );
+    const q = buildBookQueue(fakeApi, 2, makeBook({ files: [...files].reverse(), chapters }));
+    expect(locate(q.offsets, v.position)).toEqual({ index: v.track, positionInTrack: v.seconds });
+    const path = `p${v.playingFile}`;
+    expect(chapterAt(q.chapters, v.position)?.index).toBe(v.chapter);
+    expect(chapterAt(q.chapters, v.position, (f) => f === path)?.index).toBe(v.playingChapter);
+    const { rows } = chapterList({
+      chapters,
+      files,
+      chapterStarts: q.chapters.map((c) => c.book_offset),
+      total: q.total,
+      interval: 1800,
+      bookPath: 'B',
+    });
+    expect(rowAt(rows, v.position)).toBe(v.chapter);
+    expect(rowAt(rows, v.position, { path, pos: v.position - q.offsets[v.playingFile] })).toBe(
+      v.playingChapter,
+    );
+    // Previous and next from a place in a file, as [file, seconds in it] where they land.
+    for (const { at, next, previous } of v.steps ?? []) {
+      for (const [dir, want] of [
+        [1, next],
+        [-1, previous],
+      ] as const) {
+        const [track, position] = at;
+        let landed: number[] | null = null;
+        stepSegment(
+          {
+            nowPlaying: { queue: q },
+            snapshot: { trackIndex: track, position },
+            seekBook: (bookPosition, file) => {
+              const to =
+                (file && filePlaceIn(q, 2, file.path, file.pos)) ??
+                locate(q.offsets, bookPosition, track);
+              landed = [to.index, to.positionInTrack];
+            },
+            seekInTrack: (pos) => {
+              landed = [track, pos];
+            },
+            goToTrack: (index) => {
+              landed = [index, 0];
+            },
+          },
+          dir,
+        );
+        expect([v.name, dir, at, landed]).toEqual([v.name, dir, at, want]);
+      }
+    }
+  });
+
+  it('filePlaceIn never puts a place before its file starts', () => {
+    // A chapter tap carries its raw in-file start, which bad metadata can put below 0.
+    const queue = {
+      tracks: [
+        { id: '2:a', duration: 60 },
+        { id: '2:b', duration: 40 },
+      ],
+      offsets: [0, 60],
+      total: 100,
+    } as Parameters<typeof filePlaceIn>[0];
+    expect(filePlaceIn(queue, 2, 'b', -2)).toEqual({ index: 1, positionInTrack: 0 });
+    expect(filePlaceIn(queue, 2, 'b', 90)).toEqual({ index: 1, positionInTrack: 40 });
+    expect(filePlaceIn(queue, 2, 'missing', 5)).toBeNull();
+  });
+
   it('locate / toBookPosition round-trips across tracks', () => {
     expect(locate(offsets, 0)).toEqual({ index: 0, positionInTrack: 0 });
     expect(locate(offsets, 70)).toEqual({ index: 1, positionInTrack: 10 });
@@ -486,8 +586,8 @@ describe('timeline math', () => {
     expect(chapterAt(tied, 0, (f) => f === 'B/04.mp3')?.index).toBe(0);
   });
 
-  it('chapterAt takes the later of two chapters starting together in one file', () => {
-    // A chapter of no length (a duplicated marker) before the real one: the real one plays.
+  it('chapterAt passes over a marker of no length for the chapter starting with it', () => {
+    // A duplicated marker before the real chapter is no tie: the real one plays.
     const chapters = [
       chapter({ index: 0, book_offset: 0, start: 0, end: 0, file_path: 'B/01.mp3' }),
       chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
@@ -495,6 +595,20 @@ describe('timeline math', () => {
     ];
     expect(chapterAt(chapters, 30)?.index).toBe(1);
     expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(1);
+    // Alone at its start, a marker of no length is still the chapter there.
+    const lone = [
+      chapters[1],
+      { ...chapters[0], index: 3, book_offset: 300, start: 300, end: 300 },
+    ];
+    expect(chapterAt(lone, 400)?.index).toBe(3);
+  });
+
+  it('chapterAt keeps the first of equal markers that both have a length', () => {
+    const chapters = [
+      chapter({ index: 0, book_offset: 0, start: 0, end: 300, file_path: 'B/01.mp3' }),
+      chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
+    ];
+    expect(chapterAt(chapters, 30)?.index).toBe(0);
   });
 
   it('chapterAt finds the active chapter and clamps below the first', () => {
@@ -548,6 +662,18 @@ describe('chapterCountdowns', () => {
 
   it('returns [] when there are no chapters', () => {
     expect(chapterCountdowns([], 10)).toEqual([]);
+  });
+
+  it('starts at the chapter in the playing file among chapters sharing a start', () => {
+    // Two files of unknown length: both chapters start at book second 0.
+    const tied = [
+      chapter({ index: 0, file_index: 0, file_path: 'a', end: 300 }),
+      chapter({ index: 1, file_index: 1, file_path: 'b', end: 200 }),
+    ];
+    expect(chapterCountdowns(tied, 50).map((c) => c.chapter.index)).toEqual([0, 1]);
+    const inB = chapterCountdowns(tied, 50, undefined, 1, (path) => path === 'b');
+    expect(inB.map((c) => c.chapter.index)).toEqual([1]);
+    expect(inB[0].untilEnd).toBe(150);
   });
 
   // Build N back-to-back chapters of `len` seconds each, from offset 0.

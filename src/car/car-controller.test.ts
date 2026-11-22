@@ -1178,7 +1178,7 @@ describe('the resumable snapshot (Android, fe#251)', () => {
       connectionId: 'c1',
       libraryId: 2,
       path: 'D',
-      queue: { offsets: [0, 100], total: 200 },
+      queue: { offsets: [0, 100], total: 200, tracks: [{ id: '2:D/1.mp3' }, { id: '2:D/2.mp3' }] },
     },
     snapshot: { state, trackIndex, position, duration: 100, rate: 1.5 },
     rate: 1.5,
@@ -1196,6 +1196,29 @@ describe('the resumable snapshot (Android, fe#251)', () => {
     mockClients.c1 = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });
     useDownloads.setState({
       entries: { 'c1:2:D': downloaded('c1', 'D'), 'c1:2:E': downloaded('c1', 'E') },
+    });
+  });
+
+  it('rewrites a paused spec when only the file at a tied offset changes', async () => {
+    const entry = downloaded('c1', 'D');
+    entry.manifest.chapters = {
+      ...twoFileChapters,
+      files: twoFileChapters.files.map((f) => ({ ...f, duration: 0 })),
+    };
+    useDownloads.setState({ entries: { 'c1:2:D': entry } });
+    const paused = (index: number) => {
+      const p = loaded('paused', index, 20);
+      p.nowPlaying.queue.offsets = [0, 0];
+      return p;
+    };
+    usePlayer.setState(paused(0));
+    stop = startCarSync();
+    await settle(SETTLE_MS + MIN_GAP_MS);
+    usePlayer.setState(paused(1));
+    await flushPromises();
+    expect(tab(lastSnapshot(), 'continue')!.items[0].play).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 20,
     });
   });
 

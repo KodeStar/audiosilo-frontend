@@ -51,16 +51,9 @@ private func distinctFilesFromChapters(_ chapters: [Chapter]) -> [(path: String,
   return order.map { ($0, durations[$0] ?? 0) }
 }
 
-/// A chapter's whole-book start: the summed positive durations of the files before it plus its
-/// in-file start. Located by `file_path`, else a valid `file_index`, else 0 files before (never
-/// the server's `book_offset`, which some books send as 0 for every chapter).
-func chapterBookOffset(_ files: [FileSpec], _ ch: Chapter) -> Double {
-  let byPath = files.firstIndex { $0.path == ch.filePath }
-  let inRange = ch.fileIndex >= 0 && ch.fileIndex < files.count
-  let upto = byPath ?? (inRange ? ch.fileIndex : 0)
-  var acc = 0.0
-  for i in 0..<min(upto, files.count) where files[i].duration > 0 { acc += files[i].duration }
-  return acc + ch.start
+/// The index of a chapter's file in `files`: by `file_path`, else a valid `file_index`, else -1.
+private func fileIndexOf(_ files: [FileSpec], _ ch: Chapter) -> Int {
+  files.firstIndex { $0.path == ch.filePath } ?? (files.indices.contains(ch.fileIndex) ? ch.fileIndex : -1)
 }
 
 /// Evenly spaced chapters for a long chapterless single file (`ceil(total / interval)` of them,
@@ -109,7 +102,8 @@ func wallClockSeconds(_ contentSeconds: Double, rate: Double) -> Double {
 func locateIn(_ offsets: [Double], _ position: Double) -> (index: Int, positionInTrack: Double) {
   var index = 0
   for (i, o) in offsets.enumerated() {
-    if position >= o { index = i } else { break }
+    guard position >= o else { break }
+    if o != offsets[index] { index = i }
   }
   let start = offsets.indices.contains(index) ? offsets[index] : 0
   return (index, max(0, position - start))
@@ -146,7 +140,9 @@ struct Timeline: Equatable, Sendable {
     }
     let chapters = raw.map { ch -> Chapter in
       var c = ch
-      c.bookOffset = chapterBookOffset(specs, ch)
+      c.fileIndex = fileIndexOf(specs, ch)
+      if specs.indices.contains(c.fileIndex) { c.filePath = specs[c.fileIndex].path }
+      c.bookOffset = toBookPosition(offsets, c.fileIndex, ch.start)
       return c
     }
     let furthest = chapters.reduce(0.0) { max($0, chapterEndPosition($1)) }
@@ -164,9 +160,14 @@ struct Timeline: Equatable, Sendable {
     self.syntheticChapters = !synthetic.isEmpty
   }
 
-  /// A whole-book position as (file index, seconds into it).
-  func locate(_ position: Double) -> (index: Int, positionInTrack: Double) {
-    locateIn(offsets, position)
+  /// A whole-book position as (file index, seconds into it): the first of files sharing its
+  /// start, or `prefer` (the playing file) when it is one of them (the phone's `locate`).
+  func locate(_ position: Double, prefer: Int? = nil) -> (index: Int, positionInTrack: Double) {
+    let at = locateIn(offsets, position)
+    guard let p = prefer, p > at.index, offsets.indices.contains(p), offsets[p] == offsets[at.index] else {
+      return at
+    }
+    return (p, max(0, position - offsets[p]))
   }
 
   /// (file index, seconds into it) as a whole-book position.
@@ -184,12 +185,14 @@ struct Timeline: Equatable, Sendable {
   }
 
   /// Where a saved place resumes: in its file at its own seconds when the book still has the
-  /// file (clamped to the file's length), else by the whole-book position (fe#188).
-  func resumePlace(position: Double, file: String?, filePos: Double?) -> (index: Int, positionInTrack: Double) {
+  /// file (clamped to the file's length), else by the whole-book position (fe#188), in
+  /// `prefer` when files share its start (`locate`).
+  func resumePlace(position: Double, file: String?, filePos: Double?,
+                   prefer: Int? = nil) -> (index: Int, positionInTrack: Double) {
     if let file, let filePos, filePos.isFinite, let i = files.firstIndex(where: { $0.path == file }) {
       let d = files[i].duration
       return (i, max(0, d > 0 ? min(filePos, d) : filePos))
     }
-    return locate(position)
+    return locate(position, prefer: prefer)
   }
 }

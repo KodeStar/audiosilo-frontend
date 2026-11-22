@@ -127,6 +127,8 @@ export function BookChaptersTab({
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
     [list.rows, list.kind, t],
   );
+  // The timeline's hover names the row a place is in, as the rows mark it.
+  const rowAtSecond = (seconds: number) => rowAt(list.rows, seconds);
   // Every row is behind a finished listener.
   const current = finished ? list.rows.length : currentRow;
   // The rows holding a bookmark (one in the book: never past its end).
@@ -144,6 +146,9 @@ export function BookChaptersTab({
     <View className="gap-4">
       {total > 0 ? (
         <WholeBook
+          // A row index is a timeline run only while every row has a start on it.
+          current={currentRow >= 0 && starts.length > 0 ? currentRow : undefined}
+          chapterAtSecond={rowAtSecond}
           starts={starts}
           titles={labels}
           total={total}
@@ -204,6 +209,8 @@ function rowLabel(row: ListRow, kind: ChapterList['kind'], t: TFunction): string
  * drag seeks it; any other book draws its saved place, and a tap starts it there.
  */
 function WholeBook({
+  current,
+  chapterAtSecond,
   starts,
   titles,
   total,
@@ -214,6 +221,8 @@ function WholeBook({
   episode,
   onJump,
 }: {
+  current?: number;
+  chapterAtSecond: (seconds: number) => number;
   starts: number[];
   titles: string[];
   total: number;
@@ -269,6 +278,8 @@ function WholeBook({
       </View>
       <View>
         <BookTimeline
+          current={current}
+          chapterAtSecond={chapterAtSecond}
           starts={starts}
           total={total}
           position={position}

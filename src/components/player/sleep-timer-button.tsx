@@ -14,6 +14,7 @@ import { formatClock, formatDuration, formatTimeOfDay, formatWallClock } from '@
 import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
+import { fileOf } from '@/playback/book-queue';
 import { noteInteraction } from '@/playback/last-interaction';
 import {
   chapterTimerTarget,
@@ -115,6 +116,9 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   const queue = usePlayer((s) => s.nowPlaying?.queue ?? null);
   const position = usePlayer(selectSheetPosition);
   const rate = usePlayer((s) => s.rate);
+  const playingFile = usePlayer((s) =>
+    s.nowPlaying ? fileOf(s.nowPlaying, s.snapshot.trackIndex) : undefined,
+  );
 
   /** Arm (a deliberate touch, for the drift-off prompt) and close. */
   const pick = (arm: () => void) => {
@@ -128,7 +132,7 @@ function SleepSheetBody({ onClose }: { onClose: () => void }) {
   // place, and the tile arms exactly that target: re-picking from the live place on the
   // press could cross the 30 s rule and stop a chapter later than the caption said.
   const chapterTarget = queue ? chapterTimerTarget(queue, position, rate, true) : null;
-  const rows = queue ? stopAfterRows(queue, position, rate) : [];
+  const rows = queue ? stopAfterRows(queue, position, rate, playingFile) : [];
   // The wall clock, every 15 s: enough for the rows' "ends 22:49".
   const now = useNow(15_000);
 

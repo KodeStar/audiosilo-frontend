@@ -61,7 +61,7 @@ jest.mock('@/playback/store', () => {
       live: false,
       playBook: (...a: unknown[]) => mockPlayBook(...a),
       toggle: () => mockToggle(),
-      seekBook: (p: number) => mockSeekBook(p),
+      seekBook: (...args: unknown[]) => mockSeekBook(...args),
       goToTrack: (i: number) => mockGoToTrack(i),
     })),
   };
@@ -230,10 +230,23 @@ describe('usePlayBook', () => {
     ]);
   });
 
+  it('keeps a chapter in its named file on a loaded book and in the phone link', async () => {
+    const at = { position: 120, file: { path: 'B/02.mp3', pos: 20.5 } };
+    setPlayer({ key: 'c:1:Book', live: true });
+    await play({ at });
+    expect(mockSeekBook).toHaveBeenCalledWith(120, at.file);
+    setPlayer({ key: null, live: false });
+    mockLayout = 'phone';
+    await play({ at });
+    expect(mockPush.mock.lastCall?.[0]).toMatchObject({
+      params: { position: '120', file: at.file.path, filePos: '20.5' },
+    });
+  });
+
   it('jumps the loaded book there and plays it on, also when it was paused', async () => {
     setPlayer({ key: 'c:1:Book', live: false });
     await play({ at: { position: 1000 } });
-    expect(mockSeekBook).toHaveBeenCalledWith(1000);
+    expect(mockSeekBook).toHaveBeenCalledWith(1000, undefined);
     expect(mockToggle).toHaveBeenCalledTimes(1);
     setPlayer({ key: 'c:1:Book', live: true });
     await play({ at: { track: 3 } });

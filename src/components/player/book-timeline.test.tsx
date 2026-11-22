@@ -21,15 +21,22 @@ jest.mock('react-native-gesture-handler', () => ({
   },
 }));
 
+type MockChapter = {
+  index: number;
+  title: string;
+  book_offset: number;
+  file_index?: number;
+  file_path?: string;
+  start?: number;
+  end?: number;
+};
 type MockPlayer = {
   nowPlaying: {
-    queue: {
-      total: number;
-      offsets: number[];
-      chapters: { index: number; title: string; book_offset: number }[];
-    };
+    queue: { total: number; offsets: number[]; chapters: MockChapter[] };
   } | null;
   bookPosition: number;
+  /** The chapter the heading names (the real selector reads the playing file). */
+  currentChapter?: MockChapter;
   snapshot: { trackIndex: number; position: number };
   seekBook: jest.Mock;
   seekInTrack: jest.Mock;
@@ -40,6 +47,7 @@ jest.mock('@/playback/store', () => {
   return {
     usePlayer: create(() => ({})),
     selectBookPosition: (s: MockPlayer) => s.bookPosition,
+    selectCurrentChapter: (s: MockPlayer) => s.currentChapter ?? null,
   };
 });
 
@@ -87,6 +95,14 @@ describe('BookTimeline', () => {
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
     expect(screen.getAllByTestId('timeline-segment-ahead')).toHaveLength(1);
+  });
+
+  it('names the first tied marker, or the row of the known playing file', async () => {
+    const props = { starts: [0, 60, 60, 180], total: 300, position: 70, titles: TITLES, ...H };
+    await render(<BookTimeline {...props} />);
+    expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Stormblessed, /);
+    await screen.rerender(<BookTimeline {...props} current={2} />);
+    expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Bridge Four, /);
   });
 
   it('places each segment by its time, where the playhead, taps and pins map it', async () => {
@@ -235,6 +251,7 @@ describe('PlayerBookTimeline', () => {
           chapters: STARTS.map((s, i) => ({ index: i, title: TITLES[i], book_offset: s })),
         },
       },
+      currentChapter: undefined,
       bookPosition: 2000,
       snapshot: { trackIndex: 0, position: 2000 },
       seekBook: jest.fn(),
@@ -287,6 +304,100 @@ describe('PlayerBookTimeline', () => {
     expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Bridge Four, /);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
+  });
+
+  it('names the chapter a zero-length marker tied at its start yields to, on hover', async () => {
+    Platform.OS = 'web';
+    // Intro, then two markers of no length at 30 s and the chapter starting with them.
+    const marks: [string, number, number][] = [
+      ['Intro', 0, 30],
+      ['Marker', 30, 30],
+      ['Marker', 30, 30],
+      ['Chapter One', 30, 120],
+      ['Chapter Two', 120, 180],
+    ];
+    player.setState({
+      nowPlaying: {
+        queue: {
+          total: 180,
+          offsets: [0],
+          chapters: marks.map(([title, start, end], i) => ({
+            index: i,
+            title,
+            book_offset: start,
+            file_index: 0,
+            file_path: 'zero.mp3',
+            start,
+            end,
+          })),
+        },
+      },
+      bookPosition: 10,
+    });
+    await render(<PlayerBookTimeline />);
+    await layout(400);
+    const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+    await fireEvent(screen.getByRole('adjustable'), 'pointerMove', {
+      nativeEvent: { clientX: 100 },
+      currentTarget: rect,
+    });
+    expect(screen.getByText('Chapter One · 0:45')).toBeTruthy();
+  });
+
+  it('names the playing chapter on hover among chapters tied by files of unknown length', async () => {
+    Platform.OS = 'web';
+    // Two (unknown length) and Three share 60 s with Three's first chapter; Three plays.
+    const chapters = [
+      {
+        index: 0,
+        title: 'One',
+        book_offset: 0,
+        file_index: 0,
+        file_path: '1.mp3',
+        start: 0,
+        end: 60,
+      },
+      {
+        index: 1,
+        title: 'Two',
+        book_offset: 60,
+        file_index: 1,
+        file_path: '2.m4a',
+        start: 0,
+        end: 0,
+      },
+      {
+        index: 2,
+        title: 'Three A',
+        book_offset: 60,
+        file_index: 2,
+        file_path: '3.mp3',
+        start: 0,
+        end: 60,
+      },
+      {
+        index: 3,
+        title: 'Three B',
+        book_offset: 120,
+        file_index: 2,
+        file_path: '3.mp3',
+        start: 60,
+        end: 120,
+      },
+    ];
+    player.setState({
+      nowPlaying: { queue: { total: 240, offsets: [0, 60, 60], chapters } },
+      currentChapter: chapters[2],
+      bookPosition: 70,
+    });
+    await render(<PlayerBookTimeline />);
+    await layout(400);
+    const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+    await fireEvent(screen.getByRole('adjustable'), 'pointerMove', {
+      nativeEvent: { clientX: 150 },
+      currentTarget: rect,
+    });
+    expect(screen.getByText('Three A · 1:30')).toBeTruthy();
   });
 
   it('steps to the next chapter like the transport', async () => {

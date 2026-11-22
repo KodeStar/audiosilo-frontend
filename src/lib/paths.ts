@@ -111,10 +111,11 @@ export function downloadsHref(watchConnection: string, at: number): Href {
   return { pathname: '/downloads', params: { watch: watchConnection, at: String(at) } };
 }
 
-/** A place in a book to start or jump to: a whole-book position (seconds), or a file by
- * index (its durations may be unknown, so a position can't address it). Neither: the
- * saved place. */
-export type BookPlace = { position?: number; track?: number };
+/** A file's library-relative path and the seconds into its audio. */
+export type FilePlace = { path: string; pos: number };
+/** A chapter names its file and keeps whole-book seconds as a fallback. A file row can
+ * name a track by index. With no place, the book resumes. */
+export type BookPlace = { position?: number; track?: number; file?: FilePlace };
 
 /** The full-screen player modal for a book, at `place` when given (the route applies it
  * once: a chapter, a pin, a bookmark). The player is a root modal (outside any
@@ -147,6 +148,7 @@ export function playerParams(
     ...(place.position !== undefined
       ? { position: String(Math.max(0, Math.round(place.position))) }
       : {}),
+    ...(place.file ? { file: place.file.path, filePos: String(place.file.pos) } : {}),
     ...(place.track !== undefined ? { track: String(place.track) } : {}),
   };
 }

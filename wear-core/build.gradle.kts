@@ -23,6 +23,8 @@ dependencies {
   testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.10.2")
 }
 
+sourceSets.test { resources.srcDir("../watch-core/Tests/WatchCoreTests/Fixtures") }
+
 tasks.test {
   testLogging {
     events("failed")
