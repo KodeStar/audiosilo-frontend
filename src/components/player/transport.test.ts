@@ -164,6 +164,48 @@ describe('stepSegment', () => {
     expect(s.seekBook).not.toHaveBeenCalled();
   });
 
+  // Files a and b of unknown length share book second 0; c starts at 60. Each chapter's
+  // book_offset is its file's offset plus its in-file start (`buildBookQueue`).
+  const tied = {
+    total: 400,
+    offsets: [0, 0, 60],
+    chapters: [
+      { book_offset: 0, file_index: 0, file_path: 'a', start: 0 },
+      { book_offset: 100, file_index: 0, file_path: 'a', start: 100 },
+      { book_offset: 0, file_index: 1, file_path: 'b', start: 0 },
+      { book_offset: 120, file_index: 1, file_path: 'b', start: 120 },
+      { book_offset: 60, file_index: 2, file_path: 'c', start: 0 },
+    ],
+  };
+
+  it('steps to the next chapter in file order among files sharing a start', () => {
+    const inA = make(tied, 0, 110); // a's last chapter: next is b's first, not b@120's seconds
+    stepSegment(inA, 1);
+    expect(inA.seekBook).toHaveBeenCalledWith(0, { path: 'b', pos: 0 });
+    const inB = make(tied, 1, 50); // not a@100's seconds within b
+    stepSegment(inB, 1);
+    expect(inB.seekBook).toHaveBeenCalledWith(120, { path: 'b', pos: 120 });
+    const lastOfB = make(tied, 1, 130); // past c's start in seconds, yet c plays next
+    stepSegment(lastOfB, 1);
+    expect(lastOfB.seekBook).toHaveBeenCalledWith(60, { path: 'c', pos: 0 });
+    const justIn = make(tied, 1, 1); // a press right after landing on b's first chapter
+    stepSegment(justIn, 1);
+    expect(justIn.seekBook).toHaveBeenCalledWith(120, { path: 'b', pos: 120 });
+  });
+
+  it("stays at the last chapter after files sharing a start (their seconds aren't c's)", () => {
+    const inC = make(tied, 2, 10); // book 70: a@100 lies before c, not 30 s into it
+    stepSegment(inC, 1);
+    expect(inC.seekBook).not.toHaveBeenCalled();
+  });
+
+  it('steps to the next file among files sharing a start when the book has no chapters', () => {
+    const s = make({ total: 400, offsets: [0, 0, 60], chapters: [] }, 0, 90);
+    stepSegment(s, 1);
+    expect(s.goToTrack).toHaveBeenCalledWith(1);
+    expect(s.seekBook).not.toHaveBeenCalled();
+  });
+
   it('steps per file without a timeline; previous restarts the file after 3 s', () => {
     const perFile = { total: 0, chapters: [], offsets: [] };
     const next = make(perFile, 2, 1);

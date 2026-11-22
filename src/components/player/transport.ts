@@ -4,7 +4,7 @@
  * Framework-free so it is unit-tested; the components feed it from the player store.
  */
 
-import { pathLeaf } from '@/lib/paths';
+import { type FilePlace, pathLeaf } from '@/lib/paths';
 import { quietly } from '@/lib/quietly';
 import { FINISHED_TOLERANCE, toBookPosition } from '@/playback/book-queue';
 
@@ -92,10 +92,14 @@ export function segmentStarts(queue: {
   return queue.chapters.length > 0 ? queue.chapters.map((c) => c.book_offset) : [...queue.offsets];
 }
 
+/** How far ahead "next chapter" looks, so a press right after a jump doesn't land on the
+ * same boundary. */
+const NEXT_SLACK = 1.5;
+
 /** Where "next chapter" goes: the first boundary clearly after the position (1.5 s of
  * slack, so a press right after a jump doesn't land on the same boundary), if any. */
 export function nextSegmentStart(starts: readonly number[], position: number): number | undefined {
-  return starts.find((s) => s > position + 1.5);
+  return starts.find((s) => s > position + NEXT_SLACK);
 }
 
 /** Where "previous chapter" goes: the start of the current chapter, or - within its
@@ -107,14 +111,49 @@ export function previousSegmentStart(starts: readonly number[], position: number
   return prior.length ? prior[prior.length - 1] : 0;
 }
 
+/** A queue chapter as previous/next reads it: its whole-book start and, for files that
+ * share a start, its file (`file_index` in the queue, -1 when unknown) and in-file start. */
+type StepChapter = { book_offset: number; file_index?: number; file_path?: string; start?: number };
+
+/**
+ * Where "next chapter" goes in a book with files sharing a whole-book start (a file of
+ * unknown length: its seconds run past the next file's start, so whole-book seconds do not
+ * order the chapters, even in a later file). In file order instead: the first chapter after
+ * the place in the playing file (`NEXT_SLACK` ahead), else the first chapter of a later
+ * file; with no chapters, the next file. `undefined` at the last one; `null` when no files
+ * share a start (whole-book seconds order them).
+ */
+function nextInFileOrder(
+  queue: { chapters: readonly StepChapter[]; offsets: readonly number[] },
+  trackIndex: number,
+  position: number,
+): { bookPosition: number; file?: FilePlace; track?: number } | undefined | null {
+  const { offsets } = queue;
+  if (trackIndex >= offsets.length || !offsets.some((o, i) => o === offsets[i - 1])) return null;
+  if (queue.chapters.length === 0) {
+    const track = trackIndex + 1;
+    return track < offsets.length ? { bookPosition: offsets[track], track } : undefined;
+  }
+  let best: { bookPosition: number; file: FilePlace; index: number } | undefined;
+  for (const ch of queue.chapters) {
+    const index = ch.file_index ?? -1;
+    if (index < trackIndex || index >= offsets.length || ch.file_path === undefined) continue;
+    const pos = ch.start ?? ch.book_offset - offsets[index];
+    if (index === trackIndex && !(pos > position + NEXT_SLACK)) continue;
+    if (!best || index < best.index || (index === best.index && pos < best.file.pos))
+      best = { bookPosition: ch.book_offset, file: { path: ch.file_path, pos }, index };
+  }
+  return best && { bookPosition: best.bookPosition, file: best.file };
+}
+
 /** The slice of the player store previous/next reads and drives (structural, so this
  * module stays framework-free and the tests pass a plain object). */
 export type StepState = {
   nowPlaying: {
-    queue: { total: number; chapters: readonly { book_offset: number }[]; offsets: number[] };
+    queue: { total: number; chapters: readonly StepChapter[]; offsets: number[] };
   } | null;
   snapshot: { trackIndex: number; position: number };
-  seekBook: (bookPosition: number) => unknown;
+  seekBook: (bookPosition: number, file?: FilePlace) => unknown;
   seekInTrack: (positionInTrack: number) => unknown;
   goToTrack: (index: number) => unknown;
 };
@@ -132,6 +171,14 @@ export function stepSegment(state: StepState, dir: 1 | -1): void {
   if (queue.total <= 0) {
     if (dir === -1 && position > 3) return quietly(state.seekInTrack(0));
     return quietly(state.goToTrack(trackIndex + dir));
+  }
+  if (dir === 1) {
+    const inFiles = nextInFileOrder(queue, trackIndex, position);
+    if (inFiles !== null) {
+      if (inFiles?.track !== undefined) return quietly(state.goToTrack(inFiles.track));
+      if (inFiles) quietly(state.seekBook(inFiles.bookPosition, inFiles.file));
+      return;
+    }
   }
   const bookPosition = toBookPosition(queue.offsets, trackIndex, position);
   const starts = segmentStarts(queue);
