@@ -399,7 +399,15 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   ) {
     val b = book ?: return acknowledge()
     val to = Skips.target(target, 0.0, b.timeline.total)
-    val place = b.timeline.resumePlace(to, chapter?.filePath, chapter?.start, track ?: where()?.index)
+    // A named file holds the place even past the next file's start (its length unknown).
+    val named = track?.let { t -> b.timeline.files.getOrNull(t)?.path?.let { Pair(it, to - b.timeline.offsets[t]) } }
+    val place =
+      b.timeline.resumePlace(
+        to,
+        chapter?.filePath ?: named?.first,
+        chapter?.start ?: named?.second,
+        track ?: where()?.index,
+      )
     val end = b.timeline.spanEnd(place.index, place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     val from = spanEnd()
