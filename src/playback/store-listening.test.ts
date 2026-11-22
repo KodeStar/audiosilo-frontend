@@ -10,7 +10,7 @@ import type { BookRef, PlaybackService, PlaybackSnapshot, PlaybackState } from '
 // captured, its pure event builders are the real ones.
 
 let pushSnapshot: (s: PlaybackSnapshot) => void = () => {};
-let remoteMove: (trackIndex: number, position: number) => void = () => {};
+let remoteMove: (trackIndex: number, position: number, checkpoint?: boolean) => void = () => {};
 let playAsked: () => void = () => {};
 let landed: () => void = () => {};
 /** The book the engine's last report named (`reportedBook`); null: it named none. */
@@ -1066,7 +1066,159 @@ describe('with listening_sync', () => {
     await settle();
     expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_pos])).toEqual([
       ['jump', 30],
-      ['jump', 0],
+      ['moved_back', 0],
+    ]);
+  });
+
+  it('two seeks before the first landing close each playing span at its own target', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 0));
+    let land = () => {};
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const first = usePlayer.getState().seekBook(30);
+    await settle();
+    await usePlayer.getState().seekBook(0);
+    pushSnapshot(snap('playing', 0, 0)); // stationary before either landing
+    pushSnapshot(snap('playing', 0, 30)); // the first seek reports late
+    land();
+    await first;
+    usePlayer.getState().finishBook();
+    await settle();
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['resume', 0, 0],
+      ['jump', 30, 30],
+      ['moved_back', 0, 0],
+    ]);
+  });
+
+  it('two skip presses while the first seek is out add up across files', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 0));
+    await Promise.all([usePlayer.getState().skipSeconds(30), usePlayer.getState().skipSeconds(30)]);
+    expect(mockSvc.seekTo).toHaveBeenCalledWith(30);
+    expect(mockSvc.skipToTrack).toHaveBeenCalledWith(1, 10);
+  });
+
+  it('a seek refused after a save tick leaves Retry at the heard place', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    let refuse = () => {};
+    (mockSvc.skipToTrack as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((_, reject) => (refuse = () => reject(new Error('refused')))),
+    );
+    const seeking = usePlayer.getState().seekBook(90);
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    expect(mockWriteMirror).not.toHaveBeenCalledWith(expect.objectContaining({ position: 90 }));
+    refuse();
+    await expect(seeking).rejects.toThrow('refused');
+    pushSnapshot(snap('error', 0, 6));
+    await settle();
+    expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 6 });
+    await usePlayer.getState().retry();
+    expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([0, 6]);
+  });
+
+  it('a Cast checkpoint saves the receiver without choosing a place or interrupting a seek', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 10));
+    const moves = localMoveCount();
+    remoteMove(0, 10, true);
+    await settle();
+    expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 10 });
+    expect(localMoveCount()).toBe(moves);
+    await usePlayer.getState().seekBook(30);
+    remoteMove(0, 10, true);
+    await usePlayer.getState().seekBook(0);
+    pushSnapshot(snap('paused', 0, 0));
+    expect(localMoveCount()).toBe(moves + 2);
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['resume', 10, 10],
+      ['jump', 30, 30],
+      ['moved_back', 0, 0],
+    ]);
+  });
+
+  it('a move to zero during Retry is measured from the reload target', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    pushSnapshot(snap('error', 0, 30));
+    let loaded = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(() => {
+      pushSnapshot(snap('loading', 0, 0));
+      return new Promise<void>((resolve) => (loaded = resolve));
+    });
+    const retry = usePlayer.getState().retry();
+    await settle();
+    expect(usePlayer.getState().snapshot.position).toBe(0);
+    await usePlayer.getState().seekBook(0);
+    loaded();
+    await retry;
+    expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_pos])).toEqual([
+      ['moved_back', 0],
+    ]);
+  });
+
+  it('a refused second seek leaves the first outstanding move as the place', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 0));
+    let land = () => {};
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const first = usePlayer.getState().seekBook(30);
+    (mockSvc.skipToTrack as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+    await expect(usePlayer.getState().seekBook(60)).rejects.toThrow('refused');
+    await usePlayer.getState().seekBook(0);
+    land();
+    await first;
+    expect(mockAppended.at(-1)).toMatchObject({ start: 'moved_back', to_pos: 0 });
+  });
+
+  it.each([false, true])(
+    'normal saves and span cuts resume when playback passes a hung seek (overlap %s)',
+    async (overlap) => {
+      await start();
+      pushSnapshot(snap('playing', 0, 10));
+      if (overlap) {
+        (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+        void usePlayer.getState().seekBook(18);
+      }
+      (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+      void usePlayer.getState().seekBook(20);
+      await settle();
+      if (overlap) pushSnapshot(snap('playing', 0, 20));
+      jest.setSystemTime(Date.now() + 15_000);
+      pushSnapshot(snap('playing', 0, 34));
+      await settle();
+      expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 34 });
+      expect(mockClosed.at(-1)).toMatchObject({
+        start: 'jump',
+        from: { pos: 20 },
+        to: { pos: 34 },
+      });
+    },
+  );
+
+  it('a paused seek still waiting after ten seconds keeps its target across stale reports', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 30));
+    let land = () => {};
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    const first = usePlayer.getState().seekBook(15);
+    await settle();
+    jest.advanceTimersByTime(20_000);
+    pushSnapshot(snap('paused', 0, 30));
+    await usePlayer.getState().seekBook(20);
+    land();
+    await first;
+    expect(mockAppended.map((e) => e.kind === 'listen' && [e.start, e.to_pos])).toEqual([
+      ['moved_back', 15],
+      ['jump', 20],
     ]);
   });
 
@@ -1081,6 +1233,16 @@ describe('with listening_sync', () => {
       await usePlayer.getState().playBook('c1', 2, { ...book, duration: 0 }, unknown);
       await settle();
     };
+
+    it('two skips use the pending file position on a book without lengths', async () => {
+      await startUnknown();
+      pushSnapshot({ ...snap('paused', 0, 0), duration: 0 });
+      await Promise.all([
+        usePlayer.getState().skipSeconds(30),
+        usePlayer.getState().skipSeconds(30),
+      ]);
+      expect((mockSvc.seekTo as jest.Mock).mock.calls).toEqual([[30], [60]]);
+    });
 
     it('paused, a move to the next file is a move', async () => {
       await startUnknown();
@@ -1508,6 +1670,29 @@ describe('Mark as finished outside the player (finish-route)', () => {
   const ref = { connectionId: 'c1', libraryId: 2, path: folder, position: 100, duration: 100 };
   const undoRef = { connectionId: 'c1', libraryId: 2, path: 'Other/Book', position: 48 };
 
+  it('finishing a still-playing book immediately after a seek ends the move at its target', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await usePlayer.getState().seekBook(10);
+    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    expect(mockClosed.at(-1)).toMatchObject({
+      start: 'moved_back',
+      from: { pos: 10 },
+      to: { pos: 10 },
+    });
+    expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
+    // A play that remained loaded past the finish resumes. The seek was already heard.
+    pushSnapshot(snap('playing', 0, 10));
+    jest.advanceTimersByTime(5_000);
+    pushSnapshot(snap('paused', 0, 14));
+    await settle();
+    expect(mockClosed.at(-1)).toMatchObject({
+      start: 'resume',
+      from: { pos: 10 },
+      to: { pos: 14 },
+    });
+  });
+
   it('the loaded, playing book: its span closes first, then the finish; the mirror reads finished', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
@@ -1803,7 +1988,11 @@ describe('Mark as finished outside the player (finish-route)', () => {
       );
       // The mirror holds the finish's record by the Undo, carrying the record before it,
       // acknowledged since.
-      const finishedRec = { ...(mockFinishedRecords.at(-1) as object), ack_version: 9 };
+      const finishedRec = {
+        ...(mockFinishedRecords.at(-1) as object),
+        ack_version: 9,
+        ignored: ['watch|a'],
+      };
       expect(finishedRec).toMatchObject({ finished: true, before });
       mockReadMirror.mockResolvedValue(finishedRec);
       const writes = mockWriteMirror.mock.calls.length;
@@ -1817,7 +2006,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
       // (`updateMirror`), never a write from a read made outside it; its Sync v2 fields are
       // the mirror's own (the ack since the finish is newer).
       expect(mockWriteMirror).toHaveBeenCalledTimes(writes);
-      expect(mockMirrorUpdates).toEqual([{ ...before, ack_version: 9 }]);
+      expect(mockMirrorUpdates).toEqual([{ ...before, ack_version: 9, ignored: ['watch|a'] }]);
       // A read of the finished row still on its way is held off (fe#258, fe#272).
       expect(mockNoteUndone).toHaveBeenCalledWith('c1', 2, 'Other/Book');
       expect(queryClient.invalidateQueries).toHaveBeenCalledWith({
@@ -1996,6 +2185,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
       const echo = {
         ...(mockWriteMirror.mock.calls.at(-1)?.[0] as object),
         updated_at: '2999-01-01T00:00:00.000Z',
+        ignored: ['watch|a'],
       };
       mockReadMirror.mockResolvedValue(echo);
       const edit = jest.fn(async () => {});
@@ -2013,6 +2203,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
         file: 'Other/Book/3.mp3',
         file_pos: 12,
         updated_at: '2999-01-01T00:00:00.001Z',
+        ignored: ['watch|a'],
       });
     } finally {
       mockReadMirror.mockImplementation(async () => null);

@@ -10,6 +10,17 @@ struct SyncUploadTag: Codable, Equatable, Sendable {
   /// `server_id.user_id`: an answer for an account since replaced is not applied.
   var accountId: String
   var ids: [String]
+  /// An upload made before its tag recorded this has no known Stay to re-offer.
+  var sentStay: Bool?
+
+  init(accountId: String, events: [ListeningEvent]) {
+    self.accountId = accountId
+    ids = events.map(\.id)
+    sentStay = events.contains { event in
+      if case .listen(let span) = event { return span.start == .stay }
+      return false
+    }
+  }
 }
 
 enum BackgroundSync {

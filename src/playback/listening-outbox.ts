@@ -1423,15 +1423,17 @@ async function sendChunk(
     return await sending<Next>(chunk, async (live) => {
       if (live.length === 0) return 'more';
       const sentAt = Date.now();
-      const answer = await client.syncListening(
-        syncBody(
-          connectionId,
-          live.map((e) => e.event),
-          deviceId,
-        ),
+      const body = syncBody(
+        connectionId,
+        live.map((e) => e.event),
+        deviceId,
       );
+      const answer = await client.syncListening(body);
       tookSync(connectionId);
-      await applyAnswer(connectionId, live, answer, { sentAt, answeredAt: Date.now() });
+      await applyAnswer(connectionId, live, body.events, answer, {
+        sentAt,
+        answeredAt: Date.now(),
+      });
       return 'more';
     });
   } catch (e) {
@@ -1513,9 +1515,10 @@ async function sendAlone(
     const deviceId = await getDeviceId();
     await sending([entry], async (live) => {
       if (live.length === 0) return;
-      const answer = await client.syncListening(syncBody(connectionId, [entry.event], deviceId));
+      const body = syncBody(connectionId, [entry.event], deviceId);
+      const answer = await client.syncListening(body);
       tookSync(connectionId);
-      await applyAnswer(connectionId, [entry], answer);
+      await applyAnswer(connectionId, [entry], body.events, answer);
     });
     return 'sent';
   } catch (e) {
@@ -1526,12 +1529,13 @@ async function sendAlone(
   }
 }
 
-/** Told of every sync answer's progress rows (the place reconcile's offer check), and of
- * the books (`contentKey`s) whose Stay from this device the answer held (`staysHeld`). */
+/** A book whose stored place the server kept over a listen or an explicit Stay from here. */
+export type HeldListen = 'listen' | 'stay';
+/** Told of every sync answer's rows and which books' listens they held. */
 type AnswerListener = (
   connectionId: string,
   rows: Progress[],
-  staysHeld: ReadonlySet<string>,
+  held: ReadonlyMap<string, HeldListen>,
 ) => void;
 const answerListeners = new Set<AnswerListener>();
 
@@ -1560,19 +1564,27 @@ export function keptMine(
 }
 
 /**
- * This device's Stays the answer held (pure): a `stay` the server kept the stored row over
- * (`diverged`, `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay
- * wins", S2). Their books' kept place is offered again at once (`offerLoadedPlace`).
+ * Books whose stored place the server kept over a listen in this request. A resume or
+ * continue behind an unseen row can come back `resume_behind` instead of diverged. A
+ * held Stay takes precedence over another held span of the same book in the batch.
  */
-export function staysHeld(
+export function heldListens(
+  connectionId: string,
   sent: ListeningEvent[],
   results: Map<string, ListeningSyncResult>,
-): ListeningEvent[] {
-  return sent.filter((e) => {
-    if (e.kind !== 'listen' || e.start !== 'stay') return false;
+): Map<string, HeldListen> {
+  const held = new Map<string, HeldListen>();
+  for (const e of sent) {
     const r = results.get(e.id);
-    return r?.status === 'diverged' && r.kept === 'stored';
-  });
+    if (e.kind !== 'listen' || !r) continue;
+    const heldHere =
+      (r.status === 'diverged' && r.kept === 'stored') ||
+      (r.status === 'not_applied' && r.reason === 'resume_behind');
+    if (!heldHere) continue;
+    const key = contentKey(connectionId, e.library_id, e.path);
+    if (e.start === 'stay' || !held.has(key)) held.set(key, e.start === 'stay' ? 'stay' : 'listen');
+  }
+  return held;
 }
 
 /**
@@ -1593,6 +1605,7 @@ export function clockSkewOf(
 async function applyAnswer(
   connectionId: string,
   sent: OutboxEntry[],
+  events: ListeningEvent[],
   answer: ListeningSyncResponse,
   timing?: { sentAt: number; answeredAt: number },
 ) {
@@ -1617,7 +1630,6 @@ async function applyAnswer(
 
   const rows = answer.progress ?? [];
   const deviceId = await getDeviceId();
-  const events = sent.map((e) => e.event);
   for (const row of rows) {
     if (keptMine(row, deviceId, events, results)) {
       await ackVersion(connectionId, row.library_id, row.path, row.version, row);
@@ -1632,11 +1644,7 @@ async function applyAnswer(
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });
   }
   // As sent: a `stay` that went as a `jump` (the flag gone) was held by the usual rule.
-  const held = new Set(
-    staysHeld(eventsForServer(connectionId, events), results).map((e) =>
-      contentKey(connectionId, e.library_id, e.path),
-    ),
-  );
+  const held = heldListens(connectionId, events, results);
   for (const listener of answerListeners) listener(connectionId, rows, held);
 }
 
@@ -1787,16 +1795,14 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
     const leaving = finishesLeaving(fit);
     for (const id of leaving) maybeReached.add(id);
     if (stored && leaving.length > 0) markOutNow(stored.storage, leaving);
+    const body = syncBody(
+      cid,
+      fit.map((e) => e.event),
+      deviceId,
+    );
     const settled = client
-      .syncListening(
-        syncBody(
-          cid,
-          fit.map((e) => e.event),
-          deviceId,
-        ),
-        { keepalive: true },
-      )
-      .then((answer) => applyAnswer(cid, fit, answer))
+      .syncListening(body, { keepalive: true })
+      .then((answer) => applyAnswer(cid, fit, body.events, answer))
       .catch(() => undefined);
     // Out from this tab until it ends, as a flush's request is (`sending`): a page that
     // was only hidden comes back (the back-forward cache) with the request still out, and

@@ -458,13 +458,13 @@ final class BackgroundSyncTests: XCTestCase {
   }
 
   func testTheTagRoundTripsAndAppliesOnlyToItsAccount() {
-    let tag = SyncUploadTag(accountId: "s.1", ids: ["a", "b"])
+    let tag = SyncUploadTag(accountId: "s.1", events: [listen("a"), listen("b")])
     XCTAssertEqual(BackgroundSync.tag(BackgroundSync.describe(tag)), tag)
     XCTAssertNil(BackgroundSync.tag("not json", as: SyncUploadTag.self))
     XCTAssertTrue(BackgroundSync.applies(tag, accountId: "s.1"))
     XCTAssertFalse(BackgroundSync.applies(tag, accountId: "s.2"))
     XCTAssertFalse(BackgroundSync.applies(tag, accountId: nil))
-    XCTAssertFalse(BackgroundSync.applies(SyncUploadTag(accountId: "s.1", ids: []), accountId: "s.1"))
+    XCTAssertFalse(BackgroundSync.applies(SyncUploadTag(accountId: "s.1", events: []), accountId: "s.1"))
   }
 
   func testABackgroundAnswerIsAppliedLikeAForegroundOne() async throws {
@@ -475,7 +475,7 @@ final class BackgroundSyncTests: XCTestCase {
     XCTAssertNil(body.sentAt)
     // A foreground flush answered "c" meanwhile.
     o.apply(SyncResponse(serverTime: nil, results: [SyncResult(id: "c", status: "applied")], progress: nil),
-            sent: o.events.filter { $0.id == "c" }, sentAt: nil, answeredAt: nil)
+            sent: o.events.filter { $0.id == "c" }, sentAt: nil, answeredAt: nil, tookStay: false)
     let answer = SyncResponse(
       serverTime: "2026-10-25T08:00:00Z",
       results: [SyncResult(id: "a", status: "applied"), SyncResult(id: "b", status: "rejected", reason: "no_access"),
@@ -483,7 +483,7 @@ final class BackgroundSyncTests: XCTestCase {
       progress: [row(version: 9)])
     var rows: [ProgressRow] = []
     o.onAnswer = { r, _ in rows = r }
-    o.applyBackground(answer, sentIds: body.events.map(\.id))
+    o.applyBackground(answer, tag: SyncUploadTag(accountId: "s.1", events: body.events))
     XCTAssertTrue(o.events.isEmpty)
     XCTAssertEqual(o.couldNotSync().map(\.event.id), ["b"])
     XCTAssertEqual(o.couldNotSync().first?.reason, "no_access")

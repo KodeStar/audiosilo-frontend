@@ -92,7 +92,7 @@ enum AckRules {
   /// The books whose `stay` this answer held: the server kept the stored row over it (`diverged`,
   /// `kept: stored`), another device's Stay holding it (CROSS-REPO section 25 "Stay wins", S2).
   /// Their kept place is offered again at once (`OfferThrottle.shouldShow`'s `stayHeld`; the
-  /// phone's `staysHeld`).
+  /// phone's `heldListens`).
   static func staysHeld(sent: [ListeningEvent], results: [String: SyncResult]) -> Set<BookRef> {
     var held = Set<BookRef>()
     for case .listen(let e) in sent where e.start == .stay {

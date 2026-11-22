@@ -41,7 +41,10 @@ export function useListeningOffer(
   }, [connectionId, libraryId, path, version, row?.other_place?.updated_at]);
   if (!mine || !row) return null;
   const from = here ?? mine.mirror?.position ?? row.position;
-  return offerOf(row, mine.deviceId, mine.mirror?.ack_version, from, mine.mirror?.answered);
+  return offerOf(row, mine.deviceId, mine.mirror?.ack_version, from, [
+    ...(mine.mirror?.answered ?? []),
+    ...(mine.mirror?.ignored ?? []),
+  ]);
 }
 
 /**

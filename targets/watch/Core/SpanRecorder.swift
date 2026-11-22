@@ -274,8 +274,9 @@ final class SpanRecorder {
   /// Close the open span at `at` (nil: where it was last seen) into the outbox. Returns it.
   /// `stoppedAt`: when the audio stopped, for a stop noticed late (the system paused the
   /// player while the app was suspended); never after now, never before the span's start.
+  /// A playing cut or Stay replaces the stored span as it opens its successor.
   @discardableResult
-  func close(at: SpanEnd?, stoppedAt: Date? = nil) -> OpenSpan? {
+  func close(at: SpanEnd?, stoppedAt: Date? = nil, clearStore: Bool = true) -> OpenSpan? {
     guard var closing = span else {
       // A Stay still waiting for its span (`standBy`, playing with none open) does not outlive
       // the play: one that ends first leaves the next a `jump` (`carried`).
@@ -287,7 +288,7 @@ final class SpanRecorder {
     let now = clock()
     closing.endedAt = max(closing.startedAt, min(now, stoppedAt ?? now))
     append(closing)
-    store.save(nil)
+    if clearStore { store.save(nil) }
     // Like a paused move: the next play begins with the same reason (`isBareMove`, `carried`).
     if Spans.isBareMove(closing) { nextStart = Spans.carried(closing.start) }
     return closing
@@ -296,7 +297,7 @@ final class SpanRecorder {
   /// Cut the span (close it, a span opening where it ended for `start`) while playing.
   func cut(_ book: PlayingBook, at: SpanEnd?, playing: Bool, speed: Double, start: ListeningStart = .continue) {
     // None open: nothing to cut, and a Stay waiting for its span goes on waiting (`close`).
-    guard span != nil, let closed = close(at: at), playing else { return }
+    guard span != nil, let closed = close(at: at, clearStore: !playing), playing else { return }
     // A bare move's reason is already there (`close`); a reason asked for (Stay) still wins.
     if start != .continue || !Spans.isBareMove(closed) { nextStart = start }
     open(book, at: closed.to, speed: speed)
@@ -378,7 +379,7 @@ final class SpanRecorder {
     let start: ListeningStart = stay ? .stay : .jump
     if let at {
       // The open span (a playing one, or a stop noticed late) ends where the Stay is.
-      let closed = close(at: at)
+      let closed = close(at: at, clearStore: !playing)
       sendStill(book, at: at, start: start, speed: speed)
       if playing && closed != nil { open(book, at: at, speed: speed) }
       return

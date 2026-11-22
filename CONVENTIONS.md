@@ -1372,8 +1372,10 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   Jump shows at the open after a replay from Home (fe#173). A row older than the version this
   device acknowledged (read before the open's own replay was answered) counts as no row: the
   server no longer holds it, so the reader neither opens there nor offers it. The answer's `seen` also counts the very version this
-  device acknowledged (one version is one write), so a late answer with an adopted row never
-  offers it again. With no answer from the server and no place on this device it fails (the
+  device acknowledged (one version is one write). The open reader marks that version seen
+  as soon as it is acknowledged, so a late save cannot show its offer again while the mirror
+  write is pending. A newer unseen version can still offer. With no answer from the server
+  and no place on this device it fails (the
   fetch notice; Try again looks again): never a guessed start, whose save would replace a place read elsewhere.
   Except offline with the EPUB on this device (the download's copy or the app's cache file,
   `hasLocalEbook`): a request that never reached the server opens at the start, its saves on
@@ -2811,7 +2813,9 @@ media GETs only.
   Keep-newest, so a newer save of this device's own stays. A server's row in the mirror is
   marked `server_clock` (`progressToSave`) and compared by this device's clock, its stamp moved
   back by the connection's known skew (`localTimeOf`, fe#259): with the server's clock ahead,
-  a row read back once hid this device's own captures for that long. `mirrorSpanEnd`, a
+  a row read back once hid this device's own captures for that long. The resume lookup and
+  the loaded book's place check compare server and local records on that same clock.
+  `mirrorSpanEnd`, a
   tab's `otherTabsPlace` and an explicit start's read of the book's speed and finish
   (`knownProgress`, against the cached place: `mirrorIsNewest`) compare through it too.
 - **The replay guard (legacy PUT path, fe#198).** The PUT is last-write-wins by
@@ -2891,9 +2895,11 @@ media GETs only.
     `not_applied`/`older` when sent apart from the span before it (a reason asked for, Stay's
     `stay` or `jump`, still wins). A move to where the place already is, in the same file (`movesNowhere`,
     Previous at the book's start; a book with unknown file lengths starts every file at 0) is no
-    move: the span goes on and no event says it, unless the last move went
-    elsewhere (a seek still on its way reads as where it left) or the engine moved first with
-    nothing to compare (a paused lock-screen move: `from: null`). The watches share both rules
+    move: the span goes on and no event says it. While a seek is still landing, the player
+    compares the next move with its pending target and closes the span there. A move from 30
+    back to 0 therefore sends `moved_back` even while the engine still reports 0. A paused
+    lock-screen move with no prior place (`from: null`) still counts. The watches share the
+    bare-move and same-place rules
     (`Spans`). A
     finished book started again sends `unfinish` first, then a `restart` span; an explicit 0 is
     `restart`, another explicit place `jump`. Stay on an offer (`standByPlace`, row 9c-2,
@@ -2948,7 +2954,10 @@ media GETs only.
     purge was sent then); the store's mirror writes for a finish and its Undo check it too. The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
     book stops and unloads first on every route, as its own end does (`leaveFinishedBook`,
-    fe#258: its place saved and its span closed ahead of the finish; left loaded it went on
+    fe#258: its place saved and its span closed ahead of the finish. If a seek is still
+    landing, the span closes at the target with the seek's reason. Finish consumes that
+    reason. If playback continues across the finish, the next span starts with `resume`.
+    Listen again sends `unfinish` and starts a `restart` span. Left loaded it went on
     recording past the finish, a later save of its place put the device record back in progress,
     and its page read "Resume"; the place it saved is the one the Undo goes back to, since the
     page's progress was read before that listening), the mirror records it finished, offline it
@@ -3105,19 +3114,23 @@ media GETs only.
     resume from a server row (version > 0), the reconcile's auto-move, and an answered offer
     (Jump, Stay, the book page's "Play from there"; `answerOffer` also notes the
     `device_id|updated_at` key, the newest 20 kept). An offer toast that times out notes its key
-    only (`ignoreOffer`, no acknowledgement).
+    in `ignored` (`ignoreOffer`, no acknowledgement). Older mirrors retain their previously
+    recorded `answered` keys.
   - *Offers.* `offerOf` (above) feeds the player's toast (on the reconcile check and on each sync
     answer, `onSyncAnswer`) and the book page's line (`listening-offer.tsx`). Throttles: a key is
     shown once a launch (`shownOffers`), a device's places at most once in 10 minutes per book
     (`OFFER_REPEAT_MS`: a device that plays on sends a new key every span), and an answered key
-    never again. One exception to the 10 minutes: this device's `stay` coming back `diverged`
-    `kept: stored` (`staysHeld`: another device's Stay holds the row) offers the kept place at
-    once (`offerLoadedPlace`'s `stayHeld`; still once a launch per key). The watches do the same
-    (`OfferThrottle.shouldShow(..., stayHeld:)`, `AckRules.staysHeld`).
-  - *Resume.* `resumeLookupOf` takes a file place only when it is not older than the record it
-    is for (5 s slack, plus how far the connection's server clock is known to be ahead,
-    `holdsFilePlace`; the mirror merge reads the stored skew before a launch's first merge,
-    `knownSkew`): a mirror that lost writes never resumes at its stale file. A finished server
+    never again. If a sync answer kept the other device's row over a listen from here
+    (`diverged`, `kept: stored`), or held a resume behind it (`not_applied`,
+    `resume_behind`), a new play or move here allows the toast to offer that row again,
+    including after a timeout. Periodic saves alone keep the usual throttle. A held
+    `stay` can also offer a new kept place immediately. The watches use that held-Stay
+    exception (`OfferThrottle.shouldShow(..., stayHeld:)`, `AckRules.staysHeld`).
+  - *Resume.* `resumeLookupOf` takes a file place for the same position, or one from the same
+    device and finish state that falls within the 5 s age allowance (`holdsFilePlace`).
+    Both records are compared on the device's clock, using the connection's known skew
+    for server timestamps. A mirror that lost writes cannot override a newer position with
+    an old file offset. A finished server
     row beats this device's newer unfinished mirror record when the finish is newer than it or is a version this device never
     acknowledged, unless the book has events waiting (`LocalPlaces.pending`): Listen again then
     starts the book again.
@@ -3194,7 +3207,9 @@ media GETs only.
     every save and span; so does a move that has not settled within 5 s (`TAB_MOVE_MAX_MS`,
     fe#262: a seek that never settled held the play's spans and saves until another book).
     One that lands after that is taken then (`landTabPlaceLate`: the floor at the place, the
-    listening begun where the engine was dropped and begun again there), unless the listener
+    listening begun where the engine was dropped and begun again there). The landing report
+    reopens the span before that report's save tick can cut it. A Cast status can confirm
+    the same landing before the receiver publishes its position. This applies unless the listener
     moved or another book started meanwhile: left alone, a landing far behind the floor put
     back refused every save, and one further on ran the open span over audio nobody heard. A
     book switch drops a move still out (`switchBook` clears
@@ -3994,10 +4009,13 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   `cut` with none open leaves it waiting), the place a held Stay's answer kept offered at once
   (`AckRules.staysHeld`, `OfferThrottle.shouldShow(..., stayHeld:)`), and the
   outbox's `asServerTakes` sending a queued `stay` as a
-  `jump` while the flag is off (`Outbox.takesStay`, read as each body is built, the background
-  upload's too). Wear OS ports them all (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
-  Only the watches store the span at open, so only they recover a move a kill cut short (within
-  the 5 s keep): the next span, when it is that book's and a resume from this watch's
+  `jump` while the flag is off. Both watches judge the answer by the flag used to build that
+  request, including a single-event retry. On Apple Watch the background upload's tag records
+  whether the body contained a Stay, so a later wake uses the same decision. A playing Stay
+  or cut replaces the stored Swift span in a single write. Wear OS ports the offer and send
+  rules (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
+  The watches recover a bare move's reason after a kill: the next span, when it is that
+  book's and a resume from this watch's
   own place, takes its reason (`recoveredMove`; not when `Resume.plan` took the server's row,
   `loadsFromRow`). On the Apple Watch the move is stored too until a span opens
   (`open-span-move.json`, `OpenSpanStore.saveMove`, fe#321), so a launch that ends before the book

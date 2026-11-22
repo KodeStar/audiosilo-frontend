@@ -341,7 +341,7 @@ final class AppModel: ObservableObject {
     guard BackgroundSync.applies(answer.tag, accountId: account?.accountId),
       case .answered(let response) = answer.outcome
     else { return }
-    outbox.applyBackground(response, sentIds: answer.tag.ids)
+    outbox.applyBackground(response, tag: answer.tag)
     if !inForeground, outbox.unsentCount > 0 { uploadInBackground() }
   }
 

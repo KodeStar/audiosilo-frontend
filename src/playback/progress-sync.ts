@@ -103,6 +103,8 @@ export type ProgressSave = {
   /** Sync v2: the other places (`device_id|updated_at`) the listener has answered (Jump or
    * Stay), so an offer never comes back. Mirror only; kept across captures. */
   answered?: string[];
+  /** Offer keys whose toast timed out. A held book may offer one again after a play or move. */
+  ignored?: string[];
   /** A server's row (`progressToSave`): `updated_at` is by its server's clock, not this
    * device's, and is compared with this device's captures through the known skew
    * (`localTimeOf`, fe#259). Mirror only; a capture never carries it. */
@@ -147,18 +149,6 @@ export type ResumeLookup =
     }
   | { kind: 'empty' }
   | { kind: 'failed' };
-
-/** Newest of two progress records by `updated_at` (last-write-wins, same rule the
- * server uses); ties keep the first argument. */
-function timeOf(p: Progress): number {
-  const t = Date.parse(p.updated_at);
-  return Number.isNaN(t) ? 0 : t;
-}
-function newest(a: Progress | null, b: Progress | null): Progress | null {
-  if (!a) return b;
-  if (!b) return a;
-  return timeOf(b) > timeOf(a) ? b : a;
-}
 
 /** The durable mirror map (keyed by `contentKey`). */
 async function readMirrorMap(): Promise<Record<string, ProgressSave>> {
@@ -213,16 +203,23 @@ export function noteClockSkew(connectionId: string, skewMs: number): void {
   if (Number.isFinite(skewMs)) clockSkews.set(connectionId, skewMs);
 }
 
-/** Connections whose stored skew was looked for this launch (`knownSkew`). */
-const skewLooked = new Set<string>();
+/** The first stored skew read for a connection this launch. Concurrent checks share it. */
+const skewLooked = new Map<string, Promise<void>>();
 
 /** `connectionId`'s server clock skew for a merge (ms): this launch's measurement, else the
  * stored one (read once per connection a launch, so the first merge of a launch, before any
  * sync answer, has it too), else 0. */
-async function knownSkew(connectionId: string): Promise<number> {
-  if (!clockSkews.has(connectionId) && hasStoredSkews() && !skewLooked.has(connectionId)) {
-    skewLooked.add(connectionId);
-    await readClockSkews().catch(() => undefined);
+export async function knownSkew(connectionId: string): Promise<number> {
+  if (!clockSkews.has(connectionId) && hasStoredSkews()) {
+    let read = skewLooked.get(connectionId);
+    if (!read) {
+      read = readClockSkews().then(
+        () => undefined,
+        () => undefined,
+      );
+      skewLooked.set(connectionId, read);
+    }
+    await read;
   }
   return clockSkews.get(connectionId) ?? 0;
 }
@@ -455,12 +452,26 @@ export async function readLocalPlaces(): Promise<LocalPlaces> {
   return { mirror, queue, pending, skews };
 }
 
-/**
- * `loadInitialProgress`'s rule, pure: the newest (by `updated_at`) of the server's row, the
- * durable mirror and the offline queue's save. `server` is the server's answer when it was
- * reached (null: no record, a new book there), `undefined` when it was not: only a reached
- * server can make an unknown book `empty`; otherwise it is `failed`.
- */
+/** The device's two records, compared before conversion drops the mirror's clock marker.
+ * Ties keep the mirror (it can carry the file place and acknowledged version). */
+function localRecords(places: LocalPlaces, connectionId: string, libraryId: number, path: string) {
+  const key = contentKey(connectionId, libraryId, path);
+  const mirror = places.mirror[key] ?? null;
+  const queued =
+    places.queue.find(
+      (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
+    ) ?? null;
+  const skew = places.skews?.[connectionId] ?? 0;
+  const local =
+    queued && (!mirror || (localTimeOf(queued, skew) || 0) > (localTimeOf(mirror, skew) || 0))
+      ? queued
+      : mirror;
+  return { key, mirror, queued, local, skew };
+}
+
+/** The newest of the server's row, mirror and queued save by this device's clock. Ties
+ * prefer the server, whose row carries its version. Only a reached server can make an
+ * unknown book empty. */
 export function resumeLookupOf(
   server: Progress | null | undefined,
   places: LocalPlaces,
@@ -468,33 +479,16 @@ export function resumeLookupOf(
   libraryId: number,
   path: string,
 ): ResumeLookup {
-  const key = contentKey(connectionId, libraryId, path);
-  const mirror = places.mirror[key] ?? null;
-  const queued =
-    places.queue.find(
-      (s) => s.connectionId === connectionId && s.libraryId === libraryId && s.path === path,
-    ) ?? null;
-  const fromMirror = mirrorAsProgress(libraryId, path, mirror);
-  const fromQueue = mirrorAsProgress(libraryId, path, queued);
-  const newestLocal = newest(newest(server ?? null, fromMirror), fromQueue);
-  const best =
+  const { key, mirror, queued, local, skew } = localRecords(places, connectionId, libraryId, path);
+  const serverWins =
     server &&
-    newestLocal === fromMirror &&
-    serverFinishWins(
-      server,
-      fromMirror,
-      mirror?.ack_version,
-      places.pending.has(key) || queued !== null,
-    )
-      ? server
-      : newestLocal;
+    (!local ||
+      (serverTimeOf(server.updated_at, skew) || 0) >= (localTimeOf(local, skew) || 0) ||
+      (local === mirror &&
+        serverFinishWins(server, local, places.pending.has(key) || !!queued, skew)));
+  const best = serverWins ? server : mirrorAsProgress(libraryId, path, local);
   if (best) {
-    const filed = filePlaceOf(
-      best,
-      best === server ? null : best === fromQueue ? queued : mirror,
-      mirror,
-      places.skews?.[connectionId] ?? 0,
-    );
+    const filed = filePlaceOf(best, serverWins ? null : local, mirror, skew);
     const unchecked =
       server === undefined ||
       (server !== null &&
@@ -530,14 +524,13 @@ export function placeSavedAt(
   path: string,
 ): number | undefined {
   if (lookup.kind !== 'progress') return undefined;
-  const { updated_at } = lookup.progress;
-  const mirror = places.mirror[contentKey(connectionId, libraryId, path)];
-  const serverClock =
-    lookup.progress === server || (!!mirror?.server_clock && mirror.updated_at === updated_at);
-  const at = localTimeOf(
-    serverClock ? { updated_at, server_clock: true } : { updated_at },
-    places.skews?.[connectionId] ?? 0,
-  );
+  const { local, skew } = localRecords(places, connectionId, libraryId, path);
+  const at =
+    lookup.progress === server
+      ? serverTimeOf(server.updated_at, skew)
+      : local
+        ? localTimeOf(local, skew)
+        : NaN;
   return Number.isFinite(at) ? at : undefined;
 }
 
@@ -554,20 +547,19 @@ export function placeSavedAt(
  */
 function serverFinishWins(
   server: Progress,
-  mine: Progress | null,
-  ackVersion: number | undefined,
+  mine: ProgressSave,
   waiting: boolean,
+  skew: number,
 ): boolean {
-  if (!mine || waiting || !server.finished || mine.finished) return false;
-  const finishedAt = server.finished_at ? Date.parse(server.finished_at) : Number.NaN;
-  if (Number.isFinite(finishedAt) && finishedAt > timeOf(mine)) return true;
-  return server.version > (ackVersion ?? 0);
+  if (waiting || !server.finished || mine.finished) return false;
+  if (server.finished_at && serverTimeOf(server.finished_at, skew) > (localTimeOf(mine, skew) || 0))
+    return true;
+  return server.version > (mine.ack_version ?? 0);
 }
 
 /** How much older (ms) than a record a file place may be and still be that record's: the
  * server's echo of this device's place is stamped with the span's end in server time,
- * a moment after the capture that took the file place. Widened by the connection's known
- * clock skew (`holdsFilePlace`). */
+ * a moment after the capture that took the file place. Compared by this device's clock. */
 const FILE_PLACE_SLACK_MS = 5_000;
 
 /** Whether two records hold the same place (within a second). */
@@ -575,7 +567,10 @@ function samePlace(a: Pick<ProgressSave, 'position'>, b: Pick<ProgressSave, 'pos
   return Math.abs(a.position - b.position) <= 1;
 }
 
-type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished' | 'updated_at'>;
+type PlaceRecord = Pick<
+  ProgressSave,
+  'position' | 'device_id' | 'finished' | 'updated_at' | 'server_clock'
+>;
 
 /**
  * Whether `record`'s place is the one `filed` holds a file place for: the same place, or a
@@ -586,23 +581,19 @@ type PlaceRecord = Pick<ProgressSave, 'position' | 'device_id' | 'finished' | 'u
  * device: `filed` is then older than this device's own last place (writes lost when a
  * browser was killed), and resuming at its file place would move the book back.
  *
- * `record` may be a server row (server clock) and `filed` a capture (this device's clock),
- * so the slack is widened by how far the server's clock is known to be ahead (`skewMs`,
- * from the sync answers' `server_time`): a device more than 5 s slow kept its file place
- * only by luck before (fe#208). Only that way: a server behind stamps its echo before the
- * capture anyway, and widening for it too would keep the stale file place of a mirror
- * that lost writes.
+ * Either record may be a server row kept in the mirror. Compare them on the same clock
+ * so a server ahead keeps a timely file place and a server behind drops a stale one.
  */
 function holdsFilePlace(record: PlaceRecord, filed: PlaceRecord, skewMs = 0): boolean {
   if (samePlace(record, filed)) return true;
   if (!record.device_id || record.device_id !== filed.device_id) return false;
   if (record.finished !== filed.finished) return false;
-  const recordAt = Date.parse(record.updated_at);
-  const filedAt = Date.parse(filed.updated_at);
+  const recordAt = localTimeOf(record, skewMs);
+  const filedAt = localTimeOf(filed, skewMs);
   return (
     Number.isFinite(recordAt) &&
     Number.isFinite(filedAt) &&
-    filedAt >= recordAt - FILE_PLACE_SLACK_MS - Math.max(0, skewMs)
+    filedAt >= recordAt - FILE_PLACE_SLACK_MS
   );
 }
 
@@ -620,7 +611,7 @@ function filePlaceOf(
 ): ProgressSave | null {
   if (own?.file) return own;
   if (!mirror?.file) return null;
-  return holdsFilePlace(best, mirror, skewMs) ? mirror : null;
+  return holdsFilePlace(own ?? { ...best, server_clock: true }, mirror, skewMs) ? mirror : null;
 }
 
 /** A place as a resume would play it: the record it picks (`resumeLookupOf`), with the
@@ -774,12 +765,17 @@ export function progressToSave(
  * row through it: with the server's clock S seconds ahead, a server row read back hid this
  * device's own captures for S seconds (fe#259, fe#262).
  */
-function localTimeOf(
+export function localTimeOf(
   record: Pick<ProgressSave, 'updated_at' | 'server_clock'>,
   skewMs: number,
 ): number {
   const at = Date.parse(record.updated_at);
   return record.server_clock ? at - skewMs : at;
+}
+
+/** A server row's timestamp on this device's clock, like a server row kept in the mirror. */
+export function serverTimeOf(updated_at: string, skewMs: number): number {
+  return localTimeOf({ updated_at, server_clock: true }, skewMs);
 }
 
 /** `localTimeOf` with the record's connection's known skew. */
@@ -1037,6 +1033,7 @@ function mergeKept(
     out.ack_version = existing.ack_version;
   if (out.answered === undefined && existing.answered !== undefined)
     out.answered = existing.answered;
+  if (out.ignored === undefined && existing.ignored !== undefined) out.ignored = existing.ignored;
   if (
     out.file === undefined &&
     existing.file !== undefined &&
@@ -1176,9 +1173,8 @@ function withAnswered(answered: string[] | undefined, key: string): string[] {
   return answered?.includes(key) ? answered : [...(answered ?? []), key].slice(-MAX_ANSWERED);
 }
 
-/** An offer nobody answered (its toast timed out): its `key` is noted so it is not offered
- * again, and nothing is acknowledged, so this device's next spans still never move the
- * other device's place back (fe#208). */
+/** Remember a timed-out offer without acknowledging it. The held-place check may show it
+ * again when the listener starts a new play or moves. */
 export function ignoreOffer(
   connectionId: string,
   libraryId: number,
@@ -1190,7 +1186,10 @@ export function ignoreOffer(
     connectionId,
     libraryId,
     path,
-    (s) => (s.answered?.includes(key) ? s : { ...s, answered: withAnswered(s.answered, key) }),
+    (s) =>
+      s.answered?.includes(key) || s.ignored?.includes(key)
+        ? s
+        : { ...s, ignored: withAnswered(s.ignored, key) },
     row,
   );
 }

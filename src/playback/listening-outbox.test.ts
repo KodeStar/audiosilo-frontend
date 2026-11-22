@@ -82,7 +82,7 @@ import {
   spanIsBareMove,
   spanSaysSomething,
   spanToEvent,
-  staysHeld,
+  heldListens,
   storedOpenSpan,
   storeOpenSpan,
   onOutboxChange,
@@ -1052,9 +1052,10 @@ describe('flushOutbox', () => {
       device_id: 'tablet',
       updated_at: '2026-10-25T07:33:30.000Z',
     };
-    client(async (body) =>
-      answer(body, () => ({ status: 'not_applied', reason: 'resume_behind' }), [row]),
-    );
+    client(async (body) => ({
+      ...answer(body, () => ({ status: 'not_applied', reason: 'resume_behind' }), [row]),
+      server_time: body.sent_at,
+    }));
     await flushOutbox('c1');
     // Where Resume plays, as the book's own read answers, never the row alone.
     expect(queryClient.setQueryData).toHaveBeenCalledWith(
@@ -1789,18 +1790,21 @@ describe('a queued stay to a server without listening_stay (row 9c-2)', () => {
     expect(state.failed?.[0].event).toMatchObject({ start: 'stay' });
   });
 
-  it('held as the jump it went as, it is no held Stay (the usual 10 minutes apply)', async () => {
+  it('reports the held listen as sent even if the Stay capability changes before the answer', async () => {
     const told: string[][] = [];
-    const stop = onSyncAnswer((_cid, _rows, held) => told.push([...held]));
+    const stop = onSyncAnswer((_cid, _rows, held) => told.push([...held.values()]));
     try {
       await appendEvents('c1', [stay()]);
-      client(async (body) => answer(body, () => ({ status: 'diverged', kept: 'stored' })));
+      client(async (body) => {
+        mockCaps = { listening_sync: true, listening_stay: !mockCaps?.listening_stay };
+        return answer(body, () => ({ status: 'diverged', kept: 'stored' }));
+      });
       mockCaps = { listening_sync: true };
       await flushOutbox('c1');
       await appendEvents('c1', [stay('s2')]);
       mockCaps = { listening_sync: true, listening_stay: true };
       await flushOutbox('c1');
-      expect(told.map((keys) => keys.length)).toEqual([0, 1]);
+      expect(told).toEqual([['listen'], ['stay']]);
     } finally {
       stop();
     }
@@ -1996,21 +2000,28 @@ describe('keptMine (the ack rule)', () => {
 
 // Stay wins (row 9c-2): a `stay` the server kept the stored row over (another device's Stay
 // holds it) is named, so the player offers the kept place at once.
-describe('staysHeld', () => {
-  it('names only a stay the server answered diverged, kept: stored', () => {
+describe('heldListens', () => {
+  it('names the held books once, with precedence for a Stay in the batch', () => {
     const sent = [
       listen('a', { start: 'stay' }),
       listen('b', { start: 'jump' }),
-      listen('c', { start: 'stay' }),
-      listen('d', { start: 'stay' }),
+      listen('c', { path: 'Else', start: 'stay' }),
+      listen('d', { path: 'Else', start: 'stay' }),
+      listen('e', { path: 'Third', start: 'continue' }),
+      listen('f', { path: 'Older', start: 'resume' }),
     ];
     const results = new Map<string, ListeningSyncResult>([
       ['a', { id: 'a', status: 'diverged', kept: 'stored' }],
       ['b', { id: 'b', status: 'diverged', kept: 'stored' }],
       ['c', { id: 'c', status: 'diverged', kept: 'event' }],
       ['d', { id: 'd', status: 'applied' }],
+      ['e', { id: 'e', status: 'not_applied', reason: 'resume_behind' }],
+      ['f', { id: 'f', status: 'not_applied', reason: 'older' }],
     ]);
-    expect(staysHeld(sent, results).map((e) => e.id)).toEqual(['a']);
+    expect([...heldListens('c1', sent, results)]).toEqual([
+      ['c1:3:Author/Book', 'stay'],
+      ['c1:3:Third', 'listen'],
+    ]);
   });
 });
 

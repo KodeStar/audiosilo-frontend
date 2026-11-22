@@ -307,7 +307,8 @@ final class OutboxTests: XCTestCase {
     let box = outbox(dir)
     box.restorePlaces(for: "a", into: PlaceStore(url: nil))
     box.append([first, other, finish])
-    box.applyBackground(SyncResponse(results: [SyncResult(id: finish.id, status: "applied")]), sentIds: [finish.id])
+    box.applyBackground(SyncResponse(results: [SyncResult(id: finish.id, status: "applied")]),
+                        tag: SyncUploadTag(accountId: "a", events: [finish]))
     let next = outbox(dir)
     let places = PlaceStore(url: nil)
     next.restorePlaces(for: "a", into: places)
@@ -492,7 +493,10 @@ final class OutboxTests: XCTestCase {
     let stored = { (e: ListeningEvent) -> SyncResult? in
       e.id == "b" ? nil : SyncResult(id: e.id, status: "diverged", kept: "stored")
     }
-    await o.flush(via: FakeTransport { answer($0, status: stored) })
+    await o.flush(via: FakeTransport {
+      o.takesStay = { false }
+      return answer($0, status: stored)
+    })
     XCTAssertEqual(held, [BookRef(libraryId: 3, path: "Author/Book")])
   }
 
@@ -503,8 +507,61 @@ final class OutboxTests: XCTestCase {
     o.takesStay = { false }
     var held: Set<BookRef> = [BookRef(libraryId: 0, path: "")]
     o.onAnswer = { _, h in held = h }
-    await o.flush(via: FakeTransport { answer($0, status: { SyncResult(id: $0.id, status: "diverged", kept: "stored") }) })
+    await o.flush(via: FakeTransport {
+      o.takesStay = { true }
+      return answer($0, status: { SyncResult(id: $0.id, status: "diverged", kept: "stored") })
+    })
     XCTAssertEqual(held, [])
+  }
+
+  func testEachRetryJudgesAHeldStayByItsOwnRequest() async {
+    let o = outbox()
+    let a = listen("a", start: .stay)
+    let b = listen("b", path: "Other", start: .stay)
+    o.append([a, b])
+    var takes = false
+    o.takesStay = { takes }
+    var held: [Set<BookRef>] = []
+    o.onAnswer = { _, books in held.append(books) }
+    await o.flush(via: FakeTransport { body in
+      takes.toggle()
+      if body.events.count > 1 { throw APIError(status: 400) }
+      return answer(body, status: { SyncResult(id: $0.id, status: "diverged", kept: "stored") })
+    })
+    XCTAssertEqual(held, [[a.ref], []])
+  }
+
+  func testBackgroundAnswersUseTheStayRecordedInTheUploadTag() throws {
+    let event = listen("a", start: .stay)
+    let response = SyncResponse(results: [SyncResult(id: event.id, status: "diverged", kept: "stored")])
+    for takes in [true, false] {
+      let dir = try tempDir(self)
+      let before = outbox(dir)
+      before.append([event])
+      before.takesStay = { takes }
+      let body = try XCTUnwrap(before.backgroundBody())
+      let description = BackgroundSync.describe(SyncUploadTag(accountId: "s.1", events: body.events))
+      let tag = try XCTUnwrap(BackgroundSync.tag(description, as: SyncUploadTag.self))
+      let after = outbox(dir)
+      after.takesStay = { !takes }
+      var held: Set<BookRef>?
+      after.onAnswer = { _, books in held = books }
+      after.applyBackground(response, tag: tag)
+      XCTAssertEqual(held, takes ? [event.ref] : [])
+      XCTAssertTrue(after.events.isEmpty)
+    }
+  }
+
+  func testBackgroundAnswersFromAnOlderBuildHaveNoKnownHeldStay() throws {
+    let o = outbox()
+    o.append([listen("a", start: .stay)])
+    o.takesStay = { true }
+    let tag = try XCTUnwrap(BackgroundSync.tag(#"{"accountId":"s.1","ids":["a"]}"#, as: SyncUploadTag.self))
+    var held: Set<BookRef>?
+    o.onAnswer = { _, books in held = books }
+    o.applyBackground(SyncResponse(results: [SyncResult(id: "a", status: "diverged", kept: "stored")]), tag: tag)
+    XCTAssertEqual(held, [])
+    XCTAssertTrue(o.events.isEmpty)
   }
 
   func testAcknowledgesTheRowAnUnfinishHandsThisDevice() async {
@@ -580,7 +637,8 @@ final class OutboxTests: XCTestCase {
     XCTAssertEqual(body?.clockOffset, 12.5)
     XCTAssertEqual(body?.events.map(\.id), ["b", "c"])
     // Its answer, applied on wake; one a foreground send took meanwhile is skipped.
-    o.applyBackground(SyncResponse(serverTime: nil, results: [SyncResult(id: "b", status: "applied"), SyncResult(id: "c", status: "duplicate")], progress: nil), sentIds: ["b", "c", "gone"])
+    let tag = SyncUploadTag(accountId: "a", events: [listen("b"), listen("c"), listen("gone")])
+    o.applyBackground(SyncResponse(serverTime: nil, results: [SyncResult(id: "b", status: "applied"), SyncResult(id: "c", status: "duplicate")], progress: nil), tag: tag)
     XCTAssertTrue(o.events.isEmpty)
     XCTAssertEqual(o.state.clockSkewMs, 12_500, "no skew from a request whose times are unknown")
   }
@@ -593,7 +651,7 @@ final class OutboxTests: XCTestCase {
     await o.flush(via: FakeTransport { _ in throw NoAnswer() })
     XCTAssertTrue(o.lastFlushFailed)
     o.applyBackground(SyncResponse(serverTime: nil, results: [SyncResult(id: "a", status: "applied")], progress: nil),
-                      sentIds: ["a"])
+                      tag: SyncUploadTag(accountId: "a", events: [listen("a")]))
     XCTAssertTrue(o.events.isEmpty)
     XCTAssertFalse(o.lastFlushFailed)
     o.append([listen("b")])

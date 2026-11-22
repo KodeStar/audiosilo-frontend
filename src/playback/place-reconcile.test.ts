@@ -42,6 +42,7 @@ const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<Initia
   kind: 'empty',
 }));
 let mockMirror: ProgressSave | null = null;
+let mockSkew = 0;
 jest.mock('./progress-sync', () => ({
   saveProgress: (...args: unknown[]) => mockSaveProgress(...args),
   flushQueue: jest.fn(async () => {}),
@@ -49,6 +50,9 @@ jest.mock('./progress-sync', () => ({
   getDeviceId: jest.fn(async () => 'this-device'),
   loadInitialProgress: (...a: unknown[]) => mockLoadInitialProgress(...a),
   readMirror: jest.fn(async () => mockMirror),
+  knownSkew: async () => mockSkew,
+  localTimeOf: jest.requireActual('./progress-sync').localTimeOf,
+  serverTimeOf: jest.requireActual('./progress-sync').serverTimeOf,
   ackVersion: (...a: unknown[]) => mockAckVersion(...a),
   answerOffer: async (
     cid: string,
@@ -142,7 +146,11 @@ jest.mock('@/api/reachability', () => ({
 }));
 
 const mockToast = jest.fn();
-jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
+const mockDismissToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({
+  toast: (o: unknown) => mockToast(o),
+  dismissToast: (id: number) => mockDismissToast(id),
+}));
 jest.mock('@/lib/when-active', () => ({
   ...jest.requireActual('@/lib/when-active'),
   whenActive: (fn: () => void) => {
@@ -169,6 +177,7 @@ import {
   startPlaceReconcile,
 } from './place-reconcile';
 import {
+  cutListeningSpanNow,
   LONG_PAUSE_MS,
   PICK_UP_WAIT_MS,
   selectBookPosition,
@@ -277,6 +286,7 @@ beforeEach(() => {
   useSettings.setState({ autoDownloadNext: 'never' });
   usePlayer.setState({ nowPlaying: null, snapshot: snap('idle', 0), rate: 1 });
   mockMirror = null;
+  mockSkew = 0;
   mockEngineBook = null;
   mockReachable = true;
   // The other device played on to 400 s after this one paused.
@@ -345,6 +355,33 @@ describe('placeToMoveTo', () => {
     expect(placeToMoveTo({ ...base, server: null })).toBeNull();
     expect(placeToMoveTo({ ...base, server: record({ device_id: '' }) })).toBeNull();
   });
+
+  it('corrects both sides when the mirror holds a server row on a late lookup', () => {
+    const mirror = { ...mirrorAt('2026-10-08T09:59:55Z'), server_clock: true as const };
+    expect(
+      placeToMoveTo({
+        ...base,
+        server: record({ device_id: '' }),
+        mirror,
+        late: true,
+        skewMs: 20_000,
+      }),
+    ).toBe(400);
+  });
+
+  it.each([
+    [20_000, '2026-10-08T09:59:45Z', []],
+    [-20_000, '2026-10-08T10:00:15Z', [400]],
+  ] as const)(
+    'reconciles the loaded book with a server skew of %i ms',
+    async (skew, captured, expected) => {
+      await loadedAndPaused();
+      mockMirror = mirrorAt(captured);
+      mockSkew = skew;
+      await reconcileLoadedPlace('foreground');
+      expect(seeks()).toEqual(expected);
+    },
+  );
 
   // FE-ANDROID-3: a record with no device id (a progress edit, an import, a PUT that named
   // none) is no listening device's, but a late place stands in for the start's own resume
@@ -1361,20 +1398,26 @@ describe('on a server with listening_sync', () => {
     // Every batch held: the paused play's span may go in one of its own first.
     const applied = mockClient.syncListening.getMockImplementation();
     afterEach(() => mockClient.syncListening.mockImplementation(applied));
-    const heldAnswer = (device: string) =>
-      mockClient.syncListening.mockImplementation(async (body: { events: { id: string }[] }) => ({
-        server_time: '',
-        results: body.events.map((e) => ({ id: e.id, status: 'diverged', kept: 'stored' })),
-        progress: [
-          record({
-            device_id: device,
-            device_name: 'Phone B',
-            position: 720,
-            version: 9,
-            updated_at: '2026-10-08T11:59:50Z',
-          }),
-        ],
-      }));
+    const heldAnswer = (device: string, unseen = false) =>
+      mockClient.syncListening.mockImplementation(
+        async (body: { events: { id: string; start?: string }[] }) => ({
+          server_time: '',
+          results: body.events.map((e) =>
+            unseen && (e.start === 'resume' || e.start === 'continue')
+              ? { id: e.id, status: 'not_applied', reason: 'resume_behind' }
+              : { id: e.id, status: 'diverged', kept: 'stored' },
+          ),
+          progress: [
+            record({
+              device_id: device,
+              device_name: 'Phone B',
+              position: 720,
+              version: 9,
+              updated_at: '2026-10-08T11:59:50Z',
+            }),
+          ],
+        }),
+      );
     const stayOnOffer = async (device: string) => {
       await loadedAndPaused();
       mockServer = async () =>
@@ -1398,6 +1441,50 @@ describe('on a server with listening_sync', () => {
       for (let i = 0; i < 10; i++) await settle();
       return sentEvents().map((e) => e.start);
     };
+
+    it('offers the same held row after a new play or move, with no repeat on ordinary save ticks', async () => {
+      await loadedAndPaused();
+      const device = 'held-listen';
+      heldAnswer(device, true);
+      const cut = async (position: number) => {
+        jest.setSystemTime(Date.now() + 3000);
+        pushSnapshot(snap('playing', position));
+        cutListeningSpanNow();
+        for (let i = 0; i < 12; i++) await settle();
+      };
+      // The server holds the base-0 jump as diverged, then its resume and continue
+      // spans as resume_behind. Its kept row keeps the very same key throughout.
+      await usePlayer.getState().seekBook(150);
+      for (let i = 0; i < 12; i++) await settle();
+      expect(mockToast).toHaveBeenCalledTimes(1);
+      const key = device + '|2026-10-08T11:59:50Z';
+      mockIgnoreOffer.mockImplementationOnce(async () => {
+        mockMirror = { ...mockMirror!, ignored: [key] };
+      });
+      lastToast().onTimeout();
+      jest.setSystemTime(Date.now() + 1000);
+      pushSnapshot(snap('playing', 150));
+      await cut(153);
+      expect(mockToast).toHaveBeenCalledTimes(2);
+      await cut(156);
+      expect(mockToast).toHaveBeenCalledTimes(2);
+      mockToast.mockReturnValueOnce(73);
+      await usePlayer.getState().seekBook(200);
+      await cut(203);
+      expect(mockToast).toHaveBeenCalledTimes(3);
+      pushSnapshot(snap('paused', 203));
+      jest.setSystemTime(Date.now() + 1000);
+      pushSnapshot(snap('playing', 203));
+      await cut(206);
+      expect(mockToast).toHaveBeenCalledTimes(4);
+      expect(mockDismissToast).toHaveBeenCalledWith(73);
+
+      // An explicit answer, including one made on the book page, still stands.
+      mockMirror = { ...mockMirror!, answered: [key] };
+      await usePlayer.getState().seekBook(300);
+      await cut(303);
+      expect(mockToast).toHaveBeenCalledTimes(4);
+    });
 
     it('offers the place the other Stay kept at once', async () => {
       stayServer(true);

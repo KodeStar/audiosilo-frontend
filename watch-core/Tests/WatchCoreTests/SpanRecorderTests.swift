@@ -265,6 +265,22 @@ final class SpanRecorderTests: XCTestCase {
     XCTAssertEqual(r.span?.start, .jump)
   }
 
+  func testAPlayingStayAndCutEachReplaceTheStoredSpanInOneWrite() {
+    let r = recorder()
+    r.open(book, at: at(5), speed: 1)
+    store.saves.removeAll()
+    clock.advance(4)
+    r.standBy(book, at: at(9), playing: true, speed: 1, stay: true)
+    XCTAssertEqual(store.saves.map { $0?.start }, [.jump])
+    store.saves.removeAll()
+    clock.advance(15)
+    r.cut(book, at: at(24), playing: true, speed: 1)
+    XCTAssertEqual(store.saves.map { $0?.start }, [.continue])
+    store.saves.removeAll()
+    r.cut(book, at: at(24), playing: false, speed: 1)
+    XCTAssertEqual(store.saves.map { $0?.start }, [nil])
+  }
+
   // Stay wins (row 9c-2): on a `listening_stay` server a Stay made while playing goes at once as
   // a `stay` span that moved nowhere, on the version answered (waiting for the next cut let the
   // other device's answers offer this place from before it); the play goes on from there as a
