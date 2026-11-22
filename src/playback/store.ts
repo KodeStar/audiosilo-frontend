@@ -5717,7 +5717,8 @@ type Landing = { index: number; positionInTrack: number; beyond: boolean };
  * an earlier file's length is not known (a streamed book whose files were renamed since it
  * loaded, a download whose server can't be asked), the seconds can't be read: the engine's
  * file index, at the same place in the file, within that file's length (fe#185), and short of
- * the queue's end too. */
+ * the queue's end too; where that index shares its start with earlier files, the first of
+ * them (`locate`, fe#348). */
 export function landingOf(
   queue: Pick<BookQueue, 'tracks' | 'offsets' | 'total'>,
   engineIds: string[],
@@ -5741,10 +5742,7 @@ export function landingOf(
       // That index can be another file, shorter than the place in the engine's.
       const length = queue.tracks[index]?.duration ?? 0;
       const positionInTrack = length > 0 ? Math.min(inFile, length) : inFile;
-      const known = queue.offsets[index] !== undefined;
-      return known
-        ? shortOfEnd(toBookPosition(queue.offsets, index, positionInTrack))
-        : { index, positionInTrack, beyond: false };
+      return shortOfEnd(toBookPosition(queue.offsets, index, positionInTrack));
     }
     seconds += duration;
   }
