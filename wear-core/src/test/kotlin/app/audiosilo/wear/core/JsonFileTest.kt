@@ -484,8 +484,7 @@ class DurableRateTest {
   }
 
   // The book's end keeps its last span and its `finish` in one append: a kill right after it finds
-  // both in the outbox, so the place the launch recovers (the book's end, from the span's event)
-  // never stands there without the finish.
+  // both in the outbox. The finish keeps the span left on disk from restoring its place.
   @Test
   fun aKillInsideTheBooksLastCloseKeepsItsFinish() {
     val first = Launch()
@@ -498,7 +497,7 @@ class DurableRateTest {
     assertEquals("the span file still holds the last keep", 3595.0, fileSpanStore(dir).load()!!.to.pos, 0.0)
     val next = Launch()
     next.recover()
-    assertEquals(3600.0, next.places.place(ref)!!.position, 0.0)
+    assertNull(next.places.place(ref))
     assertEquals(listOf("e1"), next.outbox.events.filterIsInstance<SpanEvent>().map { it.id })
     assertEquals(listOf("finish"), next.outbox.events.filterIsInstance<FinishEvent>().map { it.kind })
   }

@@ -326,7 +326,7 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
 
   /**
    * The place an open span a kill left carries (`SpanRecorder.recover`), over the saved one. Its
-   * newest end is its own event's when `events` (the outbox) holds it: the kill came after the close
+   * newest end is its own event's when `closed` is already in the outbox: the kill came after the close
    * kept the event and before the span file changed (a cut's next span, a pause's removal); else
    * its last keep. Taken only when that is a place heard: it moved a second or more from where the
    * span opened (`Spans.EMPTY_SPAN`, so a player settling a hair off the place it was given is no
@@ -338,29 +338,25 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
    * seek), so the span the kill left is the newer, and a wall clock set back since would hide it.
    */
   @Synchronized
-  fun recover(span: OpenSpan, events: List<ListeningEvent> = emptyList()) {
-    val closed = events.firstOrNull { it.id == span.id } as? SpanEvent
+  fun recover(span: OpenSpan, closed: SpanEvent? = null, accepts: (LocalPlace) -> Boolean = { true }) {
     val to = closed?.let { SpanEnd(it.toPos, it.toFile, it.toFilePos) } ?: span.to
     val at = closed?.let { ISOTime.parse(it.endedAt) } ?: span.endedAt
     if (!span.fromHeard && abs(to.pos - span.from.pos) < Spans.EMPTY_SPAN) return
-    set(span.ref, LocalPlace.of(to, at, span.speed))
+    val place = LocalPlace.of(to, at, span.speed)
+    if (accepts(place)) set(span.ref, place)
   }
 
   /**
    * A cut can reach the outbox or the server before its place lands. Newer local seeks stand.
-   * Among `cuts` the last heard one per book is taken, in the order given (the outbox's, the order
-   * they happened): a wall clock set back between two of them must not pick the older.
+   * The outbox has already merged its queue with the account's sent places and markers.
    */
   @Synchronized
-  fun recoverCuts(cuts: List<SpanEvent>) {
-    val last = LinkedHashMap<String, SpanEvent>()
-    for (cut in cuts) if (cut.heardPlace && cut.time != null) last[cut.ref.key] = cut
+  internal fun recoverCuts(cuts: Map<String, SentPlace>) {
     val updated = places.toMutableMap()
-    for ((key, cut) in last) {
-      val at = cut.time ?: continue
+    for ((key, cut) in cuts) {
+      if (cut !is SentPlace.Heard) continue
       val previous = updated[key]
-      if (previous != null && previous.at >= at) continue
-      updated[key] = LocalPlace(cut.toPos, cut.toFile, cut.toFilePos, at, cut.playbackSpeed ?: 1.0)
+      if (previous == null || cut.place.at > previous.at) updated[key] = cut.place
     }
     if (updated != places) {
       places = updated

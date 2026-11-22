@@ -22,7 +22,6 @@
 package app.audiosilo.wear.core
 
 import java.io.File
-import java.io.IOException
 import java.time.Instant
 import kotlin.math.max
 import kotlinx.coroutines.CompletableDeferred
@@ -44,10 +43,6 @@ data class SyncState(
   val clockSkewMs: Double? = null,
 )
 
-/** When filesDir is unwritable, noBackupFilesDir can still keep a place before its POST. */
-@Serializable
-private data class SentPlaces(val account: String, val cuts: List<SpanEvent>)
-
 /**
  * Sends one batch: the ApiClient in the app, a fake in the tests. Throws `APIError` for a server's
  * own answer, anything else for no answer.
@@ -67,81 +62,122 @@ class Outbox(
    */
   private val writer: DurableWriter? = null,
   sentPlacesFile: File? = null,
-  private val accountId: () -> String? = { null },
   private val clock: () -> Instant = Instant::now,
 ) {
   private val lock = Any()
   private val eventsFile = directory?.let { JsonFile(File(it, "outbox.json"), EVENTS, durable = true, writer = writer) }
   private val stateFile = directory?.let { JsonFile(File(it, "sync-state.json"), SyncState.serializer(), writer = writer) }
-  private val sentFile = sentPlacesFile?.let { JsonFile(it, SentPlaces.serializer(), durable = true) }
-  private val checkpointLock = Any()
-  @Volatile private var checkpointGeneration = 0L
-  private var checkpointToRetire = false
+  // The alternate directory must still accept a cut or removal while the normal writer is stuck.
+  private val sentWriter = if (sentPlacesFile != null && writer != null) DurableWriter() else null
+  private val sentFile = sentPlacesFile?.let { JsonFile(it, SentPlaces.serializer(), durable = true, writer = sentWriter) }
+  private var sentPlaces = sentFile?.read()?.upgraded()
+  private var sentWriteFailed = false
+  private var placeAccount: String? = null
+  private var queueWriteAccepted = true
 
-  /** The files it keeps (signing out forgets their writes: `DurableWriter.forget`). */
+  /** The files it keeps (signing out forgets their writes). */
   val files: List<File>
     get() = listOfNotNull(eventsFile?.file, stateFile?.file, sentFile?.file)
 
-  /** Restore the listener's place and close a span left open before a launch can send anything. */
+  /** Restore the account's cuts before its open span leaves disk or a worker can send listening. */
   fun recoverListening(account: String, places: PlaceStore, spans: SpanRecorder) {
-    val queued = events
-    places.recoverCuts(queued.filterIsInstance<SpanEvent>())
-    // An open span was written after older queued cuts, even across a wall clock change.
-    // Its own closed event, when present, carries its final end.
-    spans.recover { left -> places.recover(left, queued) }
     synchronized(lock) {
-      val checkpoint = sentFile?.read()?.takeIf { it.account == account }
-      if (checkpoint != null) {
-        places.recoverCuts(checkpoint.cuts)
-        removeCheckpoint()
-      }
-    }
-  }
-
-  private fun removeCheckpoint() {
-    val file = sentFile ?: return
-    // Ordered after the places just restored, or the account's forget. A fresh fallback must
-    // survive a removal that waited behind a failed write.
-    checkpointGeneration++
-    checkpointToRetire = false
-    val generation = checkpointGeneration
-    val remove = { synchronized(checkpointLock) { generation != checkpointGeneration || file.write(null) } }
-    if (writer != null) writer.submit(JsonFile.writerKey(file.file), remove) else remove()
-  }
-
-  /**
-   * Usually the queued outbox write already protects this cut. If it failed, keep the newest
-   * cut per book in the alternate directory before sending. A kill can lose even the HTTP
-   * answer. When both directories are full the events are sent anyway: the server is then the
-   * only copy a kill cannot lose.
-   */
-  private suspend fun protectPlaces(sent: List<ListeningEvent>, generation: Int) {
-    val file = sentFile ?: return
-    // The rule recoverCuts reads them by: a newer empty resume must not hide a heard cut.
-    val cuts = sent.filterIsInstance<SpanEvent>().filter { it.heardPlace }
-    if (cuts.isEmpty()) return
-    withContext(Dispatchers.IO) {
-      val landed = writer?.drain() == true
-      val (account, ticket) = synchronized(lock) {
-        // The account left: sendChunk stops on the same check.
-        if (generation != discards) return@withContext
-        if (landed && !stuck) {
-          if (checkpointToRetire) removeCheckpoint()
-          return@withContext
+      if (placeAccount == account) return
+      val queued = events
+      val cuts = SentPlace.lastIn(queued)
+      val kept = sentPlaces?.takeIf { it.account == account }?.books.orEmpty()
+      val restored = kept.toMutableMap()
+      for ((key, cut) in cuts) restored.merge(key, cut, SentPlace::newer)
+      places.recoverCuts(restored)
+      var carried: Pair<String, SentPlace.Heard>? = null
+      spans.recover { left ->
+        val key = left.ref.key
+        val previous = restored[key]
+        val closed = queued.firstOrNull { it.id == left.id } as? SpanEvent
+        // The queue already accounts for this span before its finish, even if the clock went back.
+        if (closed != null && cuts[key] is SentPlace.Finished) return@recover
+        places.recover(left, closed) { place ->
+          // A cut's still-open successor is later in write order, even across a clock change.
+          // An independent sent cut may be newer if the old span's removal failed.
+          val followsQueue = closed == null && left.fromHeard && previous is SentPlace.Heard && previous == cuts[key]
+          val heard = SentPlace.Heard(place)
+          val accepted = followsQueue || previous == null || previous.newer(heard) == heard
+          if (accepted) carried = key to heard
+          accepted
         }
-        checkpointToRetire = true
-        (accountId() ?: throw IOException("Signed out before sync")) to ++checkpointGeneration
       }
-      // Only the sync thread and the writer touch this lock. Appending a cut on the player
-      // thread can proceed while the fallback syncs its bytes.
-      synchronized(checkpointLock) {
-        if (ticket != checkpointGeneration) return@withContext
-        // An unreadable fallback is replaced by these cuts. A refused write still sends them.
-        val kept = (file.load() as? JsonLoad.Value)?.value?.takeIf { it.account == account }?.cuts.orEmpty()
-        val latest = (kept + cuts).groupBy { it.ref }.values.map { book -> book.maxBy { it.time ?: Instant.MIN } }
-        file.write(SentPlaces(account, latest))
+      for ((key, cut) in SentPlace.lastIn(events.drop(queued.size))) {
+        val open = carried
+        if (open != null && open.first == key) {
+          // The wire event clamps its end to its start. Keep the time actually heard if the clock went back.
+          restored[key] = open.second
+        } else {
+          // A bare move can emit a heard cut without carrying a five-second place.
+          val latest = restored.merge(key, cut, SentPlace::newer) ?: continue
+          places.recoverCuts(mapOf(key to latest))
+        }
       }
+      placeAccount = account
+      if (sentPlaces == null || sentPlaces?.account == account) savePlacesLocked(SentPlaces(account, restored))
     }
+  }
+
+  /** Called after the player closes the book's last span and removes its saved place. */
+  fun forgetPlace(ref: BookRef) {
+    synchronized(lock) {
+      val owner = placeAccount ?: return
+      val kept = sentPlaces?.takeIf { it.account == owner } ?: SentPlaces(owner)
+      savePlacesLocked(kept.copy(books = kept.books + (ref.key to SentPlace.Removed)))
+    }
+    // A kill after the download is removed must see the marker, even with the normal writer stuck.
+    sentWriter?.drain()
+  }
+
+  /** Only fresh queue entries replace a marker. An upload retry never records its chunk again. */
+  private fun recordPlacesLocked(add: List<ListeningEvent>) {
+    val account = placeAccount ?: return
+    val cuts = SentPlace.lastIn(add)
+    if (cuts.isEmpty()) return
+    val kept = sentPlaces?.takeIf { it.account == account } ?: SentPlaces(account)
+    savePlacesLocked(kept.copy(books = kept.books + cuts))
+  }
+
+  private fun writePlacesLocked(kept: SentPlaces) {
+    if (kept == sentPlaces && !sentWriteFailed) return
+    sentPlaces = kept
+    sentWriteFailed = sentFile?.write(kept) == false
+  }
+
+  private fun savePlacesLocked(kept: SentPlaces) {
+    if (kept.books.values.all { it is SentPlace.Heard }) {
+      writePlacesLocked(kept)
+      return
+    }
+    val books = kept.books.toMutableMap()
+    val waiting = mutableSetOf<String>()
+    val queued = events
+    for (event in queued) {
+      if (event !is SpanEvent || !event.heardPlace) continue
+      val key = event.ref.key
+      waiting += key
+      val finish = books[key] as? SentPlace.Finished ?: continue
+      val at = event.time ?: continue
+      if (at > finish.through) books[key] = SentPlace.Finished(at)
+    }
+    val marked = kept.copy(books = books)
+    writePlacesLocked(marked)
+    if (stuck || !queueWriteAccepted) return
+    val needed = books.filter { (key, value) -> value is SentPlace.Heard || key in waiting }
+    if (needed.size == books.size) return
+    // A failed queue write leaves its old cuts on disk. Retire the marker only after this
+    // queue has landed, and only if neither the queue nor its resume record changed meanwhile.
+    val prune = {
+      synchronized(lock) {
+        if (events === queued && sentPlaces == marked) writePlacesLocked(marked.copy(books = needed))
+      }
+      true
+    }
+    if (writer == null || sentFile == null) prune() else writer.submit(JsonFile.writerKey(sentFile.file), prune)
   }
 
   /**
@@ -238,7 +274,7 @@ class Outbox(
         events = kept + events.filter { it.id !in have }
       }
     }
-    if (!stuck) file.save(events)
+    if (!stuck) queueWriteAccepted = file.save(events)
   }
 
   /**
@@ -252,6 +288,7 @@ class Outbox(
       if (add.isEmpty()) return
       events = events + add
       saveEventsLocked()
+      recordPlacesLocked(add)
     }
     onChange?.invoke()
   }
@@ -294,7 +331,16 @@ class Outbox(
       stuck = false
       saveEventsLocked()
       stateFile?.write(null)
-      removeCheckpoint()
+      placeAccount = null
+      sentPlaces = null
+      sentWriteFailed = false
+      sentFile?.let { file ->
+        val key = JsonFile.writerKey(file.file)
+        sentWriter?.forget(listOf(key))
+        file.write(null)
+        // Account replacement waits on the normal writer for this removal too.
+        if (sentWriter != null) writer?.submit(key) { sentWriter.drain() }
+      }
     }
     onChange?.invoke()
   }
@@ -319,7 +365,10 @@ class Outbox(
     if (ids.isEmpty()) return
     val before = events.size
     events = events.filter { it.id !in ids }
-    if (events.size != before) saveEventsLocked()
+    if (events.size != before) {
+      saveEventsLocked()
+      sentPlaces?.takeIf { it.account == placeAccount }?.let(::savePlacesLocked)
+    }
   }
 
   /**
@@ -412,7 +461,12 @@ class Outbox(
   /** `sentBefore`: the `discards` the chunk was taken under (`flushOnce`). */
   private suspend fun sendChunk(chunk: List<ListeningEvent>, transport: ListeningSyncTransport, sentBefore: Int): Next {
     try {
-      protectPlaces(chunk, sentBefore)
+      if (sentFile != null) withContext(Dispatchers.IO) {
+        // Either directory can protect listening before its POST. A full disk in both still
+        // sends the real event to the server. Each drain returns after the first failed try.
+        writer?.drain()
+        sentWriter?.drain()
+      }
       if (sentBefore != discardsNow()) return Next.STOP
       val sentAt = clock()
       val answer = transport.syncListening(body(chunk))

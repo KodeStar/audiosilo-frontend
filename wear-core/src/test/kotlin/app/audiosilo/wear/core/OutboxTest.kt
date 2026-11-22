@@ -17,7 +17,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Assume.assumeFalse
 import org.junit.Before
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 
 class OutboxTest {
   private lateinit var clock: TestClock
@@ -35,6 +37,135 @@ class OutboxTest {
 
   private fun failures(o: Outbox) = o.couldNotSync().map { listOf(it.event.id, it.reason) }
 
+  private fun restore(
+    box: Outbox,
+    account: String = "a",
+    places: PlaceStore = PlaceStore(null),
+    store: MemorySpanStore = MemorySpanStore(),
+  ): PlaceStore {
+    box.recoverListening(account, places, SpanRecorder(store, acks, emit = box::append))
+    return places
+  }
+
+  @get:Rule val folder = TemporaryFolder()
+
+  private val sentFile get() = File(folder.root, "no_backup/sent-places.json")
+
+  private fun launch(writer: DurableWriter? = null) =
+    Outbox(folder.root, acks, DEVICE_ID, writer, sentFile) { clock.now }
+
+  private fun sentBooks() = JsonFile(sentFile, SentPlaces.serializer()).read()!!.books
+
+  @Test
+  fun removingABookForgetsOnlyItsPlaceUntilItsListeningIsAnswered() = runBlocking {
+    val old = listen("old")
+    val other = listen("keep", path = "Another book")
+    val first = launch()
+    restore(first)
+    first.append(listOf(old, other))
+    first.forgetPlace(ref)
+
+    val next = launch()
+    val places = restore(next)
+    assertNull(places.place(ref))
+    assertEquals(16800.0, places.place(other.ref)!!.position, 0.0)
+    val server = FakeTransport()
+    next.flush(server)
+    assertEquals(listOf(old, other), server.bodies.single().events)
+    assertEquals(setOf(other.ref.key), sentBooks().keys)
+    next.discardAll()
+    assertFalse(sentFile.exists())
+    assertNull(restore(launch()).place(other.ref))
+  }
+
+  @Test
+  fun onlyFreshHearingReplacesARemovalEvenIfTheOldCutIsAnsweredLate() {
+    val box = launch()
+    restore(box)
+    val old = listen("old") as SpanEvent
+    box.append(listOf(old))
+    box.forgetPlace(ref)
+    val empty = old.copy(id = "loaded", fromPos = 100.0, toPos = 100.2)
+    val unfinish = FinishEvent("unfinish", "unfinish", ref.libraryId, ref.path, old.endedAt)
+    box.append(listOf(unfinish, empty))
+    assertNull(restore(launch()).place(ref))
+
+    // A deliberate move on the new download counts, even with the clock set back.
+    val move = old.copy(id = "move", start = ListeningStart.MOVED_BACK, fromPos = 40.0, toPos = 40.0,
+      endedAt = "2026-10-25T07:30:00Z")
+    box.append(listOf(move))
+    box.apply(SyncResponse(results = listOf(SyncResult(old.id, "applied"))), listOf(old), null, null)
+    val next = launch()
+    assertEquals(listOf(unfinish, empty, move), next.events)
+    assertEquals(40.0, restore(next).place(ref)!!.position, 0.0)
+  }
+
+  @Test
+  fun aFinishAnsweredFirstStillCoversTheOlderCutAfterAClockChange() = runBlocking {
+    val old = listen("old", endedAt = "2026-10-25T07:35:00Z")
+    val other = listen("other", path = "Another book")
+    val finish = FinishEvent("finish", "finish", ref.libraryId, ref.path, "2026-10-25T07:34:00Z")
+    val first = launch()
+    restore(first)
+    first.append(listOf(old, other, finish))
+    first.apply(SyncResponse(results = listOf(SyncResult(finish.id, "applied"))), listOf(finish), null, null)
+
+    val next = launch()
+    val places = restore(next)
+    assertNull(places.place(ref))
+    assertEquals(16800.0, places.place(other.ref)!!.position, 0.0)
+    assertEquals(listOf(old, other), next.events)
+    next.flush(FakeTransport())
+    assertEquals(setOf(other.ref.key), sentBooks().keys)
+
+    val replay = (listen("replay", endedAt = "2026-10-25T07:40:00Z", start = ListeningStart.RESTART) as SpanEvent)
+      .copy(fromPos = 0.0, toPos = 15.0)
+    next.append(listOf(replay))
+    next.flush(FakeTransport())
+    assertEquals(15.0, restore(launch()).place(ref)!!.position, 0.0)
+  }
+
+  @Test
+  fun aFailedQueueWriteKeepsTheMarkerOverTheLastQueueOnDisk() = runBlocking {
+    val old = listen("old")
+    val other = listen("keep", path = "Another book")
+    val writer = DurableWriter(retryAfter = { _, _ -> })
+    val first = launch(writer)
+    restore(first)
+    first.append(listOf(old, other))
+    assertTrue(writer.drain())
+    // Hold the ordinary writer before the upload answer can rewrite the outbox.
+    writer.submit { false }
+    assertFalse(writer.drain())
+    first.forgetPlace(ref)
+    val server = FakeTransport()
+    first.flush(server)
+    assertEquals(listOf(old, other), server.bodies.single().events)
+    assertTrue(first.events.isEmpty())
+
+    val next = launch()
+    val places = restore(next)
+    assertEquals(listOf(old, other), next.events)
+    assertNull(places.place(ref))
+    assertEquals(16800.0, places.place(other.ref)!!.position, 0.0)
+    next.flush(FakeTransport())
+    assertEquals(setOf(other.ref.key), sentBooks().keys)
+  }
+
+  @Test
+  fun aLegacyCutsOnlyCheckpointMergesWithTheQueuedFinishForItsAccount() {
+    val old = listen("old") as SpanEvent
+    val other = old.copy(id = "other", path = "Another book")
+    sentFile.parentFile.mkdirs()
+    sentFile.writeText("""{"account":"a","cuts":[${Wire.json.encodeToString(old)},${Wire.json.encodeToString(other)}]}""")
+    val finish = FinishEvent("end", "finish", ref.libraryId, ref.path, old.endedAt)
+    outbox(folder.root).append(listOf(finish))
+    assertNull(restore(launch(), "b").place(other.ref))
+    val restored = restore(launch())
+    assertNull(restored.place(ref))
+    assertEquals(other.toPos, restored.place(other.ref)!!.position, 0.0)
+  }
+
   @Test
   fun anOfflineRelaunchRecoversASentCutThatNeverReachedTheListeningFiles() = runBlocking {
     val dir = tempDir()
@@ -42,29 +173,28 @@ class OutboxTest {
       val cut = (listen("cut") as SpanEvent).copy(fromPos = 625.48, toPos = 640.73)
       val normal = File(dir, "files").apply { writeText("unwritable directory") }
       val fallback = File(dir, "no_backup/sent-places.json")
-      fun open(account: String) =
-        Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback, { account }) { clock.now }
-      val first = open("a")
+      fun open() =
+        Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback) { clock.now }
+      val first = open()
+      restore(first)
       first.append(listOf(cut))
       val server = FakeTransport()
       first.flush(server)
       assertEquals(listOf(cut), server.bodies.single().events)
       assertTrue(first.events.isEmpty())
 
-      val otherPlaces = PlaceStore(null)
-      fun spans(box: Outbox) = SpanRecorder(MemorySpanStore(), acks, emit = box::append)
-      open("b").let { it.recoverListening("b", otherPlaces, spans(it)) }
-      assertNull(otherPlaces.place(ref))
+      assertNull(restore(open(), "b").place(ref))
 
-      // The old open span was recovered and sent again under its original id. Its duplicate
-      // does not replace the newer checkpoint, even when the launch has no network afterwards.
-      val second = open("a")
-      val old = cut.copy(id = "old", toPos = 571.945, endedAt = "2026-10-25T07:32:00Z")
-      second.append(listOf(old))
+      // The old open span is sent again under its original id. Its duplicate cannot replace
+      // the newer checkpoint, even when the launch has no network afterwards.
+      val second = open()
+      val oldAt = iso("2026-10-25T07:32:00Z")
+      val old = OpenSpan(ref.libraryId, ref.path, SpanEnd(550.0, null, null), SpanEnd(571.945, null, null), 1800.0, 1.0,
+        oldAt.minusSeconds(20), oldAt, ListeningStart.RESUME, 25, "old")
+      val store = MemorySpanStore().apply { save(old) }
+      restore(second, store = store)
       second.flush(FakeTransport { answer(it, status = { e -> SyncResult(e.id, "duplicate") }) })
-      val places = PlaceStore(null)
-      places.set(ref, LocalPlace(old.toPos, at = old.time!!))
-      second.recoverListening("a", places, spans(second))
+      val places = restore(open())
       assertEquals(640.73, Resume.plan(places.place(ref), null, DEVICE_ID, 25, 1800.0).position, 0.0)
     } finally {
       dir.deleteRecursively()
@@ -77,11 +207,12 @@ class OutboxTest {
     try {
       val normal = File(dir, "files").apply { writeText("unwritable directory") }
       val fallback = File(dir, "no_backup/sent-places.json")
-      fun open() = Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback, { "a" }) { clock.now }
+      fun open() = Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }), fallback) { clock.now }
       val heard = (listen("heard", endedAt = "2026-10-25T07:30:00Z") as SpanEvent).copy(fromPos = 625.48, toPos = 640.73)
       // The next play opened at a place loaded from another device and stopped before it moved.
       val unmoved = (listen("unmoved", endedAt = "2026-10-25T07:40:00Z") as SpanEvent).copy(fromPos = 100.0, toPos = 100.0)
       val box = open()
+      restore(box)
       box.append(listOf(heard))
       box.flush(FakeTransport())
       box.append(listOf(unmoved))
@@ -102,7 +233,8 @@ class OutboxTest {
       val normal = File(dir, "files").apply { writeText("") }
       val fallback = File(dir, "no_backup").apply { writeText("") }
       val o = Outbox(normal, acks, DEVICE_ID, DurableWriter(retryAfter = { _, _ -> }),
-        File(fallback, "sent-places.json"), { "a" }) { clock.now }
+        File(fallback, "sent-places.json")) { clock.now }
+      restore(o)
       val cut = listen("a")
       o.append(listOf(cut))
       val server = FakeTransport()
