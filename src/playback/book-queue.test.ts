@@ -521,7 +521,9 @@ describe('timeline math', () => {
                 locate(q.offsets, bookPosition, track);
               landed = [to.index, to.positionInTrack];
             },
-            seekInTrack: () => undefined,
+            seekInTrack: (pos) => {
+              landed = [track, pos];
+            },
             goToTrack: (index) => {
               landed = [index, 0];
             },

@@ -218,8 +218,12 @@ describe('stepSegment', () => {
     expect(startOfC.seekBook).toHaveBeenCalledWith(120, { path: 'b', pos: 120 });
     const startOfA = make(tied, 0, 2); // the book's start is the first file's, not b's
     stepSegment(startOfA, -1);
-    expect(startOfA.goToTrack).toHaveBeenCalledWith(0);
+    expect(startOfA.seekInTrack).toHaveBeenCalledWith(0); // a seek in the playing file
+    expect(startOfA.goToTrack).not.toHaveBeenCalled();
     expect(startOfA.seekBook).not.toHaveBeenCalled();
+    const startOfBookFromB = make({ ...tied, chapters: tied.chapters.slice(2) }, 1, 1);
+    stepSegment(startOfBookFromB, -1); // b's first chapter is the first: the book's start
+    expect(startOfBookFromB.goToTrack).toHaveBeenCalledWith(0);
   });
 
   it('restarts a chapter begun in an earlier tied file', () => {
@@ -232,7 +236,8 @@ describe('stepSegment', () => {
     const shared = { total: 400, offsets: [0, 0, 60], chapters: [] };
     const restart = make(shared, 1, 10);
     stepSegment(restart, -1);
-    expect(restart.goToTrack).toHaveBeenCalledWith(1);
+    expect(restart.seekInTrack).toHaveBeenCalledWith(0);
+    expect(restart.goToTrack).not.toHaveBeenCalled();
     const back = make(shared, 1, 2);
     stepSegment(back, -1);
     expect(back.goToTrack).toHaveBeenCalledWith(0);

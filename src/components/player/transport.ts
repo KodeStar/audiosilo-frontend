@@ -195,6 +195,8 @@ export function stepSegment(state: StepState, dir: 1 | -1): void {
   // Files sharing a start: whole-book seconds do not order their chapters.
   if (trackIndex < offsets.length && offsets.some((o, i) => o === offsets[i - 1])) {
     const to = stepInFileOrder(queue, trackIndex, position, dir);
+    // The playing file's start is a seek in it, not a reload of the file (`skipToTrack`).
+    if (to?.track === trackIndex) return quietly(state.seekInTrack(0));
     if (to?.track !== undefined) return quietly(state.goToTrack(to.track));
     if (to) quietly(state.seekBook(to.bookPosition, to.file));
     return;
