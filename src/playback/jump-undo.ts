@@ -34,7 +34,9 @@ import { selectBookKey, selectBookPosition, showsFaultPlace, usePlayer } from '.
  *   `paused`, and a jump from there is undone back to it. A failed resume lookup's `error`
  *   at 0 is no such place.
  * - The downloads hot-swap (`switchCurrentBookToLocal`): same book, same position (it keeps
- *   the engine's file order; only a download holding other files can move the place).
+ *   the engine's file order; only a download holding other files can move the place). A
+ *   swap or a Retry onto a queue in another order or with other offsets re-samples from
+ *   scratch and drops a live chip: its whole-book "from" means another place there.
  * - The app coming back after iOS suspended JS: while the previous sample was playing,
  *   anything up to (elapsed wall time x rate) is natural, so an hour of background
  *   listening is an hour of allowance. If JS was not running at all (the heartbeat below
