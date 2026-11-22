@@ -351,13 +351,9 @@ class PlaceStore(file: File?, writer: DurableWriter? = null) {
    * The outbox has already merged its queue with the account's sent places and markers.
    */
   @Synchronized
-  internal fun recoverCuts(cuts: Map<String, SentPlace>) {
+  fun recoverCuts(cuts: Map<String, LocalPlace>) {
     val updated = places.toMutableMap()
-    for ((key, cut) in cuts) {
-      if (cut !is SentPlace.Heard) continue
-      val previous = updated[key]
-      if (previous == null || cut.place.at > previous.at) updated[key] = cut.place
-    }
+    for ((key, cut) in cuts) updated.merge(key, cut) { kept, new -> if (new.at > kept.at) new else kept }
     if (updated != places) {
       places = updated
       file?.write(places)

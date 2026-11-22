@@ -14,10 +14,12 @@ internal sealed interface SentPlace {
   fun newer(other: SentPlace): SentPlace = when {
     this is Removed || other is Removed -> Removed
     this is Finished && other is Finished -> Finished(maxOf(through, other.through))
-    this is Finished && other is Heard -> if (other.place.at > through) other else this
-    this is Heard && other is Finished -> if (place.at > other.through) this else other
-    this is Heard && other is Heard && other.place.at > place.at -> other
-    else -> this
+    this is Heard && other is Heard -> if (other.place.at > place.at) other else this
+    else -> {
+      val heard = this as? Heard ?: other as Heard
+      val end = this as? Finished ?: other as Finished
+      if (heard.place.at > end.through) heard else end
+    }
   }
 
   companion object {
@@ -35,6 +37,10 @@ internal sealed interface SentPlace {
     }
   }
 }
+
+/** Each book's heard place, without the markers. */
+internal fun Map<String, SentPlace>.heardPlaces(): Map<String, LocalPlace> =
+  buildMap { for ((key, kept) in this@heardPlaces) if (kept is SentPlace.Heard) put(key, kept.place) }
 
 @Serializable
 internal data class SentPlaces(

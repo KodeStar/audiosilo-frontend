@@ -85,10 +85,9 @@ class Outbox(
       if (placeAccount == account) return
       val queued = events
       val cuts = SentPlace.lastIn(queued)
-      val kept = sentPlaces?.takeIf { it.account == account }?.books.orEmpty()
-      val restored = kept.toMutableMap()
+      val restored = keptLocked(account).books.toMutableMap()
       for ((key, cut) in cuts) restored.merge(key, cut, SentPlace::newer)
-      places.recoverCuts(restored)
+      places.recoverCuts(restored.heardPlaces())
       var carried: Pair<String, SentPlace.Heard>? = null
       spans.recover { left ->
         val key = left.ref.key
@@ -113,8 +112,9 @@ class Outbox(
           restored[key] = open.second
         } else {
           // A bare move can emit a heard cut without carrying a five-second place.
-          val latest = restored.merge(key, cut, SentPlace::newer) ?: continue
-          places.recoverCuts(mapOf(key to latest))
+          val latest = restored[key]?.newer(cut) ?: cut
+          restored[key] = latest
+          (latest as? SentPlace.Heard)?.let { places.recoverCuts(mapOf(key to it.place)) }
         }
       }
       placeAccount = account
@@ -125,8 +125,7 @@ class Outbox(
   /** Called after the player closes the book's last span and removes its saved place. */
   fun forgetPlace(ref: BookRef) {
     synchronized(lock) {
-      val owner = placeAccount ?: return
-      val kept = sentPlaces?.takeIf { it.account == owner } ?: SentPlaces(owner)
+      val kept = keptLocked(placeAccount ?: return)
       savePlacesLocked(kept.copy(books = kept.books + (ref.key to SentPlace.Removed)))
     }
     // A kill after the download is removed must see the marker, even with the normal writer stuck.
@@ -138,9 +137,12 @@ class Outbox(
     val account = placeAccount ?: return
     val cuts = SentPlace.lastIn(add)
     if (cuts.isEmpty()) return
-    val kept = sentPlaces?.takeIf { it.account == account } ?: SentPlaces(account)
+    val kept = keptLocked(account)
     savePlacesLocked(kept.copy(books = kept.books + cuts))
   }
+
+  /** The account's resume record, or an empty one when the file holds another account's. */
+  private fun keptLocked(account: String) = sentPlaces?.takeIf { it.account == account } ?: SentPlaces(account)
 
   private fun writePlacesLocked(kept: SentPlaces) {
     if (kept == sentPlaces && !sentWriteFailed) return
