@@ -9,11 +9,6 @@ import { expectNativeTarget } from '@/testing/touch-target';
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
-let mockOnline = true;
-jest.mock('@/lib/device-online', () => ({
-  ...jest.requireActual('@/lib/device-online'),
-  useDeviceOnline: () => mockOnline,
-}));
 
 type DevicesQuery = {
   data?: MyDevice[];
@@ -75,7 +70,6 @@ const mount = () => mountWithPortal(<DevicesSection connectionId="c" serverName=
 const OS = Platform.OS;
 beforeEach(() => {
   jest.clearAllMocks();
-  mockOnline = true;
   mockDevices = loaded([laptop, key, here]);
   Platform.OS = OS;
   useSession.setState({ connections: [] });
@@ -106,15 +100,18 @@ describe('DevicesSection', () => {
     ).toBeTruthy();
   });
 
-  it('shows the live address online and hides it offline', async () => {
+  // The web's startup cache keeps the rows without their address (`last_ip`): a row read
+  // back offline draws as the live one does, and neither shows an address.
+  it('draws a kept row without its address as it draws a live one', async () => {
     const detail = 'AudioSilo 1.4.0 · Browser · last seen 2 hours ago';
-    mockDevices = loaded([{ ...laptop, last_ip: '192.0.2.12' }]);
-    const view = await mount();
-    expect(screen.getByText(`${detail} · 192.0.2.12`)).toBeTruthy();
-
-    mockOnline = false;
-    await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
-    expect(screen.getByText(detail)).toBeTruthy();
+    mockDevices = loaded([
+      { ...laptop, last_ip: '192.0.2.12' },
+      { ...laptop, id: 13 },
+    ]);
+    await mount();
+    for (const id of [11, 13]) {
+      expect(within(screen.getByTestId(`device-${id}`)).getByText(detail)).toBeTruthy();
+    }
     expect(screen.queryByText(/192\.0\.2\.12/)).toBeNull();
   });
 
