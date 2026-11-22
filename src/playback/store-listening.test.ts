@@ -1221,6 +1221,41 @@ describe('with listening_sync', () => {
     },
   );
 
+  // Given up on, the seek's call can still land: the engine goes to the listener's target, far
+  // behind the place it played on to. That is the listener's move, not a slip back, and the
+  // span opened at the target before it was given up claims nothing the engine played.
+  it('a hung seek back that lands after it was given up is the listener’s move', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 100));
+    await settle();
+    let land = () => {};
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = resolve)),
+    );
+    void usePlayer.getState().seekBook(2);
+    await settle();
+    jest.setSystemTime(Date.now() + 15_000);
+    pushSnapshot(snap('playing', 0, 115));
+    await settle();
+    jest.setSystemTime(Date.now() + 15_000);
+    pushSnapshot(snap('playing', 0, 130));
+    await settle();
+    expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 130 });
+    land();
+    await settle();
+    pushSnapshot(snap('playing', 0, 2));
+    await settle();
+    jest.setSystemTime(Date.now() + 15_000);
+    pushSnapshot(snap('playing', 0, 17));
+    await settle();
+    expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 17 });
+    const spans = mockClosed.map((c) => [c.from.pos, c.to.pos, c.start]);
+    expect(spans).toContainEqual([2, 2, 'moved_back']);
+    expect(spans).toContainEqual([115, 130, 'jump']);
+    expect(spans).toContainEqual([2, 17, 'moved_back']);
+    expect(spans.filter(([from, to]) => from === 2 && to === 115)).toEqual([]);
+  });
+
   it('a stop while a seek is still landing saves the place its span closed at', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 10));

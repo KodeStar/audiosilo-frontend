@@ -1699,6 +1699,24 @@ function settleSeek() {
 /** The newest seek whose engine call resolved (`EngineAsk.seq`): an older call still out
  * was superseded by it, and is never this book's place again (`engineTakes`). */
 let seekLandedSeq = 0;
+/** A seek given up on as never taken (`observeSeek`): its call may still land. */
+let givenUpSeek: EngineAsk | null = null;
+
+/** `givenUpSeek`'s call landed after all, with no ask since and its book still loaded: the
+ * engine goes to the listener's target, so the book does. Its span moves there from where the
+ * engine played on, its floor is lowered to it (else every save of a target far behind the
+ * place played on to is refused, `SLIP_TOLERANCE`), and it is the pending seek again until
+ * a report shows it. */
+function landGivenUpSeek(ask: EngineAsk) {
+  if (givenUpSeek !== ask) return;
+  givenUpSeek = null;
+  const np = usePlayer.getState().nowPlaying;
+  if (ask.seq !== askSeq || np !== ask.np || pendingSeek) return;
+  moveListeningSpan(endAt(np, ask.trackIndex, ask.position), { from: span?.to ?? null });
+  userMoved(toBookPosition(np.queue.offsets, ask.trackIndex, ask.position));
+  pendingSeek = ask;
+  seekReported = false;
+}
 
 /** Observe the current target before this report can close its span or save its place. */
 function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: PlaybackSnapshot) {
@@ -1730,7 +1748,17 @@ function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: Pl
     (neverTaken ||
       ((seekCalls.size === 1 || seekReported) && askedPlace !== pendingSeek && playedOn))
   ) {
+    const givenUp = neverTaken ? pendingSeek : null;
     dropSeeks();
+    if (givenUp && np) {
+      // The span opened at the target never played there: it ends there, and the engine's
+      // place goes on from a jump. The call landing after all is the listener's move then
+      // (`landGivenUpSeek`).
+      givenUpSeek = givenUp;
+      moveListeningSpan(endAt(np, snapshot.trackIndex, snapshot.position), {
+        from: span?.to ?? null,
+      });
+    }
     return;
   }
   seekReported = there && (changed || seekReported);
@@ -2731,6 +2759,7 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
     const taken = await move;
     ask.landedAt = Date.now();
     if (seekCalls.has(ask)) seekLandedSeq = Math.max(seekLandedSeq, ask.seq);
+    landGivenUpSeek(ask);
     // Taken, replaced or not: the engine left the place it faulted at, so no later ask of the
     // book brings the fault back when refused. Not an ask from before the fault was called
     // off (its move landed before the place the engine faulted at).

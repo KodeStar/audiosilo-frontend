@@ -2900,7 +2900,10 @@ media GETs only.
     back to 0 therefore sends `moved_back` even while the engine still reports 0. Until the
     seek lands no periodic save or cut runs, but a stop or a Mark as finished saves its target,
     where the span closed. A call still out 10 s on (`ASK_SETTLE_MAX_MS`) while the engine plays
-    on away from its target was never taken: the engine's place is the book's again. A paused
+    on away from its target was never taken: the engine's place is the book's again (the span
+    opened at the target ends there, and one from a `jump` goes on from the engine's place). If
+    that call lands after all, with no ask since, it is the listener's move (`landGivenUpSeek`:
+    the span moves to the target and the floor is lowered to it). A paused
     lock-screen move with no prior place (`from: null`) still counts. The watches share the
     bare-move and same-place rules
     (`Spans`). A
