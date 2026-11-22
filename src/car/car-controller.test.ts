@@ -2590,6 +2590,19 @@ describe('adopting the service’s book (Android)', () => {
     expect(usePlayer.getState().adoptLoaded).not.toHaveBeenCalled();
   });
 
+  it('adopts the store’s own book when its pending check finds another file order', async () => {
+    Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
+    mockNative.getLoadedBook.mockResolvedValue(loaded);
+    mockConfirmBook.mockReturnValueOnce('adopt');
+    usePlayer.setState({
+      nowPlaying: { connectionId: 'c1', libraryId: 2, path: 'D', queue: { offsets: [0, 100] } },
+    });
+    stop = startCarSync();
+    await settle();
+    expect(mockConfirmBook).toHaveBeenCalledWith(loaded);
+    expect(usePlayer.getState().adoptLoaded).toHaveBeenCalledWith(loaded, expect.any(Function));
+  });
+
   it('adopts a book the car switched to while another was loaded', async () => {
     Object.defineProperty(Platform, 'OS', { value: 'android', configurable: true });
     usePlayer.setState({

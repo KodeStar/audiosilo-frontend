@@ -1442,12 +1442,12 @@ function checkLoadedBook(gaveWay?: BookRef): Promise<void> {
         return;
       }
       const named = !!player.nowPlaying && contentKeyOf(player.nowPlaying) === contentKeyOf(loaded);
-      if (
-        named &&
-        (!gaveWay || contentKeyOf(gaveWay) === contentKeyOf(loaded)) &&
-        confirm?.(loaded) !== 'adopt'
-      )
-        return;
+      if (named && (!gaveWay || contentKeyOf(gaveWay) === contentKeyOf(loaded))) {
+        // The store's own book: a hold of its unnamed reports that waits for this read takes
+        // the read's place (`pendingBookConfirmation`), unless the engine plays the book in
+        // another file order, adopted below.
+        if (confirm?.(loaded) !== 'adopt') return;
+      }
       // Read again once the book's source is read (the engine plays on meanwhile).
       if (await player.adoptLoaded(loaded, () => carNative.getLoadedBook())) {
         request(true);
