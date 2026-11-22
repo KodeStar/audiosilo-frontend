@@ -8,7 +8,7 @@ import type { Chapter, Progress } from '@/api/types';
 import { dismissToast, toast } from '@/components/ui/toast';
 import { contradictedTitle } from '@/lib/chapter-label';
 import { sameConnection } from '@/lib/connection-id';
-import { contentKeyOf } from '@/lib/content-key';
+import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { formatClock } from '@/lib/format';
 import { quietly } from '@/lib/quietly';
 import { sharedStart } from '@/lib/shared-start';
@@ -324,7 +324,9 @@ function offerFromAnswer(
   const row = rows.find((r) => r.library_id === np.libraryId && r.path === np.path);
   // This device's own row with no other place offers nothing (`offerOf`): no reads then.
   if (!row || (row.device_id === cachedDeviceId() && !row.other_place)) return;
-  const heldListen = held.get(bookKey);
+  // Keyed by the answer's connection id (`heldListens`): the id the loaded book's connection
+  // was migrated from or to answers for it too (`sameConnection`).
+  const heldListen = held.get(contentKey(connectionId, np.libraryId, np.path));
   void Promise.all([getDeviceId(), readMirror(np.connectionId, np.libraryId, np.path)])
     .then(([deviceId, mirror]) => offerLoadedPlace(bookKey, row, deviceId, mirror, { heldListen }))
     .catch(() => undefined);
