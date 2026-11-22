@@ -1,0 +1,141 @@
+[
+  {
+    "name": "book start with unknown lengths",
+    "missingPathAt": 1,
+    "durations": [0, 0],
+    "markers": [
+      [0, 0],
+      [1, 0]
+    ],
+    "position": 0,
+    "track": 0,
+    "seconds": 0,
+    "chapter": 0,
+    "playingFile": 1,
+    "playingChapter": 1
+  },
+  {
+    "name": "inside a three-file tie after a measured file",
+    "durations": [60, 0, 0, 40],
+    "markers": [
+      [0, 0],
+      [3, 0],
+      [2, 0],
+      [1, 0]
+    ],
+    "position": 72,
+    "track": 1,
+    "seconds": 12,
+    "chapter": 3,
+    "playingFile": 2,
+    "playingChapter": 2
+  },
+  {
+    "name": "nonadjacent equal starts at the boundary",
+    "durations": [60, 0, 40],
+    "markers": [
+      [0, 0],
+      [1, 0],
+      [1, 15],
+      [2, 0]
+    ],
+    "position": 60,
+    "track": 1,
+    "seconds": 0,
+    "chapter": 1,
+    "playingFile": 2,
+    "playingChapter": 3
+  },
+  {
+    "name": "overlapping chapter in a known playing file",
+    "durations": [60, 0, 40],
+    "markers": [
+      [0, 0],
+      [1, 0],
+      [1, 15],
+      [2, 0]
+    ],
+    "position": 80,
+    "track": 1,
+    "seconds": 20,
+    "chapter": 2,
+    "playingFile": 2,
+    "playingChapter": 3
+  },
+  {
+    "name": "duplicate markers in one file",
+    "durations": [100],
+    "markers": [
+      [0, 0],
+      [0, 20],
+      [0, 20],
+      [0, 50]
+    ],
+    "position": 25,
+    "track": 0,
+    "seconds": 25,
+    "chapter": 1,
+    "playingFile": 0,
+    "playingChapter": 1,
+    "steps": [
+      { "at": [0, 25], "next": [0, 50], "previous": [0, 20] },
+      { "at": [0, 21], "next": [0, 50], "previous": [0, 0] }
+    ]
+  },
+  {
+    "name": "a marker of no length before the real chapter",
+    "durations": [1000],
+    "markers": [
+      [0, 0, 0],
+      [0, 0, 600],
+      [0, 600, 1000]
+    ],
+    "position": 30,
+    "track": 0,
+    "seconds": 30,
+    "chapter": 1,
+    "playingFile": 0,
+    "playingChapter": 1
+  },
+  {
+    "name": "first distinct start after a tie",
+    "durations": [0, 60, 40],
+    "markers": [
+      [0, 0],
+      [1, 0],
+      [2, 0]
+    ],
+    "position": 60,
+    "track": 2,
+    "seconds": 0,
+    "chapter": 2,
+    "playingFile": 2,
+    "playingChapter": 2
+  },
+  {
+    "name": "previous and next among tied files go in file order",
+    "durations": [0, 200, 40],
+    "markers": [
+      [0, 0],
+      [0, 100],
+      [1, 0],
+      [1, 120],
+      [2, 0]
+    ],
+    "position": 110,
+    "track": 0,
+    "seconds": 110,
+    "chapter": 1,
+    "playingFile": 1,
+    "playingChapter": 2,
+    "steps": [
+      { "at": [0, 1], "next": [0, 100], "previous": [0, 0] },
+      { "at": [0, 110], "next": [1, 0], "previous": [0, 100] },
+      { "at": [1, 1], "next": [1, 120], "previous": [0, 100] },
+      { "at": [1, 50], "next": [1, 120], "previous": [1, 0] },
+      { "at": [1, 130], "next": [2, 0], "previous": [1, 120] },
+      { "at": [2, 1], "next": null, "previous": [1, 120] },
+      { "at": [2, 10], "next": null, "previous": [2, 0] }
+    ]
+  }
+]

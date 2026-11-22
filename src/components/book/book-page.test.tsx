@@ -598,6 +598,33 @@ describe('book page primary action', () => {
     expect(screen.queryByText('Listen')).toBeNull();
   });
 
+  it('highlights the playing file when the chapter offsets tie', async () => {
+    const files = ['p1', 'p2'].map((rel_path, seq) => ({
+      ...CHAPTERS.files[0],
+      rel_path,
+      seq,
+      duration: 0,
+    }));
+    const chapters = files.map((f, i) => ({
+      ...CHAPTERS.chapters[i],
+      file_path: f.rel_path,
+      start: 0,
+      book_offset: 0,
+    }));
+    mockChapters = { ...CHAPTERS, files, chapters };
+    // The player names p2. Its chapter number in the partial queue can differ from the page's.
+    player.patch({
+      nowPlaying: {
+        ...THIS_BOOK,
+        queue: { total: 3000, chapters: [{ ...chapters[1], index: 0 }] },
+      },
+      bookPosition: 15,
+      snapshot: { ...player.usePlayer.getState().snapshot, state: 'paused' },
+    });
+    await mountAt('desktop');
+    expect(screen.getByRole('button', { name: 'Resume chapter 2' })).toBeTruthy();
+  });
+
   it('says Pause while this book plays, and never restarts it', async () => {
     mockProgress = progressAt(1500);
     player.patch({
@@ -819,12 +846,16 @@ describe('book page chapters tab', () => {
     const target = { connectionId: 'home', libraryId: 1, path: 'Author/Book' };
     await mountAt('desktop');
     await fireEvent.press(screen.getByRole('button', { name: /^Honor Is Dead/ }));
-    expect(mockStartBook).toHaveBeenLastCalledWith(target, { at: { position: 2000 } });
+    expect(mockStartBook).toHaveBeenLastCalledWith(target, {
+      at: { position: 2000, file: { path: 'Author/Book/book.m4b', pos: 2000 } },
+    });
 
     player.patch({ nowPlaying: THIS_BOOK as never });
     await mountAt('phone');
     await fireEvent.press(screen.getByRole('button', { name: /^Stormblessed/ }));
-    expect(mockStartBook).toHaveBeenLastCalledWith(target, { at: { position: 1000 } });
+    expect(mockStartBook).toHaveBeenLastCalledWith(target, {
+      at: { position: 1000, file: { path: 'Author/Book/book.m4b', pos: 1000 } },
+    });
     expect(mockPlayBook).not.toHaveBeenCalled();
   });
 

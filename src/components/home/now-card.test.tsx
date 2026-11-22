@@ -25,9 +25,14 @@ jest.mock('@/lib/layout', () => ({
 // The loaded book (none unless a test says) and its live place.
 let mockNowPlaying: object | null = null;
 let mockLive = 0;
+let mockTrack = 0;
 jest.mock('@/playback/store', () => ({
   usePlayer: (sel: (s: object) => unknown) =>
-    sel({ nowPlaying: mockNowPlaying, rate: 1, snapshot: { state: 'paused' } }),
+    sel({
+      nowPlaying: mockNowPlaying,
+      rate: 1,
+      snapshot: { state: 'paused', trackIndex: mockTrack },
+    }),
   selectBookPosition: () => mockLive,
   selectIsPlaying: () => false,
 }));
@@ -150,6 +155,7 @@ beforeEach(() => {
   mockFiles = [];
   mockNowPlaying = null;
   mockLive = 0;
+  mockTrack = 0;
   mockPush.mockClear();
   mockDeviceOnline = true;
 });
@@ -242,6 +248,7 @@ describe('NowCard', () => {
       queue: {
         total: 4000,
         syntheticChapters: false,
+        offsets: [0],
         chapters: [
           { title: 'Bobbie', book_offset: 0 },
           { title: 'Prologue', book_offset: 2000 },
@@ -253,6 +260,35 @@ describe('NowCard', () => {
     expect(screen.getByText('Chapter 2 of 2')).toBeTruthy();
     expect(screen.getByText('Prologue')).toBeTruthy();
     expect(screen.getByRole('image', { name: '65% through the book' })).toBeTruthy();
+  });
+
+  it('names the chapter in the playing file among chapters sharing a start', async () => {
+    // Two files of unknown length: both chapters start at book second 0.
+    const chapter = (title: string, file: number) => ({
+      title,
+      book_offset: 0,
+      file_index: file,
+      file_path: `f${file}`,
+      start: 0,
+      end: 1000,
+    });
+    mockNowPlaying = {
+      connectionId: at.connectionId,
+      libraryId: at.libraryId,
+      path: at.path,
+      queue: {
+        total: 4000,
+        syntheticChapters: false,
+        offsets: [0, 0],
+        tracks: [{ id: `${at.libraryId}:f0` }, { id: `${at.libraryId}:f1` }],
+        chapters: [chapter('Bobbie', 0), chapter('Prologue', 1)],
+      },
+    };
+    mockTrack = 1;
+    mockLive = 600;
+    await render(<NowCard at={at} playable saved={saved} />);
+    expect(screen.getByText('Chapter 2 of 2')).toBeTruthy();
+    expect(screen.getByText('Prologue')).toBeTruthy();
   });
 
   // Bridge 2d-1: an episode is no book.

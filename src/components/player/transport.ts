@@ -4,7 +4,7 @@
  * Framework-free so it is unit-tested; the components feed it from the player store.
  */
 
-import { pathLeaf } from '@/lib/paths';
+import { type FilePlace, pathLeaf } from '@/lib/paths';
 import { quietly } from '@/lib/quietly';
 import { FINISHED_TOLERANCE, toBookPosition } from '@/playback/book-queue';
 
@@ -92,29 +92,87 @@ export function segmentStarts(queue: {
   return queue.chapters.length > 0 ? queue.chapters.map((c) => c.book_offset) : [...queue.offsets];
 }
 
+/** How far ahead "next chapter" looks, so a press right after a jump doesn't land on the
+ * same boundary. */
+const NEXT_SLACK = 1.5;
+/** "Previous chapter" restarts the current one when more than this far into it. */
+const RESTART_AFTER = 3;
+/** A place this little short of a start is at it (a seek lands a hair before its target). */
+const AT_START = 0.01;
+
 /** Where "next chapter" goes: the first boundary clearly after the position (1.5 s of
  * slack, so a press right after a jump doesn't land on the same boundary), if any. */
 export function nextSegmentStart(starts: readonly number[], position: number): number | undefined {
-  return starts.find((s) => s > position + 1.5);
+  return starts.find((s) => s > position + NEXT_SLACK);
 }
 
 /** Where "previous chapter" goes: the start of the current chapter, or - within its
  * first 3 seconds - the start of the one before (0 at the very beginning). */
 export function previousSegmentStart(starts: readonly number[], position: number): number {
-  const current = [...starts].reverse().find((s) => s <= position + 0.01) ?? 0;
-  if (position - current > 3) return current;
-  const prior = starts.filter((s) => s < current - 0.01);
+  const current = [...starts].reverse().find((s) => s <= position + AT_START) ?? 0;
+  if (position - current > RESTART_AFTER) return current;
+  const prior = starts.filter((s) => s < current - AT_START);
   return prior.length ? prior[prior.length - 1] : 0;
+}
+
+/** A queue chapter as previous/next reads it: its whole-book start and, for files that
+ * share a start, its file (`file_index` in the queue, -1 when unknown) and in-file start. */
+type StepChapter = { book_offset: number; file_index?: number; file_path?: string; start?: number };
+
+/** Where previous/next lands in file order: a chapter's file place, or a file's start. */
+type FileStep = { bookPosition: number; file?: FilePlace; track?: number };
+
+/**
+ * Where previous (-1) / next (+1) goes in a book with files sharing a whole-book start (a
+ * file of unknown length: its seconds run past the next file's start, so whole-book seconds
+ * do not order the chapters, even in a later file). In file order instead, by file and then
+ * seconds into it, from the playing file's place: next is the first chapter `NEXT_SLACK`
+ * ahead; previous restarts the current chapter (one begun in an earlier file always) and,
+ * within its first 3 seconds, goes to the one before, else to the book's start. With no
+ * chapters it steps per file. `undefined` past the last one. The watches' `ChapterNav.step`
+ * port it, pinned by the shared `timeline-ties.json` steps.
+ */
+function stepInFileOrder(
+  queue: { chapters: readonly StepChapter[]; offsets: readonly number[] },
+  trackIndex: number,
+  position: number,
+  dir: 1 | -1,
+): FileStep | undefined {
+  const { offsets } = queue;
+  if (queue.chapters.length === 0) {
+    const track = Math.max(
+      0,
+      dir === -1 && position > RESTART_AFTER ? trackIndex : trackIndex + dir,
+    );
+    return track < offsets.length ? { bookPosition: offsets[track], track } : undefined;
+  }
+  const stops = queue.chapters
+    .flatMap((ch) => {
+      const index = ch.file_index ?? -1;
+      if (index < 0 || index >= offsets.length || ch.file_path === undefined) return [];
+      const pos = ch.start ?? ch.book_offset - offsets[index];
+      return [{ index, bookPosition: ch.book_offset, file: { path: ch.file_path, pos } }];
+    })
+    .sort((a, b) => a.index - b.index || a.file.pos - b.file.pos);
+  type Stop = (typeof stops)[number];
+  const after = (s: Stop, index: number, pos: number) =>
+    s.index > index || (s.index === index && s.file.pos > pos);
+  if (dir === 1) return stops.find((s) => after(s, trackIndex, position + NEXT_SLACK));
+  const bookStart = { bookPosition: 0, track: 0 };
+  const current = stops.findLast((s) => !after(s, trackIndex, position + AT_START));
+  if (!current) return bookStart;
+  if (current.index < trackIndex || position - current.file.pos > RESTART_AFTER) return current;
+  return stops.findLast((s) => after(current, s.index, s.file.pos + AT_START)) ?? bookStart;
 }
 
 /** The slice of the player store previous/next reads and drives (structural, so this
  * module stays framework-free and the tests pass a plain object). */
 export type StepState = {
   nowPlaying: {
-    queue: { total: number; chapters: readonly { book_offset: number }[]; offsets: number[] };
+    queue: { total: number; chapters: readonly StepChapter[]; offsets: number[] };
   } | null;
   snapshot: { trackIndex: number; position: number };
-  seekBook: (bookPosition: number) => unknown;
+  seekBook: (bookPosition: number, file?: FilePlace) => unknown;
   seekInTrack: (positionInTrack: number) => unknown;
   goToTrack: (index: number) => unknown;
 };
@@ -123,15 +181,25 @@ export type StepState = {
  * Previous (-1) / next (+1) on every player surface, read from the live state at press
  * time. With a whole-book timeline it steps between chapter (else file) boundaries;
  * without one (`total <= 0`) it steps per FILE, and "previous" restarts the current file
- * when more than 3 seconds in.
+ * when more than 3 seconds in. Files sharing a start step in file order (`stepInFileOrder`).
  */
 export function stepSegment(state: StepState, dir: 1 | -1): void {
   const queue = state.nowPlaying?.queue;
   if (!queue) return;
   const { trackIndex, position } = state.snapshot;
   if (queue.total <= 0) {
-    if (dir === -1 && position > 3) return quietly(state.seekInTrack(0));
+    if (dir === -1 && position > RESTART_AFTER) return quietly(state.seekInTrack(0));
     return quietly(state.goToTrack(trackIndex + dir));
+  }
+  const { offsets } = queue;
+  // Files sharing a start: whole-book seconds do not order their chapters.
+  if (trackIndex < offsets.length && offsets.some((o, i) => o === offsets[i - 1])) {
+    const to = stepInFileOrder(queue, trackIndex, position, dir);
+    // The playing file's start is a seek in it, not a reload of the file (`skipToTrack`).
+    if (to?.track === trackIndex) return quietly(state.seekInTrack(0));
+    if (to?.track !== undefined) return quietly(state.goToTrack(to.track));
+    if (to) quietly(state.seekBook(to.bookPosition, to.file));
+    return;
   }
   const bookPosition = toBookPosition(queue.offsets, trackIndex, position);
   const starts = segmentStarts(queue);

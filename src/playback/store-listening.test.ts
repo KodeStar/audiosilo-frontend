@@ -2676,6 +2676,26 @@ describe('what a span carries', () => {
       await settle();
     };
 
+    it('a book-page jump inside a retained file survives tied offsets and a different offline order', async () => {
+      const entry = withEnd(160);
+      const own = entry.manifest.chapters!;
+      const files = own.files.map((f) => ({ ...f, duration: 0 }));
+      entry.manifest.chapters = { ...own, files };
+      useDownloads.setState({ entries: { [`c1:2:${folder}`]: entry } });
+      const reach = jest.spyOn(reachability, 'isReachable').mockReturnValue(false);
+      try {
+        const target = { path: files[1].rel_path, pos: 17 };
+        const served = { ...own, files: [...files].reverse().map((f, seq) => ({ ...f, seq })) };
+        await usePlayer.getState().playBook('c1', 2, book, served, 17, target);
+        expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 17]);
+        pushSnapshot(snap('playing', 1, 17));
+        await usePlayer.getState().seekBook(9, { path: files[0].rel_path, pos: 9 });
+        expect(mockSvc.skipToTrack).toHaveBeenCalledWith(0, 9);
+      } finally {
+        reach.mockRestore();
+      }
+    });
+
     it("sends the book's length on its server, and saves it", async () => {
       await playOffline(withEnd(160));
       expect(usePlayer.getState().nowPlaying?.queue.audio).toBe(100);

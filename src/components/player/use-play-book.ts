@@ -84,7 +84,7 @@ export function usePlayBook() {
  * playing on, also when it was paused. */
 async function playOn(at: BookPlace) {
   const store = usePlayer.getState();
-  if (at.position !== undefined) await store.seekBook(at.position);
+  if (at.file || at.position !== undefined) await store.seekBook(at.position ?? 0, at.file);
   else if (at.track !== undefined) await store.goToTrack(at.track);
   if (!selectIsTransportLive(usePlayer.getState())) await usePlayer.getState().toggle();
 }

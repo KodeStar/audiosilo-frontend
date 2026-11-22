@@ -240,6 +240,33 @@ describe('startJumpUndo', () => {
     stop();
   });
 
+  // Decided scope: any same-book swap onto other book seconds drops a live chip, not only a
+  // reordered Retry. A download landing with other file lengths moves every later file, so
+  // the chip's whole-book "from" would undo to another place in the new queue.
+  it('drops a live chip when a swap puts the files at other book seconds', () => {
+    const queueOf = (offsets: number[]) =>
+      ({
+        ...BOOK,
+        queue: { ...BOOK.queue, tracks: [{ id: '1:f0' }, { id: '1:f1' }], offsets },
+      }) as MockNowPlaying;
+    const env = load();
+    const stop = env.undo.startJumpUndo();
+    env.loadBook(queueOf([0, 3000]));
+    env.report('loading', 0);
+    env.report('playing', 1000);
+    env.settled();
+    env.report('playing', 1003);
+    env.report('playing', 4000);
+    expect(env.jump()).toMatchObject({ from: 1003 });
+    // The same files at the same seconds (a fresh queue object): the chip stays.
+    env.loadBook(queueOf([0, 3000]));
+    expect(env.jump()).toMatchObject({ from: 1003 });
+    // The download measured the first file longer: 4000 is now another place.
+    env.loadBook(queueOf([0, 3600]));
+    expect(env.jump()).toBeNull();
+    stop();
+  });
+
   it('ignores a retry that reloads where it was', () => {
     const { report, jump, stop } = playingAt(1000);
     report('error', 1003);

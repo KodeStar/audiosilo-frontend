@@ -52,18 +52,10 @@ private fun distinctFilesFromChapters(chapters: List<Chapter>): List<Pair<String
   return durations.map { it.key to it.value }
 }
 
-/**
- * A chapter's whole-book start: the summed positive durations of the files before it plus its
- * in-file start. Located by `file_path`, else a valid `file_index`, else 0 files before (never the
- * server's `book_offset`, which some books send as 0 for every chapter).
- */
-fun chapterBookOffset(files: List<FileSpec>, ch: Chapter): Double {
+/** The index of a chapter's file in `files`: by `file_path`, else a valid `file_index`, else -1. */
+private fun fileIndexOf(files: List<FileSpec>, ch: Chapter): Int {
   val byPath = files.indexOfFirst { it.path == ch.filePath }
-  val inRange = ch.fileIndex >= 0 && ch.fileIndex < files.size
-  val upto = if (byPath >= 0) byPath else if (inRange) ch.fileIndex else 0
-  var acc = 0.0
-  for (i in 0 until min(upto, files.size)) if (files[i].duration > 0) acc += files[i].duration
-  return acc + ch.start
+  return if (byPath >= 0) byPath else if (ch.fileIndex in files.indices) ch.fileIndex else -1
 }
 
 /**
@@ -115,7 +107,8 @@ fun wallClockSeconds(contentSeconds: Double, rate: Double): Double =
 fun locateIn(offsets: List<Double>, position: Double): Located {
   var index = 0
   for ((i, o) in offsets.withIndex()) {
-    if (position >= o) index = i else break
+    if (!(position >= o)) break
+    if (o != offsets[index]) index = i
   }
   val start = offsets.getOrNull(index) ?: 0.0
   return Located(index, max(0.0, position - start))
@@ -140,8 +133,17 @@ data class Timeline(
   val chapters: List<Chapter>,
   val syntheticChapters: Boolean,
 ) {
-  /** A whole-book position as (file index, seconds into it). */
-  fun locate(position: Double): Located = locateIn(offsets, position)
+  /**
+   * A whole-book position as (file index, seconds into it): the first of files sharing its start,
+   * or `prefer` (the playing file) when it is one of them (the phone's `locate`).
+   */
+  fun locate(position: Double, prefer: Int? = null): Located {
+    val at = locateIn(offsets, position)
+    if (prefer == null || prefer <= at.index || prefer >= offsets.size || offsets[prefer] != offsets[at.index]) {
+      return at
+    }
+    return Located(prefer, max(0.0, position - offsets[prefer]))
+  }
 
   /** (file index, seconds into it) as a whole-book position. */
   fun bookPosition(index: Int, positionInTrack: Double): Double =
@@ -160,9 +162,10 @@ data class Timeline(
 
   /**
    * Where a saved place resumes: in its file at its own seconds when the book still has the file
-   * (clamped to the file's length), else by the whole-book position (fe#188).
+   * (clamped to the file's length), else by the whole-book position (fe#188), in `prefer` when
+   * files share its start (`locate`).
    */
-  fun resumePlace(position: Double, file: String?, filePos: Double?): Located {
+  fun resumePlace(position: Double, file: String?, filePos: Double?, prefer: Int? = null): Located {
     if (file != null && filePos != null && filePos.isFinite()) {
       val i = files.indexOfFirst { it.path == file }
       if (i >= 0) {
@@ -170,7 +173,7 @@ data class Timeline(
         return Located(i, max(0.0, if (d > 0) min(filePos, d) else filePos))
       }
     }
-    return locate(position)
+    return locate(position, prefer)
   }
 
   companion object {
@@ -187,7 +190,11 @@ data class Timeline(
         offsets.add(acc)
         if (s.duration > 0) acc += s.duration
       }
-      val laid = raw.map { it.copy(bookOffset = chapterBookOffset(specs, it)) }
+      val laid = raw.map { ch ->
+        val index = fileIndexOf(specs, ch)
+        ch.copy(fileIndex = index, filePath = specs.getOrNull(index)?.path ?: ch.filePath,
+                bookOffset = toBookPosition(offsets, index, ch.start))
+      }
       val furthest = laid.fold(0.0) { m, c -> max(m, chapterEndPosition(c)) }
       val total = maxOf(if (book.duration > 0) book.duration else 0.0, acc, furthest)
       val estimated = bookFileList(book, chapters).isEmpty() && raw.isNotEmpty()

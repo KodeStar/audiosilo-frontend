@@ -7,9 +7,10 @@ import { visibleDownloads } from '@/downloads/downloads-view';
 import type { DownloadEntry, DownloadManifest } from '@/downloads/types';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { contentKeyOf } from '@/lib/content-key';
+import type { FilePlace } from '@/lib/paths';
 import { bookTitle } from '@/lib/paths';
 import { progressFractionRemaining } from '@/lib/progress-view';
-import { buildBookQueue, locate } from '@/playback/book-queue';
+import { buildBookQueue, locateBookPlace } from '@/playback/book-queue';
 import { localFromManifest, resumeStart } from '@/playback/book-source';
 import type { ResumeLookup } from '@/playback/progress-sync';
 import { bookSpeed, formatTimeLeft, timeLeft } from '@/playback/time-left';
@@ -280,6 +281,8 @@ export function carItem(b: CarBook, ctx: CarItemContext): CarItem {
 
 // --- Play specs -----------------------------------------------------------------------
 
+export type PausedCarPlace = { position: number; rate: number; file?: FilePlace };
+
 /**
  * How Android starts a downloaded book with no JS: its queue exactly as `playBook` builds it
  * for a downloaded book (`buildBookQueue` over the local files, the chapter clips), at the
@@ -300,7 +303,7 @@ export function playSpec(
   lookup: ResumeLookup,
   defaultRate: number,
   virtualChapterInterval: number,
-  paused?: { position: number; rate: number },
+  paused?: PausedCarPlace,
   placeSavedAt?: number,
 ): CarPlaySpec | undefined {
   const queue = buildBookQueue(
@@ -314,7 +317,12 @@ export function playSpec(
   if (queue.tracks.length === 0 || queue.tracks.some((t) => !t.url)) return undefined;
   const saved = lookup.kind === 'progress' ? lookup.progress : null;
   const start = paused ? paused.position : saved ? resumeStart(saved) : 0;
-  const { index, positionInTrack } = locate(queue.offsets, start);
+  const file = paused
+    ? paused.file
+    : lookup.kind === 'progress' && !lookup.progress.finished
+      ? lookup.file
+      : undefined;
+  const { index, positionInTrack } = locateBookPlace(queue, ref.libraryId, start, file);
   return {
     book: ref,
     tracks: queue.tracks.map(toNativeTrack),

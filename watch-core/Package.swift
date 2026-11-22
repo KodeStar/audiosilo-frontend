@@ -9,7 +9,8 @@ let package = Package(
   products: [.library(name: "WatchCore", targets: ["WatchCore"])],
   targets: [
     .target(name: "WatchCore", path: "Sources/WatchCore"),
-    .testTarget(name: "WatchCoreTests", dependencies: ["WatchCore"], path: "Tests/WatchCoreTests"),
+    .testTarget(name: "WatchCoreTests", dependencies: ["WatchCore"], path: "Tests/WatchCoreTests",
+                resources: [.process("Fixtures")]),
   ],
   swiftLanguageVersions: [.v5]
 )

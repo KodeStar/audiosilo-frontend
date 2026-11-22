@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 
+import type { FilePlace } from '@/lib/paths';
 import type { ApiClient } from '@/api/client';
 import type { Book, Chapter, ChaptersResponse } from '@/api/types';
 
@@ -119,21 +120,16 @@ function bookFileList(book: Book, chapterData?: ChaptersResponse) {
  * Whole-book start offset (seconds) of a chapter: the summed duration of the
  * files that precede it plus its in-file `start`. Located by `file_path` (with a
  * `file_index` fallback) so a non-sequential `file_index` can't misplace a
- * chapter. Shared by the playback queue and the book screen's chapter list so
- * both agree on the timeline (the server's `book_offset` is unreliable for some
- * on-demand-indexed books - it comes back 0 for every chapter).
+ * chapter. The screens' chapter starts (`chapterStartsOf`); the playback queue reads the
+ * same sum from its offsets (`buildBookQueue`), so both agree on the timeline (the
+ * server's `book_offset` is unreliable for some on-demand-indexed books - it comes back
+ * 0 for every chapter).
  */
 export function chapterBookOffset(
   files: { path: string; duration: number }[],
   ch: { file_index: number; file_path: string; start: number },
 ): number {
-  const byPath = files.findIndex((f) => f.path === ch.file_path);
-  // Fall back to `file_index` only when it's a real index; an out-of-range index
-  // (stale chapter metadata that also fails the path match) would otherwise sum
-  // EVERY file's duration and roughly double the book's computed length - degrade
-  // to 0 preceding files instead, as the old `offsets[file_index] ?? 0` did.
-  const inRange = ch.file_index >= 0 && ch.file_index < files.length;
-  const upto = byPath >= 0 ? byPath : inRange ? ch.file_index : 0;
+  const upto = fileIndexOf(files, ch);
   let acc = 0;
   for (let i = 0; i < upto && i < files.length; i++) {
     acc += files[i].duration > 0 ? files[i].duration : 0;
@@ -144,7 +140,10 @@ export function chapterBookOffset(
 /** Index of the file a chapter plays from, within `specs`. Resolves by `file_path`
  * first (a non-sequential `file_index` can't misplace it), falling back to a valid
  * `file_index`; -1 when neither maps. */
-function fileIndexOf(specs: FileSpec[], ch: Chapter): number {
+function fileIndexOf(
+  specs: readonly { path: string }[],
+  ch: Pick<Chapter, 'file_index' | 'file_path'>,
+): number {
   const byPath = specs.findIndex((s) => s.path === ch.file_path);
   if (byPath >= 0) return byPath;
   return ch.file_index >= 0 && ch.file_index < specs.length ? ch.file_index : -1;
@@ -161,16 +160,17 @@ function fileIndexOf(specs: FileSpec[], ch: Chapter): number {
  */
 export function buildChapterClips(specs: FileSpec[], chapters: Chapter[]): PlaybackChapter[] {
   if (chapters.length <= 1) return [];
-  // Resolve each chapter's file once up front - the loop needs both a chapter's index
-  // and the next one's, so looking up inline would scan the specs twice per chapter.
-  const fileIndices = chapters.map((ch) => fileIndexOf(specs, ch));
+  // The native playlist plays in file order even when tied markers arrive out of order.
+  // A stable sort keeps the chapter sequence within each file.
+  const ordered = chapters
+    .map((ch) => ({ ch, fileIndex: fileIndexOf(specs, ch) }))
+    .sort((a, b) => a.fileIndex - b.fileIndex);
   const clips: PlaybackChapter[] = [];
   const coveredFiles = new Set<number>();
-  for (let i = 0; i < chapters.length; i++) {
-    const ch = chapters[i];
-    const fileIndex = fileIndices[i];
+  for (let i = 0; i < ordered.length; i++) {
+    const { ch, fileIndex } = ordered[i];
     if (fileIndex < 0) return []; // unmappable chapter → safe fallback to file mode
-    const lastInFile = i + 1 >= chapters.length || fileIndices[i + 1] !== fileIndex;
+    const lastInFile = ordered[i + 1]?.fileIndex !== fileIndex;
     // A non-final in-file chapter with a non-positive span has unusable clip bounds:
     // endInFile <= 0 is read by the native layer as "to end of file", so this clip
     // would swallow the rest of the file and the following clips would replay it. Bad
@@ -292,13 +292,18 @@ export function buildBookQueue(
   }
 
   // Recompute each chapter's whole-book offset from our own file durations +
-  // the in-file start (see chapterBookOffset). The server's book_offset is
+  // the in-file start (its file by `fileIndexOf`). The server's book_offset is
   // unreliable for some on-demand indexed books (comes back 0 for every
   // chapter), which otherwise makes chapter detection resolve to the last one.
-  const chapters: Chapter[] = rawChapters.map((ch) => ({
-    ...ch,
-    book_offset: chapterBookOffset(specs, ch),
-  }));
+  const chapters: Chapter[] = rawChapters.map((ch) => {
+    const file = fileIndexOf(specs, ch);
+    return {
+      ...ch,
+      file_index: file,
+      file_path: specs[file]?.path ?? ch.file_path,
+      book_offset: toBookPosition(offsets, file, ch.start),
+    };
+  });
 
   // total: prefer the book duration, else the summed file durations, else the
   // furthest chapter end on the book timeline (handles duration === 0 metadata).
@@ -408,6 +413,50 @@ function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duratio
   return order.map((path) => ({ path, duration: durations.get(path) ?? 0 }));
 }
 
+/** Index at the greatest start at or before a place. Equal starts keep the first in list
+ * order unless `winsTie(item, over)` says a later one takes it (`tiedMarkerWins`). Chapter
+ * offsets can repeat on either side of a later start when durations are unknown, so the
+ * next row need not be the next boundary. */
+export function indexAtOffset<T>(
+  items: readonly T[],
+  position: number,
+  offsetOf: (item: T) => number,
+  winsTie?: (item: T, over: T) => boolean,
+): number {
+  let index = -1;
+  let start = -Infinity;
+  for (let i = 0; i < items.length; i++) {
+    const offset = offsetOf(items[i]);
+    if (!(offset <= position)) continue;
+    if (
+      index < 0 ||
+      offset > start ||
+      (offset === start && winsTie !== undefined && winsTie(items[i], items[index]))
+    ) {
+      index = i;
+      start = offset;
+    }
+  }
+  return index;
+}
+
+/** The tie rule for markers at one start: the first in book file order (`file`, negative
+ * when unknown: after every known file); within one file a marker with length over one of
+ * none (a duplicated marker before the real chapter, which is the one playing); else list
+ * order. A zero-length marker alone at its start is not a tie and stays the current one. */
+export function tiedMarkerWins(
+  a: { file: number; length: number },
+  b: { file: number; length: number },
+): boolean {
+  const fa = a.file < 0 ? Infinity : a.file;
+  const fb = b.file < 0 ? Infinity : b.file;
+  return fa < fb || (fa === fb && a.length > 0 && !(b.length > 0));
+}
+
+const chapterTieKey = (ch: Chapter) => ({ file: ch.file_index, length: ch.end - ch.start });
+const chapterWinsTie = (a: Chapter, b: Chapter) =>
+  tiedMarkerWins(chapterTieKey(a), chapterTieKey(b));
+
 /**
  * Map a whole-book position to (trackIndex, positionInTrack).
  *
@@ -422,15 +471,57 @@ export function locate(
   bookPosition: number,
   prefer?: number,
 ): { index: number; positionInTrack: number } {
-  let index = 0;
-  for (let i = 1; i < offsets.length; i++) {
-    // Not `<`: a NaN place stays in the first track, as it always did.
-    if (!(bookPosition >= offsets[i])) break;
-    if (offsets[i] !== offsets[index]) index = i;
-  }
-  // Offsets never fall, so a later track at this offset is one of those sharing it.
-  if (prefer !== undefined && prefer > index && offsets[prefer] === offsets[index]) index = prefer;
+  let index = Math.max(
+    0,
+    indexAtOffset(offsets, bookPosition, (offset) => offset),
+  );
+  if (
+    prefer !== undefined &&
+    prefer > index &&
+    prefer < offsets.length &&
+    offsets[prefer] === offsets[index]
+  )
+    index = prefer;
   return { index, positionInTrack: Math.max(0, bookPosition - (offsets[index] ?? 0)) };
+}
+
+/** The audio file (its rel path) of the track at `index`, from its id (`trackIdOf`). */
+export function fileOf(
+  np: { libraryId: number; queue: Pick<BookQueue, 'tracks'> },
+  index: number,
+): string | undefined {
+  const id = np.queue.tracks?.[index]?.id;
+  const prefix = `${np.libraryId}:`;
+  return id?.startsWith(prefix) ? id.slice(prefix.length) : undefined;
+}
+
+/** A saved place by its file (`file`: its rel path, `pos` seconds into it) in the order
+ * `queue` plays now, never past the file's end; null when the queue has no such file. */
+export function filePlaceIn(
+  queue: Pick<BookQueue, 'tracks' | 'offsets' | 'total'>,
+  libraryId: number,
+  file: string,
+  pos: number,
+): { index: number; positionInTrack: number } | null {
+  const index = trackIndexById(queue, trackIdOf(libraryId, file));
+  if (index < 0) return null;
+  const length = (queue.offsets[index + 1] ?? queue.total) - queue.offsets[index];
+  // A chapter tap carries its raw in-file start, which bad metadata can put below 0.
+  const at = Math.max(0, pos);
+  return { index, positionInTrack: length > 0 ? Math.min(at, length) : at };
+}
+
+/** Prefer the named file in the actual queue. If it is absent, the whole-book seconds
+ * resolve to the first of any tied tracks. */
+export function locateBookPlace(
+  queue: Pick<BookQueue, 'tracks' | 'offsets' | 'total'>,
+  libraryId: number,
+  position: number,
+  file?: FilePlace,
+) {
+  return (
+    (file && filePlaceIn(queue, libraryId, file.path, file.pos)) ?? locate(queue.offsets, position)
+  );
 }
 
 /** Map (trackIndex, positionInTrack) back to a whole-book position. */
@@ -452,40 +543,26 @@ export function chapterEndPosition(ch: Chapter): number {
 /**
  * The chapter active at a given whole-book position (the first chapter before any).
  *
- * Chapters that share a whole-book start in DIFFERENT files (their files' lengths are
- * unknown, so every one of them starts at the same offset) resolve to the first file's, as
- * `locate` does for the files. `playing`, when given, says whether a file is the one
- * playing: among the tied chapters that file's wins, so the player names the chapter of
- * the file it is in rather than the first file's (fe#324). Within one file a tie is a
- * chapter of no length before another: the later one is the chapter playing.
+ * A known playing file disambiguates overlapping chapter timelines in different files.
+ * Without it, tied chapters follow the book's file order and then their order in the file
+ * (`tiedMarkerWins`: a marker of no length yields to the chapter starting with it).
  */
 export function chapterAt(
   chapters: Chapter[],
   bookPosition: number,
   playing?: (filePath: string) => boolean,
 ): Chapter | null {
-  let current = -1;
-  for (let i = 0; i < chapters.length; i++) {
-    // Not `<`: a NaN place or start stops here, as it always did.
-    if (!(bookPosition >= chapters[i].book_offset)) break;
-    if (current < 0 || chapters[i].book_offset !== chapters[current].book_offset) current = i;
+  if (playing) {
+    const own = indexAtOffset(
+      chapters,
+      bookPosition,
+      (ch) => (playing(ch.file_path) ? ch.book_offset : NaN),
+      chapterWinsTie,
+    );
+    if (own >= 0) return chapters[own];
   }
-  if (current < 0) return chapters[0] ?? null;
-  const tied = chapters[current].book_offset;
-  let file = chapters[current].file_path;
-  if (playing && !playing(file)) {
-    for (let i = current + 1; i < chapters.length && chapters[i].book_offset === tied; i++) {
-      if (playing(chapters[i].file_path)) {
-        file = chapters[i].file_path;
-        break;
-      }
-    }
-  }
-  let pick = current;
-  for (let i = current + 1; i < chapters.length && chapters[i].book_offset === tied; i++) {
-    if (chapters[i].file_path === file) pick = i;
-  }
-  return chapters[pick];
+  const index = indexAtOffset(chapters, bookPosition, (ch) => ch.book_offset, chapterWinsTie);
+  return chapters[Math.max(0, index)] ?? null;
 }
 
 export type ChapterCountdown = {
@@ -511,15 +588,19 @@ export type ChapterCountdown = {
  * upcoming chapters: keep chapters until one's countdown passes `maxSeconds`
  * (that chapter is the last kept, so the list always crosses the threshold rather
  * than stopping just short), but never fewer than `minCount`.
+ *
+ * `playing` names the file playing, as `chapterAt` takes it: among chapters sharing a
+ * start, the current one is the player's, so "this chapter" is the one its heading names.
  */
 export function chapterCountdowns(
   chapters: Chapter[],
   bookPosition: number,
   limit?: { minCount: number; maxSeconds: number },
   rate = 1,
+  playing?: (filePath: string) => boolean,
 ): ChapterCountdown[] {
   if (chapters.length === 0) return [];
-  const current = chapterAt(chapters, bookPosition);
+  const current = chapterAt(chapters, bookPosition, playing);
   const from = current ? chapters.indexOf(current) : 0;
   const list = chapters.slice(Math.max(0, from)).map((ch) => {
     const endPosition = chapterEndPosition(ch);
@@ -546,7 +627,7 @@ export function chapterCountdowns(
  *
  * "Nearest qualifying end", not "first qualifying array element": it must not assume the
  * chapters are in ascending order of position, because nothing guarantees they are.
- * `buildBookQueue` recomputes every `book_offset` through `chapterBookOffset`, whose
+ * `buildBookQueue` recomputes every `book_offset` from its file (`fileIndexOf`), whose
  * `file_index` fallback degrades to 0 preceding files for an out-of-range index - so
  * stale or duplicated chapter metadata yields ends that are not monotonic. Reading the
  * array order as position order there would let this disagree with `chapterCountdowns`

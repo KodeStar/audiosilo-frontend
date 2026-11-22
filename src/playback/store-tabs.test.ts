@@ -207,7 +207,7 @@ function makeEngine() {
   return {
     svc: svc as typeof svc & PlaybackService,
     /** The engine plays on to `position` (seconds into the file). */
-    at: (position: number) => push({ position }),
+    at: (position: number, duration = snapshot.duration) => push({ position, duration }),
     /** The engine goes on into a later file by itself, at `position` in it (a run off the end
      * of a file it measured short). */
     runOff: (trackIndex: number, position: number) => push({ trackIndex, position }),
@@ -1665,7 +1665,7 @@ describe.each([
       await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
       await a.start(100, 'c1', other);
       await sleep(10);
-      a.engine.at(110);
+      a.engine.at(110, 1200);
       await a.save();
       const key = mirrorKey('c1', 2, other.book.rel_path);
       expect(mockMirror.records.get(key)?.position).toBe(110);
@@ -1949,6 +1949,35 @@ describe.each([
 });
 
 describe("the Undo jump chip after a tab takes another tab's place", () => {
+  it('a Retry in a reordered download establishes a new baseline for Undo', async () => {
+    const a = await openTab(fakeBrowser());
+    const stop = a.watchJumps();
+    try {
+      await a
+        .player()
+        .playBook('c1', 2, { ...parts.book, files: parts.chapters.files }, undefined, 30);
+      await sleep(3_100);
+      a.engine.at(110);
+      a.engine.fail();
+      const [one, two, three] = parts.chapters.files.map((f) => f.rel_path);
+      a.downloadLands(parts, [three, one, two]);
+      await a.player().retry();
+      expect(a.player().snapshot).toMatchObject({ trackIndex: 1, position: 110 });
+      expect(a.undoFrom()).toBeNull();
+      a.engine.at(330, 1200);
+      expect(a.undoFrom()).toBe(parts.chapters.files[2].duration + 110);
+      // A later low engine report must still respect the place Retry loaded in this order.
+      a.engine.at(0);
+      a.engine.fail();
+      await a.player().retry();
+      expect(a.player().snapshot.trackIndex).toBe(1);
+      expect(a.player().snapshot.position).toBeGreaterThanOrEqual(110);
+    } finally {
+      stop();
+      await a.player().stop();
+    }
+  });
+
   it('offers the way back to where this tab had stopped', async () => {
     const browser = fakeBrowser({ delay: 12 });
     const a = await openTab(browser);

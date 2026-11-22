@@ -123,14 +123,35 @@ object ChapterNav {
    */
   const val AT_START: Double = 0.01
 
-  /** The index of the chapter at `position` (the first before every chapter); null with none. */
-  fun index(chapters: List<Chapter>, position: Double): Int? {
+  /**
+   * The index of the chapter at `position` (the first before every chapter); null with none. In
+   * `file` (the playing one) when it has a chapter there; equal starts go by `winsTie`.
+   */
+  fun index(chapters: List<Chapter>, position: Double, file: String? = null): Int? {
     if (chapters.isEmpty()) return null
-    var current = 0
-    for ((i, ch) in chapters.withIndex()) {
-      if (position + AT_START >= ch.bookOffset) current = i else break
+    var current: Int? = null
+    var own: Int? = null
+    fun takes(ch: Chapter, over: Int?): Boolean {
+      val best = over?.let { chapters[it] } ?: return true
+      return ch.bookOffset > best.bookOffset || (ch.bookOffset == best.bookOffset && winsTie(ch, best))
     }
-    return current
+    for ((i, ch) in chapters.withIndex()) {
+      if (!(ch.bookOffset <= position + AT_START)) continue
+      if (takes(ch, current)) current = i
+      if (ch.filePath == file && takes(ch, own)) own = i
+    }
+    return own ?: current ?: 0
+  }
+
+  /**
+   * Markers at one start (the phone's `tiedMarkerWins`): the first in book file order (an unknown
+   * file after every known one); within one file a marker with length over one of none (a
+   * duplicated marker before the real chapter); else list order.
+   */
+  fun winsTie(a: Chapter, b: Chapter): Boolean {
+    val fa = if (a.fileIndex < 0) Int.MAX_VALUE else a.fileIndex
+    val fb = if (b.fileIndex < 0) Int.MAX_VALUE else b.fileIndex
+    return fa < fb || (fa == fb && a.end - a.start > 0 && !(b.end - b.start > 0))
   }
 
   /**
@@ -150,7 +171,37 @@ object ChapterNav {
   /** Next chapter's start: the first more than `NEXT_SLACK` ahead, null at the last one. */
   fun next(chapters: List<Chapter>, position: Double): Double? =
     chapters.firstOrNull { it.bookOffset > position + NEXT_SLACK }?.bookOffset
+
+  /**
+   * Previous (-1) or next (+1) from the playing place (`at`: the file and seconds into it), null
+   * with no chapters or past the last. By whole-book seconds (`previous`, `next`) unless files
+   * share a start (a file of unknown length: its seconds run past the next file's start, so they
+   * do not order the chapters); then in file order, as the phone's `stepInFileOrder`: next is the
+   * first chapter `NEXT_SLACK` ahead, previous restarts the current chapter (one begun in an
+   * earlier file always) and within its first 3 s goes to the one before, else the book's start.
+   */
+  fun step(t: Timeline, dir: Int, position: Double, at: Located): ChapterStop? {
+    val o = t.offsets
+    if (t.chapters.isEmpty()) return null
+    if (at.index !in o.indices || (1 until o.size).none { o[it] == o[it - 1] }) {
+      return (if (dir < 0) previous(t.chapters, position) else next(t.chapters, position))?.let { ChapterStop(it) }
+    }
+    val stops = t.chapters.filter { it.fileIndex in o.indices }.sortedWith(compareBy({ it.fileIndex }, { it.start }))
+    fun after(c: Chapter, index: Int, pos: Double) = c.fileIndex > index || (c.fileIndex == index && c.start > pos)
+    fun stop(c: Chapter) = ChapterStop(c.bookOffset, c.filePath, c.start)
+    if (dir > 0) return stops.firstOrNull { after(it, at.index, at.positionInTrack + NEXT_SLACK) }?.let(::stop)
+    val bookStart = ChapterStop(0.0, t.files[0].path, 0.0)
+    val current = stops.lastOrNull { !after(it, at.index, at.positionInTrack + AT_START) } ?: return bookStart
+    if (current.fileIndex < at.index || at.positionInTrack - current.start > RESTART_THRESHOLD) return stop(current)
+    return stops.lastOrNull { after(current, it.fileIndex, it.start + AT_START) }?.let(::stop) ?: bookStart
+  }
 }
+
+/**
+ * Where a chapter move lands: whole-book seconds and, among files sharing a start, the file and
+ * seconds into it (null: the place goes by the whole-book seconds).
+ */
+data class ChapterStop(val position: Double, val file: String? = null, val filePos: Double? = null)
 
 /** What Now Playing shows: the chapter's title and times within it (the whole book's without chapters). */
 data class NowPlayingTimes(
@@ -164,16 +215,15 @@ data class NowPlayingTimes(
      * The chapter at `position` and the times within it (`ChapterNav.title` names one without a
      * title), else the whole book.
      */
-    fun of(chapters: List<Chapter>, position: Double, total: Double, bookTitle: String): NowPlayingTimes {
+    fun of(chapters: List<Chapter>, position: Double, total: Double, bookTitle: String, file: String? = null): NowPlayingTimes {
       val i =
-        ChapterNav.index(chapters, position)
+        ChapterNav.index(chapters, position, file)
           ?: return NowPlayingTimes(null, bookTitle, max(0.0, position), max(0.0, total))
       val ch = chapters[i]
       // A chapter runs to the next one's start; the last to its own end, else the book's.
       val end =
-        if (i + 1 < chapters.size) {
-          chapters[i + 1].bookOffset
-        } else if (chapterEndPosition(ch) > ch.bookOffset) {
+        chapters.asSequence().drop(i + 1).firstOrNull { it.bookOffset > ch.bookOffset }?.bookOffset ?:
+        if (chapterEndPosition(ch) > ch.bookOffset) {
           chapterEndPosition(ch)
         } else {
           total
