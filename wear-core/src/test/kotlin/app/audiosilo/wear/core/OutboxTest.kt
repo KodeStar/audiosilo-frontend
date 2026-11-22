@@ -79,6 +79,29 @@ class OutboxTest {
   }
 
   @Test
+  fun withRealWritersTheMarkerRetiresAfterTheQueueLandsAndSignOutRemovesTheFile() = runBlocking {
+    val old = listen("old")
+    val other = listen("keep", path = "Another book")
+    val writer = DurableWriter()
+    val box = launch(writer)
+    restore(box)
+    box.append(listOf(old, other))
+    box.forgetPlace(ref)
+    assertEquals(SentPlace.Removed, sentBooks()[ref.key])
+    box.flush(FakeTransport())
+    assertTrue(box.events.isEmpty())
+    // The next POST waits for both writers, so the retired marker is on disk by then.
+    box.append(listOf(listen("more", path = "Another book")))
+    box.flush(FakeTransport())
+    assertEquals(setOf(other.ref.key), sentBooks().keys)
+    assertNull(restore(launch()).place(ref))
+
+    box.discardAll()
+    assertTrue(writer.drain())
+    assertFalse(sentFile.exists())
+  }
+
+  @Test
   fun onlyFreshHearingReplacesARemovalEvenIfTheOldCutIsAnsweredLate() {
     val box = launch()
     restore(box)

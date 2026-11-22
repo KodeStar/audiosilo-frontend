@@ -71,6 +71,8 @@ class Outbox(
   private val sentWriter = if (sentPlacesFile != null && writer != null) DurableWriter() else null
   private val sentFile = sentPlacesFile?.let { JsonFile(it, SentPlaces.serializer(), durable = true, writer = sentWriter) }
   private var sentPlaces = sentFile?.read()?.upgraded()
+  // With a writer, JsonFile.write only queues and answers true: these two flags matter only for an
+  // outbox without one (the tests), where a refused write must be tried again on the next save.
   private var sentWriteFailed = false
   private var placeAccount: String? = null
   private var queueWriteAccepted = true
