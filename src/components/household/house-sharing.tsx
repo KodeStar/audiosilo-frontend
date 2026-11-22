@@ -4,7 +4,7 @@ import { View } from 'react-native';
 import { useCapabilitiesAllRead } from '@/api/hooks';
 import { HouseSharingRow } from '@/components/house/house-sharing-row';
 import { OfflineState } from '@/components/layout/offline-state';
-import { ServerRefusal } from '@/components/layout/server-refusal-state';
+import { ServerRefusals } from '@/components/layout/server-refusal-state';
 import { LoadError } from '@/components/library/books/book-states';
 import { SettingsCard } from '@/components/settings/settings-row';
 import { SectionTitle } from '@/components/ui/section-title';
@@ -26,19 +26,15 @@ export function HouseSharing() {
   const connections = useProfileConnections();
   const saved = useSession((s) => s.connections);
   const deviceOnline = useDeviceOnline();
-  const { caps, failed, refusals, retry, reading } = useCapabilitiesAllRead();
+  const { caps, failed, retryable, refusals, retry, reading } = useCapabilitiesAllRead();
   const sharing = connections.filter((c) => caps[c.id]?.household === true);
-  const unread = connections.filter(
-    (c) => failed.includes(c.id) && !refusals.some((r) => r.connectionId === c.id),
-  );
+  const unread = connections.filter((c) => retryable.includes(c.id));
   const settled = connections.every((c) => caps[c.id] !== undefined || failed.includes(c.id));
   if (sharing.length === 0 && !settled) return null;
   return (
     <View className="gap-3" testID="household-sharing">
       <SectionTitle title={t('house.title')} />
-      {refusals.map((r) => (
-        <ServerRefusal key={r.connectionId} {...r} />
-      ))}
+      <ServerRefusals refusals={refusals} />
       {sharing.length > 0 ? (
         <SettingsCard>
           {sharing.map((c, i) => (

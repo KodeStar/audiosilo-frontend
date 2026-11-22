@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useUpcomingAll } from '@/api/hooks';
-import { ServerRefusal } from '@/components/layout/server-refusal-state';
+import { ServerRefusals } from '@/components/layout/server-refusal-state';
 import { LoadError } from '@/components/library/books/book-states';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -160,9 +160,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
           {t('upcoming.title')}
         </Text>
       )}
-      {refusals.map((r) => (
-        <ServerRefusal key={r.connectionId} {...r} />
-      ))}
+      <ServerRefusals refusals={refusals} />
       {body}
       {available ? <UpcomingCalendarCard /> : null}
     </View>

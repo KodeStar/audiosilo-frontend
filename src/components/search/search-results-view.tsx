@@ -6,7 +6,7 @@ import { type MergedBook, useProgressLookup } from '@/api/hooks';
 import { useApis } from '@/api/provider';
 import { useReachability } from '@/api/reachability';
 import { OfflineState } from '@/components/layout/offline-state';
-import { ServerRefusal } from '@/components/layout/server-refusal-state';
+import { ServerRefusals } from '@/components/layout/server-refusal-state';
 import { roleLabelKey } from '@/components/library/book-meta';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { gridMetrics } from '@/components/library/cover-layout';
@@ -129,9 +129,7 @@ export function SearchResultsView({
           className="py-8"
         />
       ) : null}
-      {r.refusals.map((r) => (
-        <ServerRefusal key={r.connectionId} {...r} />
-      ))}
+      <ServerRefusals refusals={r.refusals} />
 
       <BooksGroup
         books={r.books}

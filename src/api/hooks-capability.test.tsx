@@ -2195,6 +2195,19 @@ describe('aggregate capability reads', () => {
     expect(mockClients.on.serverInfo).toHaveBeenCalledTimes(1);
   });
 
+  it('names a refused read for sign-in, never as one a retry can help', async () => {
+    const { result } = await mount({ refused: {}, down: {} }, useCapabilitiesAllRead, () => {
+      mockClients.refused.serverInfo.mockRejectedValue(new ApiError(401, 'signed out'));
+      mockClients.down.serverInfo.mockRejectedValue(new Error('offline'));
+    });
+    await waitFor(() => expect(result.current.failed).toEqual(['refused', 'down']));
+    expect(result.current.retryable).toEqual(['down']);
+    expect(result.current.refusals).toEqual([{ connectionId: 'refused', proxy: false }]);
+    const asked = mockClients.refused.serverInfo.mock.calls.length;
+    await act(async () => result.current.retry());
+    expect(mockClients.refused.serverInfo).toHaveBeenCalledTimes(asked);
+  });
+
   it('keeps cached flags when a background refresh fails', async () => {
     const { result } = await mount({ on: { metadata: true } }, useCapabilitiesAllRead);
     await waitFor(() => expect(result.current.caps.on?.metadata).toBe(true));

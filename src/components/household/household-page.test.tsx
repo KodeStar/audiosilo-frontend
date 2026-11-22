@@ -47,6 +47,9 @@ jest.mock('@/api/hooks', () => ({
   useCapabilitiesAllRead: () => ({
     caps: mockCaps,
     failed: mockCapsFailed,
+    retryable: mockCapsFailed.filter(
+      (id: string) => !mockRefusals.some((r: { connectionId: string }) => r.connectionId === id),
+    ),
     refusals: mockRefusals,
     retry: mockCapsRetry,
     reading: mockCapsReading,

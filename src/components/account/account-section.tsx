@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { useActiveAddress } from '@/api/address-route';
-import { ApiError } from '@/api/client';
 import { useMyDevices, useServerAddresses, useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
+import { refusedServer } from '@/api/server-read-error';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -133,7 +133,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
     (capsUnread &&
       deviceOnline &&
       !serverInfo.isPaused &&
-      !(serverInfo.error instanceof ApiError && [401, 403].includes(serverInfo.error.status)));
+      !(cid && refusedServer(cid, serverInfo.error)));
   const demo = !!user?.is_demo;
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);

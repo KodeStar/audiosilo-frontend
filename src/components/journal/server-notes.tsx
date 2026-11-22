@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { ServerRefusal } from '@/components/layout/server-refusal-state';
+import { ServerRefusals } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -53,9 +53,7 @@ export function ServerNotes({
   if (notes.length === 0 && refusals.length === 0) return null;
   return (
     <View className="gap-2 pb-4">
-      {refusals.map((r) => (
-        <ServerRefusal key={r.connectionId} {...r} />
-      ))}
+      <ServerRefusals refusals={refusals} />
       {notes.map((n) => (
         <View key={n.id} className="flex-row items-center gap-2">
           <Icon name="server" size={13} color={themed.mutedForeground} />

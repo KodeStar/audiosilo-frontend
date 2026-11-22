@@ -9,15 +9,6 @@ export class ServerReadError extends Error {
   }
 }
 
-/** A refusal to read /server that needs attention before a gated read can run. */
-export function serverAccessRefusal(error: unknown): ApiError | null {
-  return error instanceof ServerReadError ? accessRefusal(error.cause) : null;
-}
-
-function accessRefusal(error: unknown): ApiError | null {
-  return error instanceof ApiError && (error.status === 401 || error.status === 403) ? error : null;
-}
-
 export type RefusedServer = { connectionId: string; proxy: boolean };
 
 /** Which sign-in needs attention when this connection's own /server query failed. */
@@ -25,6 +16,8 @@ export function refusedServer(
   connectionId: string,
   serverError: unknown,
 ): RefusedServer | undefined {
-  const refusal = accessRefusal(serverError);
-  return refusal ? { connectionId, proxy: refusal.fromProxy } : undefined;
+  return serverError instanceof ApiError &&
+    (serverError.status === 401 || serverError.status === 403)
+    ? { connectionId, proxy: serverError.fromProxy }
+    : undefined;
 }

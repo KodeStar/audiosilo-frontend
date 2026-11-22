@@ -811,14 +811,15 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
  * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
  * `/server` read has failed with nothing known (an error, or held for the network), which
  * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
- * can settle. A 401 or 403 is listed in `refusals` with the sign-in it needs. `retry`
- * asks the other failed reads again, and `reading` is true while one of those is
+ * can settle. A 401 or 403 is listed in `refusals` with the sign-in it needs, and
+ * `retryable` is `failed` without those. `retry` asks the other failed reads again, and `reading` is true while one of those is
  * read again (a Retry's busy state). A failed read asked again stays in `failed` meanwhile
  * (`failedRead`), so the screen keeps its Retry, busy, rather than reading as loading.
  */
 export function useCapabilitiesAllRead(): {
   caps: Record<string, Capabilities | undefined>;
   failed: string[];
+  retryable: string[];
   refusals: RefusedServer[];
   retry: () => void;
   reading: boolean;
@@ -831,19 +832,18 @@ export function useCapabilitiesAllRead(): {
         const refusal = !r.data && refusedServer(apis[i].connection.id, r.error);
         return refusal ? [refusal] : [];
       });
+      const refused = new Set(refusals.map((r) => r.connectionId));
+      const failed = results.flatMap((r, i) => (failedRead(r) ? [apis[i].connection.id] : []));
       return {
         caps: Object.fromEntries(
           results.map((r, i) => [apis[i].connection.id, r.data?.capabilities]),
         ),
-        failed: results.flatMap((r, i) => (failedRead(r) ? [apis[i].connection.id] : [])),
+        failed,
+        retryable: failed.filter((id) => !refused.has(id)),
         refusals,
         retry: () => {
           results.forEach((r, i) => {
-            if (
-              !r.data &&
-              (r.isError || r.isPaused) &&
-              !refusals.some((s) => s.connectionId === apis[i].connection.id)
-            )
+            if (!r.data && (r.isError || r.isPaused) && !refused.has(apis[i].connection.id))
               void r.refetch();
           });
         },

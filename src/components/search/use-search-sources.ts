@@ -59,6 +59,7 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
   const {
     caps,
     failed: capabilityFailures,
+    retryable: unreadCapabilities,
     refusals,
     retry: retryCapabilities,
   } = useCapabilitiesAllRead();
@@ -130,8 +131,7 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
         refusals,
         supported: anyCapability(caps, 'browse_people', capabilityFailures),
         isLoading: (enabled && librariesLoading) || results.some((r) => r.isLoading),
-        isError:
-          !!librariesError || failed.length > 0 || capabilityFailures.length > refusals.length,
+        isError: !!librariesError || failed.length > 0 || unreadCapabilities.length > 0,
         retry: () => {
           retryCapabilities();
           retryLibraries();
@@ -168,7 +168,7 @@ export function useCharacterSources(
   const {
     caps,
     failed: capabilityFailures,
-    refusals,
+    retryable: unreadCapabilities,
     retry: retryCapabilities,
   } = useCapabilitiesAllRead();
   const {
@@ -247,7 +247,7 @@ export function useCharacterSources(
     books,
     supported: anyCapability(caps, 'metadata', capabilityFailures),
     isLoading: pending,
-    isError: !!progressError || failed.length > 0 || capabilityFailures.length > refusals.length,
+    isError: !!progressError || failed.length > 0 || unreadCapabilities.length > 0,
     retry: () => {
       retryCapabilities();
       retryProgress();
