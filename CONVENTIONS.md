@@ -4247,8 +4247,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
   its file when empty. Both watches use `Resume.plan`'s `clockSkewMs` for their own newer row
   and recover the last heard cuts with `PlaceStore.recoverCuts`: Wear's `Outbox.recoverListening`
-  from the queue and a separate fallback file (`sentPlacesFile`, `accountId`), the Apple Watch's
-  `Outbox.restorePlaces` from the queue and `sent-places.json`. Also Wear-only are `SpanRecorder.forgetAccount` and
+  and the Apple Watch's `Outbox.restorePlaces` both read the queue and the account's
+  `sent-places.json`. A download removal or an accepted finished server row forgets the book's
+  cut. A queued finish covers older hearing even when the watch clock went back. The marker
+  stays until the queue on disk no longer holds that hearing. A fresh heard cut replaces it.
+  The original events still sync. Also Wear-only are `SpanRecorder.forgetAccount` and
   `AccountRules.awaitSignOut` in place of the Apple Watch's `signOut` gate. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json`, `places.json` and `sent-places.json`, whose loss
@@ -4256,7 +4259,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `session.bin`, is synced too: its emptied form is the sign-out marker); the rest (caches, sync
   status, acks) is rebuilt from the server or the phone, so it skips the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
-  removal first: the event is kept before the span file changes) and the place. **The place rule**:
+  removal first: the event is kept before the span file changes) and the place. In parallel,
+  a separate durable writer keeps the latest cut or marker in `noBackupFilesDir/sent-places.json`,
+  so a failed write in either directory leaves the other able to keep the place. A POST waits
+  for each writer's first attempt and can still send when both directories are full. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
   closed by a cut, going to the background, removing the book and sign-out; on the plain 5 s
   tick it changes in memory only (`PlaceStore.set(save = false)`), because the open span synced

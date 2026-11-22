@@ -20,7 +20,7 @@
 //
 // And under noBackupFilesDir (decision 11): session.bin (the token, sealed by the Keystore key)
 // and device-id (this watch's device_id, a UUID made once). sent-places.json holds the
-// account's latest outgoing cuts when its normal listening files cannot be written.
+// account's latest heard cuts and markers for removed or finished books, even if filesDir is full.
 package app.audiosilo.wear.storage
 
 import android.content.Context

@@ -377,6 +377,29 @@ class DurableRateTest {
     assertEquals(keptAt, place.at)
   }
 
+  // A play after a pause opened after the pause's event was queued, so a wall clock set back
+  // between the two must not hide it either (its `from` is the loaded place, not a cut's).
+  @Test
+  fun aWallClockSetBackDoesNotHideAPlayAfterAPause() {
+    val first = Launch()
+    first.recover()
+    first.spans.open(book, at(0.0), 1.0)
+    clock.advance(12.0)
+    first.spans.close(at(12.0))
+    clock.advance(-3600.0)
+    first.spans.open(book, at(12.0), 1.0)
+    clock.advance(5.0)
+    first.tick(17.0, keepDue = true, cutDue = false)
+    val keptAt = clock.now
+    // A kill.
+    val next = Launch()
+    assertEquals(12.0, next.places.place(ref)!!.position, 0.0)
+    next.recover()
+    val place = next.places.place(ref)!!
+    assertEquals(17.0, place.position, 0.0)
+    assertEquals(keptAt, place.at)
+  }
+
   // fe#285: a kill between the cut's append and the next span's write leaves the closed span in
   // its file at its last keep; its own event, already in the outbox, says where it ended.
   @Test
@@ -484,8 +507,8 @@ class DurableRateTest {
   }
 
   // The book's end keeps its last span and its `finish` in one append: a kill right after it finds
-  // both in the outbox, so the place the launch recovers (the book's end, from the span's event)
-  // never stands there without the finish.
+  // both in the outbox. The span's own event ends at the book's end, so the launch restores that
+  // place (where the book starts again), not the place kept before the book began its last span.
   @Test
   fun aKillInsideTheBooksLastCloseKeepsItsFinish() {
     val first = Launch()
@@ -501,6 +524,29 @@ class DurableRateTest {
     assertEquals(3600.0, next.places.place(ref)!!.position, 0.0)
     assertEquals(listOf("e1"), next.outbox.events.filterIsInstance<SpanEvent>().map { it.id })
     assertEquals(listOf("finish"), next.outbox.events.filterIsInstance<FinishEvent>().map { it.kind })
+  }
+
+  // An older span of the finished book left on disk (its removal never landed) is not its last:
+  // its end stays forgotten behind the finish, and the book's end stands.
+  @Test
+  fun anOlderSpanLeftOnDiskDoesNotUndoTheBooksEnd() {
+    val first = Launch()
+    first.spans.open(book, at(3500.0), 1.0)
+    clock.advance(10.0)
+    first.tick(3510.0, keepDue = true, cutDue = false)
+    val spanFile = File(dir, "open-span.json")
+    val older = spanFile.readBytes()
+    clock.advance(5.0)
+    first.tick(3515.0, keepDue = true, cutDue = true)
+    clock.advance(85.0)
+    first.spans.finish(book, at(3600.0))
+    assertEquals(3600.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
+    spanFile.writeBytes(older)
+    assertEquals("e1", fileSpanStore(dir).load()!!.id)
+    val next = Launch()
+    next.recover()
+    assertEquals(3600.0, next.places.place(ref)!!.position, 0.0)
+    assertEquals(listOf("e1", "e2"), next.outbox.events.filterIsInstance<SpanEvent>().map { it.id })
   }
 
   // fe#321: the move a kill cut short outlives a launch that never plays (a background one).
