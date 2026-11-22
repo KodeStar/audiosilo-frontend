@@ -1,13 +1,12 @@
-import { useTranslation } from 'react-i18next';
-
 import { useToggleFavourite } from '@/api/hooks';
 import { toast } from '@/components/ui/toast';
+import i18n from '@/i18n';
 
 /** A heart on a book, folder or the favourites list reports a failed change even
- * when its row has already disappeared from the list. */
+ * when its row has already disappeared from the list. The text is read when it fails,
+ * so a row in a long list adds no language subscription of its own. */
 export function useFavouriteAction(connectionId?: string) {
-  const { t } = useTranslation();
   return useToggleFavourite(connectionId, () => {
-    toast({ title: t('library.favourite.failed') });
+    toast({ title: i18n.t('library.favourite.failed') });
   }).mutate;
 }
