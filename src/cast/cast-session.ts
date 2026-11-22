@@ -82,11 +82,16 @@ export function startCastSync(
   const driver = deps.driver ?? castDriver;
   const prepare = deps.prepare ?? prepareCast;
   let stopped = false;
-  /** Bumped when a session ends: a connect still awaiting the stores belongs to it and
-   * must not switch the route after the end. */
+  /** A connect still awaiting the stores gives way when a session replaces it or ends. */
   let generation = 0;
-  /** The last read of the receiver's place as the session ends: the hand-back waits for it. */
-  let finalRead: Promise<void> = Promise.resolve();
+  // The driver's session, including one still waiting to become the route.
+  let session = currentRouter()?.castSession() ?? null;
+  /** The receiver being read for hand-back, kept until the driver reports its end. */
+  let ending: {
+    generation: number;
+    session: CastPlaybackService | null;
+    read: Promise<void>;
+  } | null = null;
   const cleanups: (() => void)[] = [];
 
   const connect = async (
@@ -94,7 +99,7 @@ export function startCastSync(
     remote: CastRemote,
     deviceName: string | undefined,
   ) => {
-    const gen = generation;
+    const gen = ++generation;
     useCast.setState({ status: 'connected', deviceName: deviceName ?? null });
     await bootstrapPlayback(); // the session's books need the stores hydrated
     if (gen !== generation || stopped) return;
@@ -108,11 +113,17 @@ export function startCastSync(
         // The app back from the background (iOS suspends the sender there): the same
         // session, already the route. Read where the receiver got to.
         const existing = router.castRoute();
-        if (existing && type === 'resumed') {
+        if (
+          existing &&
+          existing === session &&
+          existing !== ending?.session &&
+          type === 'resumed'
+        ) {
           void existing.refresh();
           return;
         }
         const cast = new CastPlaybackService(remote, prepare);
+        session = cast;
         router.onCastFailed = (err) => {
           explain(err, useCast.getState().deviceName);
           void driver.endSession(true);
@@ -149,15 +160,23 @@ export function startCastSync(
         break;
       case 'ending':
         // A last read of the receiver's place while the session can still answer.
-        finalRead = currentRouter()?.castRoute()?.refresh() ?? Promise.resolve();
+        ending = {
+          generation,
+          session,
+          read: currentRouter()?.castRoute()?.refresh() ?? Promise.resolve(),
+        };
         break;
       case 'ended': {
-        generation++;
-        useCast.setState({ status: 'off', deviceName: null });
         const router = currentRouter();
-        const read = finalRead;
-        finalRead = Promise.resolve();
-        if (router) void read.then(() => router.endCast());
+        const ended = ending ? ending.session : session;
+        const read = ending?.read ?? Promise.resolve();
+        if (!ending || ending.generation === generation) {
+          generation++;
+          session = null;
+          useCast.setState({ status: 'off', deviceName: null });
+        }
+        ending = null;
+        if (router && ended) void read.then(() => router.endCast(ended));
         break;
       }
     }

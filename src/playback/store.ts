@@ -285,6 +285,7 @@ function ownLoadTakesEngine() {
   for (const a of adopting) a.ownLoad = true;
   unnamedOther = null;
   unnamedPlays = false;
+  pausedAsk = null;
 }
 
 /**
@@ -3618,7 +3619,8 @@ async function createService(): Promise<PlaybackService> {
   const onReport = (raw: PlaybackSnapshot) => {
     // A report that names a book ends the hold of an unnamed other book (`unnamedOther`), the
     // other book's too: the checks below stop at it before that hold is read.
-    if (svc.reportedBook?.()) unnamedOther = null;
+    const named = svc.reportedBook?.();
+    if (named) unnamedOther = null;
     // Another book's report (`reportedOtherBook`): before the fault's stop below, as an
     // engine the car gave another book to plays that book.
     const other = reportedOtherBook(svc);
@@ -3766,6 +3768,9 @@ async function createService(): Promise<PlaybackService> {
         if (duration !== snapshot.duration) snapshot = { ...snapshot, duration };
       }
     }
+    // Named reports of other books returned above. An unnamed play may be the car's,
+    // even if it arrives before the car asks the store to adopt its book.
+    if (pausedAsk && named && snapshot.state === 'playing') pausedAsk = null;
     usePlayer.setState({ snapshot });
     // A download that landed while another book held the engine (`switchCurrentBookToLocal`)
     // is swapped in once a report naming the store's book is taken as its place, past the
@@ -3829,7 +3834,6 @@ async function createService(): Promise<PlaybackService> {
         wantsPlayback = true;
         startingPlayback = false;
         outsidePlay = null;
-        pausedAsk = null;
         cancelStallWatchdog();
         // Picked up again after a long pause, from anywhere (a press, the lock screen,
         // earbuds): the listener is told synchronously, so its save hold is in place

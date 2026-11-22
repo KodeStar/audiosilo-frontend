@@ -914,6 +914,24 @@ describe('RoutedPlaybackService: a book started while the route is changing', ()
     expect(t.router.reportedBook()).toEqual(OTHER);
   });
 
+  it('keeps the newest receiver when an earlier session finishes waiting for hand-back', async () => {
+    const t = setup();
+    await playingLocally(t);
+    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    const handBack = heldLocalLoad(t);
+    const replaced = fakeCast();
+    const waiting = t.router.beginCast(replaced as unknown as CastPlaybackService);
+    await settle();
+    const newest = fakeCast();
+    await t.router.beginCast(newest as unknown as CastPlaybackService);
+    expect(t.router.castRoute()).toBe(newest);
+    handBack.land();
+    await waiting;
+    expect(t.router.castRoute()).toBe(newest);
+    expect(replaced.detach).toHaveBeenCalledTimes(1);
+    expect(replaced.load).not.toHaveBeenCalled();
+  });
+
   // The store's start plays its book once the load landed (after its speed), which is when a
   // session that waited for that load begins its handover: that play is the receiver's, never
   // the phone engine's the handover unloads.

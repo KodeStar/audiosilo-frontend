@@ -32,6 +32,7 @@ function sameBookLoad(a: LastLoad | null, b: LastLoad | null): boolean {
 }
 
 type Mode = 'local' | 'cast' | 'switching';
+type Beginning = { cast: CastPlaybackService; stop?: () => void };
 
 /** How long (ms) at most a session that begins waits for the store's own load into the
  * phone's engine to land (`RoutedPlaybackService.beginCast`): one that never lands must not
@@ -74,9 +75,8 @@ export class RoutedPlaybackService implements PlaybackService {
    * was asked to start: until it lands the engine's snapshot is still the book it replaces,
    * so a session that begins meanwhile waits for it (`beginCast`). */
   private localLoad: (AskedLoad & { done: Promise<void> }) | null = null;
-  /** The session `beginCast` is making the route while it waits (`localLoad`), and the stop of
-   * that wait, by a newer session or the end of the session (`endCast`, `endCastForCar`). */
-  private beginning: { cast: CastPlaybackService; stop: () => void } | null = null;
+  /** The session waiting for a phone load or the previous receiver's hand-back. */
+  private beginning: Beginning | null = null;
   /** The book a handover gives the receiver (`beginCast`): a session that ends before it is
    * the route hands this book back, at the place being handed over (`handBack`). */
   private handover: LastLoad | null = null;
@@ -167,6 +167,11 @@ export class RoutedPlaybackService implements PlaybackService {
     return this.cast;
   }
 
+  /** The session that owns the route or is waiting to take it. */
+  castSession(): CastPlaybackService | null {
+    return this.beginning?.cast ?? this.cast;
+  }
+
   /**
    * Make a Cast session the route. When a book is loaded, hand it over: pause the phone
    * at its place (reported as a pause, so the store saves it), unload the phone's engine,
@@ -184,16 +189,15 @@ export class RoutedPlaybackService implements PlaybackService {
     if (this.cast === cast || this.beginning?.cast === cast) return;
     // A session still waiting to become the route is replaced by this one.
     this.stopBeginning();
+    const beginning: Beginning = { cast };
+    this.beginning = beginning;
     // A load of the store's own still on its way into the phone's engine: the engine's place
     // is the book it replaces until it lands, and the loaded book would go over at that one's
     // place. It goes over from where its load put it, so the session waits for that.
-    const asked = this.localLoad ? await this.localLoadLands(cast) : null;
-    if (asked === false) {
-      // Never the route: it stops listening to its receiver, as a session that ends does.
-      cast.detach();
-      return;
-    }
-    if (this.cast) await this.endCast();
+    const asked = this.localLoad ? await this.localLoadLands(beginning) : null;
+    if (this.beginning === beginning && this.cast) await this.endRoute(this.cast);
+    if (this.beginning !== beginning) return;
+    this.beginning = null;
     // Asked while the phone is still the route: the store reads the phone's last report. A
     // load that never landed leaves the engine holding the book it replaced, as another book.
     const own = this.loadedPlace?.() ?? asked;
@@ -275,10 +279,14 @@ export class RoutedPlaybackService implements PlaybackService {
    * caller refreshes it first where it still can) comes back to the phone paused: reported
    * as a pause, so the store saves it, then loaded into the phone's engine there.
    */
-  async endCast(): Promise<void> {
+  async endCast(session?: CastPlaybackService): Promise<void> {
+    // The final read from an ended receiver can return after its replacement began.
+    if (session && session !== this.castSession()) return;
     this.stopBeginning();
-    const cast = this.cast;
-    if (!cast) return;
+    if (this.cast) await this.endRoute(this.cast);
+  }
+
+  private async endRoute(cast: CastPlaybackService): Promise<void> {
     const run = this.handBack(cast);
     this.ending = run;
     try {
@@ -328,9 +336,8 @@ export class RoutedPlaybackService implements PlaybackService {
     if (generation === this.generation) this.mode = 'local';
   }
 
-  /** A session is waiting to become the route (`beginCast`, the store's load into the phone's
-   * engine on its way): not casting yet, but it takes the route once that load lands, so a
-   * play that must stay on the phone ends it first (`endCastForCar`, `endCast`). */
+  /** A session is waiting to become the route. A play that must stay on the phone ends it
+   * first (`endCastForCar`, `endCast`). */
   beginningCast(): boolean {
     return this.beginning !== null;
   }
@@ -338,8 +345,10 @@ export class RoutedPlaybackService implements PlaybackService {
   /** Stop the wait of a session that is still to become the route (`beginning`). */
   private stopBeginning() {
     const beginning = this.beginning;
+    if (!beginning) return;
     this.beginning = null;
-    beginning?.stop();
+    beginning.stop?.();
+    beginning.cast.detach();
   }
 
   /** The router's snapshot at the place a load was asked to start at. */
@@ -354,22 +363,17 @@ export class RoutedPlaybackService implements PlaybackService {
 
   /**
    * Wait for the store's own load into the phone's engine to land (`localLoad`, and one that
-   * replaced it meanwhile), for at most `LOCAL_LOAD_WAIT_MS`: null once it landed. False when
-   * the session ended or another began meanwhile (`stopBeginning`): `cast` is not to become
-   * the route. A load that never landed (it failed, or outlasted the bound) is given up: the
+   * replaced it meanwhile), for at most `LOCAL_LOAD_WAIT_MS`. An ended or replaced session
+   * stops waiting. A load that never landed (it failed, or outlasted the bound) is given up: the
    * place it was asked to start at, the book's own to go over from (the engine's snapshot is
    * still the book it replaced).
    */
-  private async localLoadLands(
-    cast: CastPlaybackService,
-  ): Promise<PlaybackSnapshot | null | false> {
+  private async localLoadLands(beginning: Beginning): Promise<PlaybackSnapshot | null> {
     let timer: ReturnType<typeof setTimeout> | undefined;
-    const beginning = { cast, stop: () => {} };
     const cut = new Promise<'stopped' | 'bound'>((resolve) => {
       timer = setTimeout(() => resolve('bound'), LOCAL_LOAD_WAIT_MS);
       beginning.stop = () => resolve('stopped');
     });
-    this.beginning = beginning;
     try {
       for (let loading = this.localLoad; loading;) {
         const outcome = await Promise.race([
@@ -380,7 +384,7 @@ export class RoutedPlaybackService implements PlaybackService {
           cut,
         ]);
         // Stopped (`stopBeginning`), also once the load landed first.
-        if (outcome === 'stopped' || this.beginning !== beginning) return false;
+        if (outcome === 'stopped' || this.beginning !== beginning) return null;
         // A load that replaced this one meanwhile is the one to wait for (a superseded load
         // can fail: the newer one took the engine).
         const next = this.localLoad === loading ? null : this.localLoad;
@@ -397,7 +401,6 @@ export class RoutedPlaybackService implements PlaybackService {
       return null;
     } finally {
       clearTimeout(timer);
-      if (this.beginning === beginning) this.beginning = null;
     }
   }
 

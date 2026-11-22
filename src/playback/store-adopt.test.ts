@@ -2255,7 +2255,7 @@ describe('a play asked from outside of another book after playback stopped', () 
   }
 
   /** B adopted paused at (1, 30); the engine asked to play from outside (no error, so no play
-   * followed) and its unnamed `loading` report at `heard` taken; S's adoption then begins and
+   * followed) and its unnamed report at `heard` taken; S's adoption then begins and
    * gives up (the engine read again names nothing). Returns once it gave up. */
   async function askedForSWhilePaused(heard: {
     trackIndex: number;
@@ -2293,17 +2293,18 @@ describe('a play asked from outside of another book after playback stopped', () 
     expect(mockSaveProgress.mock.calls[0][1]).toMatchObject({ path: 'B', position: 130 });
   });
 
-  // The other book's report taken as B's said `ready` (the car loaded S): B stands where it
-  // was, and shows paused as it stood, never S's state.
-  it("shows a paused store's book paused when another book's ready report was taken as its", async () => {
-    const during = await askedForSWhilePaused({ trackIndex: 1, position: 80, state: 'ready' });
-    expect(during).toMatchObject({ state: 'paused', trackIndex: 1, position: 30 });
-    expect(usePlayer.getState().snapshot).toMatchObject({
-      state: 'paused',
-      trackIndex: 1,
-      position: 30,
-    });
-  });
+  it.each(['ready', 'playing'] as const)(
+    'restores the paused book when the car reports %s without naming its book before adoption',
+    async (state) => {
+      const during = await askedForSWhilePaused({ trackIndex: 1, position: 80, state });
+      expect(during).toMatchObject({ state: 'paused', trackIndex: 1, position: 30 });
+      expect(usePlayer.getState().snapshot).toMatchObject({
+        state: 'paused',
+        trackIndex: 1,
+        position: 30,
+      });
+    },
+  );
 
   // Not once the store's book played from that ask (the lock screen's play of B itself): its
   // place is its own from there, and a later adoption of another book leaves it.
@@ -2313,7 +2314,9 @@ describe('a play asked from outside of another book after playback stopped', () 
     playAsked?.();
     pushSnapshot(snap('loading', 1, 30));
     pushSnapshot(snap('playing', 1, 31));
+    engineBook = { connectionId: 'c1', libraryId: 2, path: 'B' };
     pushSnapshot(snap('playing', 1, 60));
+    engineBook = null;
     pushSnapshot(snap('paused', 1, 60));
     await flushMicrotasks();
     expect(usePlayer.getState().snapshot).toMatchObject({ trackIndex: 1, position: 60 });

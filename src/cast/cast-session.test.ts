@@ -130,6 +130,64 @@ describe('startCastSync', () => {
     stop();
   });
 
+  it("keeps a new session waiting for the phone load when the previous receiver's read returns", async () => {
+    const phoneLoad = Promise.withResolvers<void>();
+    const router = routed({ ...localEngine(), load: () => phoneLoad.promise });
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    const first = remote();
+    driver.fire({ type: 'started', remote: first });
+    await flush();
+    const finalRead = Promise.withResolvers<null>();
+    jest.mocked(first.readStatus).mockReturnValueOnce(finalRead.promise);
+    driver.fire({ type: 'ending' });
+    // The car brings the route home while the session's final read is still out.
+    await expect(endCastForCar(driver)).resolves.toBe(true);
+
+    const load = router.load([], 0, 0);
+    const next = remote();
+    driver.fire({ type: 'started', remote: next });
+    await flush();
+    expect(router.beginningCast()).toBe(true);
+    driver.fire({ type: 'ended' });
+    finalRead.resolve(null);
+    await flush();
+    expect(useCast.getState().status).toBe('connected');
+    expect(router.beginningCast()).toBe(true);
+    phoneLoad.resolve();
+    await load;
+    await flush();
+    await router.play();
+    expect(next.play).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
+  it("keeps a resumed session on the route when the previous receiver's read returns", async () => {
+    const router = routed(localEngine());
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    const first = remote();
+    driver.fire({ type: 'started', remote: first });
+    await flush();
+    const finalRead = Promise.withResolvers<null>();
+    jest.mocked(first.readStatus).mockReturnValueOnce(finalRead.promise);
+    driver.fire({ type: 'ending' });
+    driver.fire({ type: 'ended' });
+    await flush();
+    expect(router.isCasting()).toBe(true); // the hand-back still needs the receiver's place
+
+    const next = remote();
+    driver.fire({ type: 'resumed', remote: next });
+    await flush();
+    finalRead.resolve(null);
+    await flush();
+    await router.play();
+    expect(next.play).toHaveBeenCalledTimes(1);
+    stop();
+  });
+
   it('a session that ended before the stores were ready never becomes the route', async () => {
     const driver = fakeDriver();
     const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });

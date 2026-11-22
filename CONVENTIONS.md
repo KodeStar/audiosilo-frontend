@@ -3366,9 +3366,10 @@ media GETs only.
   `stoodWhenAsked`): a speed change, during the adoption or after a Pause in the grace, saves
   that place, and a play press reloads there, never the other book's place past it. So does a
   play asked from outside while the store's book stood still (paused, not in error), which the
-  store does not follow: where it stood is kept (`pausedAsk`) until it plays or the store
-  starts a play of its own, and the book shows paused there again (not the other book's
-  `ready`).
+  store does not follow. Its place is kept (`pausedAsk`) until a playing report names the
+  store's book or the store takes the engine for its own play, load or adoption. If the car
+  reports playing without naming its book first, the store's book still shows paused at
+  its saved place when adoption begins.
   These holds come before a faulted book's stop (`loadedFaulted`), as a named other book's
   report does: a faulted store's book never pauses the other book's play nor reloads over it.
   Whether that unnamed book plays is kept from its held reports (`unnamedPlays`), so
@@ -4519,7 +4520,9 @@ on first need). NOT device-verified (no Cast device yet).
   (`loadedQueue`, with its chapters; mid-handover the one handed over), at the receiver's
   place, named (`handingBack`) for its report and while the phone loads it: when that is not
   the store's book (an adoption landed mid-handover) the store holds it as another book's and
-  is told of no load of its own.
+  is told of no load of its own. The final receiver read ends only the session it belongs
+  to. A session waiting for the previous receiver's hand-back checks it still owns the
+  route change before taking over.
   `startCastSync` (the root's services, `root-services-impl.tsx`) follows the driver's session events; `endCastForCar` and
   `stopCasting` end a session from the app. A user's Stop casting stops the receiver's app (from
   the app, the Cast dialog or the notification), so the TV never plays on while the book comes
