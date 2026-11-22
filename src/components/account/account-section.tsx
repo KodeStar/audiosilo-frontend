@@ -3,9 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
 import { useActiveAddress } from '@/api/address-route';
+import { ApiError } from '@/api/client';
 import { useMyDevices, useServerAddresses, useServerInfo } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
-import type { Capabilities } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -13,6 +13,7 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { isKidAccount } from '@/lib/account';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { cn } from '@/lib/utils';
 import { hostOf } from '@/lib/pairing';
@@ -122,14 +123,17 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   const serverInfo = useServerInfo(cid);
   const server = serverInfo.data;
   const caps = server?.capabilities;
-  // No `/server` answer kept and none coming (held for the network, or it failed): its
-  // flags are unknown, so the blocks the device can show without it stand with their
-  // offline or failed state, not gone until the server answers (fe#271). "It failed" is
-  // `errorUpdateCount`, which a read again leaves as it was: a reader that mounts asks a
-  // failed read again (React Query's `retryOnMount`), which puts it back to pending with
-  // no error, so the error itself would hide the devices section, which mounts such a
-  // reader, bring it back once the request failed, and ask again, twice a second for good.
+  // Keep the list sections mounted through an explicit retry of a failed /server read.
   const capsUnread = !caps && (serverInfo.isPaused || serverInfo.errorUpdateCount > 0);
+  const deviceOnline = useDeviceOnline();
+  // With a network, the saved addresses help diagnose a server that will not answer.
+  // Offline, only a kept capability confirms this server supports the card.
+  const showAddresses =
+    caps?.addresses === true ||
+    (capsUnread &&
+      deviceOnline &&
+      !serverInfo.isPaused &&
+      !(serverInfo.error instanceof ApiError && [401, 403].includes(serverInfo.error.status)));
   const demo = !!user?.is_demo;
   // A kid's account (8b-1) can't pair a device or have API keys (the server refuses both).
   const kid = isKidAccount(user);
@@ -155,11 +159,8 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
   // (see `canRevoke`).
   const signOut = useSignOut(cid);
 
-  // API keys: only where the server advertises them, and never for demo or kid accounts
-  // (the server refuses them). The manager runs unconditionally; `apiKeysEnabled` gates
-  // its list query and the section.
-  const apiKeysEnabled = caps?.api_keys === true && !demo && !kid;
-  const apiKeys = useApiKeysManager(cid, apiKeysEnabled);
+  const apiKeys = useApiKeysManager(cid, !demo && !kid);
+  const canManageKeys = !demo && !kid && caps?.api_keys === true;
 
   return (
     <View
@@ -200,7 +201,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
 
       {watchLink.supported ? <WatchCard connectionId={cid} /> : null}
 
-      <AccountAddresses cid={cid} caps={caps} capsUnread={capsUnread} />
+      {showAddresses ? <AccountAddresses cid={cid} /> : null}
 
       {/* Not gated on the server's flags: needed most when a proxy turns every request
           away (fe#167). Never a demo or kid account's to change while someone else here
@@ -217,8 +218,8 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
         supported={caps?.listening_sync === true}
       />
 
-      {demo || kid ? null : apiKeysEnabled ? (
-        <ApiKeysSection manager={apiKeys} />
+      {demo || kid ? null : caps?.api_keys === true || capsUnread ? (
+        <ApiKeysSection manager={apiKeys} supported={canManageKeys} connectionId={cid} />
       ) : caps?.api_keys === false ? (
         <ApiKeysUnavailable serverName={serverName} />
       ) : null}
@@ -269,7 +270,7 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
       />
       <ApiKeyCreatedModal created={apiKeys.created} onClose={apiKeys.dismissCreated} />
       <ConfirmDialog
-        visible={apiKeys.pendingRevoke !== null}
+        visible={canManageKeys && apiKeys.pendingRevoke !== null}
         title={t('settings.apiKeys.revokeConfirm.title', {
           name: apiKeys.pendingRevoke?.label ?? '',
         })}
@@ -290,25 +291,13 @@ function AccountBody({ cid, switcher }: { cid: string; switcher: ReactNode }) {
  * refreshes) merged with what the server says now (`useServerAddresses`; on the web it
  * is the only refresh), and on native which one this device is using now. Web never
  * switches (the served player stays on its own origin), so it shows no "in use" line.
- * Nothing for a server without the capability or with no address to show. With no
- * `/server` answer kept and none coming, the device's own copy shows (most useful away
- * from home).
+ * Offline, the page checks the server's saved capability before showing these addresses.
  */
-function AccountAddresses({
-  cid,
-  caps,
-  capsUnread,
-}: {
-  cid: string;
-  caps: Capabilities | undefined;
-  /** `/server` could not be read and nothing is kept: the kept addresses still show. */
-  capsUnread: boolean;
-}) {
+function AccountAddresses({ cid }: { cid: string }) {
   const { t } = useTranslation();
   const kept = useSession((s) => s.connections.find((c) => c.id === cid)?.addresses);
   const { data: fresh } = useServerAddresses(cid);
   const active = useActiveAddress(cid);
-  if (caps?.addresses !== true && !capsUnread) return null;
   const addresses = mergeAddresses(kept, fresh);
   if (!addresses) return null;
   // Named against what the card shows (the server may have just told us an address the

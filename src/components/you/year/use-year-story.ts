@@ -31,7 +31,7 @@ export type YearStory =
   | { status: 'loading'; serverName: string }
   | { status: 'offline'; serverName: string }
   | { status: 'unsupported'; serverName: string }
-  | { status: 'error'; serverName: string; retry: () => void }
+  | { status: 'error'; serverName: string; error: Error | null; retry: () => void }
   | { status: 'empty'; serverName: string; year: string; current: boolean }
   | ReadyYearStory;
 
@@ -92,7 +92,7 @@ export function useYearStory(cid: string, range: YearRange): YearStory {
   // its Retry asks `/server` again (`useCapabilityQuery`).
   if (unreadStats === 'offline') return { status: 'offline', serverName };
   if (stats.isError && !stats.data) {
-    return { status: 'error', serverName, retry: () => void stats.refetch() };
+    return { status: 'error', serverName, error: stats.error, retry: () => void stats.refetch() };
   }
   if (!built) return { status: 'loading', serverName };
   // Told from now on (a state update while rendering: React renders again at once).

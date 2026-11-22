@@ -4,7 +4,7 @@ import { create } from 'zustand';
 
 import { type Connection, onConnectionRemoved, useSession } from '@/stores/session';
 
-import { type ApiClient, isUnreachableError } from './client';
+import { type ApiClient, isUnreachableError, UnexpectedServerAnswerError } from './client';
 import { resolveClient } from './connection-clients';
 
 /**
@@ -66,9 +66,10 @@ export type ServerStatus = 'online' | 'offline' | 'reconnect';
 export function serverStatus(
   connection: Pick<Connection, 'id' | 'needsReconnect'>,
   online: Record<string, boolean>,
+  deviceOnline = true,
 ): ServerStatus {
   if (connection.needsReconnect) return 'reconnect';
-  return online[connection.id] === false ? 'offline' : 'online';
+  return !deviceOnline || online[connection.id] === false ? 'offline' : 'online';
 }
 
 /** The first of `connections` that is not answering (for the chrome that names it). */
@@ -174,11 +175,13 @@ export async function checkReachability(connectionId: string): Promise<void> {
   if (!client) return; // connection gone; removal purges its state
   checking.set(connectionId, client);
   const answersBefore = answers.get(connectionId) ?? 0;
-  let answered = true;
+  let answered: boolean | null = true;
   try {
     await client.serverInfo();
   } catch (e) {
-    answered = !isUnreachableError(e); // an `ApiError` is an answer, whatever its status
+    // A different host at home, or an answer to an earlier address, says nothing
+    // about this connection even if the provider still holds the previous client.
+    answered = e instanceof UnexpectedServerAnswerError ? null : !isUnreachableError(e);
   }
   // Removed while it ran (removal drops its entry): nothing to record.
   if (checking.get(connectionId) !== client) return;
@@ -187,7 +190,9 @@ export async function checkReachability(connectionId: string): Promise<void> {
   const now = clientFor(connectionId);
   if (now && now.baseUrl === client.baseUrl) {
     if (answered) setOnline(connectionId, true);
-    else if ((answers.get(connectionId) ?? 0) === answersBefore) setOnline(connectionId, false);
+    else if (answered === false && (answers.get(connectionId) ?? 0) === answersBefore) {
+      setOnline(connectionId, false);
+    }
   } else if (now && !answered && isReachable(connectionId)) {
     // Moved to another address while it waited (the address runner left home as the
     // network went): what it found says nothing of the new address, so ask that one.

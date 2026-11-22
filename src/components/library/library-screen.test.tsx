@@ -405,6 +405,8 @@ describe('LibraryScreen', () => {
         pick(null);
         await mountWithPortal(<LibraryScreen />);
         expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+        expect(screen.getByText('Choose a library')).toBeTruthy();
+        expect(screen.queryByText('Waiting for Hearthside')).toBeNull();
         expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
         noBooks();
       } finally {

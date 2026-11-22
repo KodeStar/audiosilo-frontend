@@ -143,6 +143,14 @@ describe('FindLibrivoxScreen', () => {
     expect(screen.getByTestId('librivox-search').props.children).toBe('c2 3');
   });
 
+  it('offers server sign-in when its initial /server read is unauthorized', async () => {
+    mockServer = undefined;
+    mockInfoError = new ApiError(401, 'unauthorized');
+    await mountWithPortal(<FindLibrivoxScreen />);
+    expect(screen.getByText('Sign in again to Home')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
   it('says a failed server read with nothing kept failed, with Retry, not a skeleton', async () => {
     mockServer = undefined;
     mockInfoError = new ApiError(500, 'boom');

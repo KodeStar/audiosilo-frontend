@@ -1,6 +1,8 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { SourcedUpcomingItem, UpcomingServerStatus } from '@/lib/upcoming';
+import type { RefusedServer } from '@/api/server-read-error';
+import { useSession } from '@/stores/session';
 
 const mockPush = jest.fn();
 const mockOpenSeries = jest.fn();
@@ -15,6 +17,7 @@ let mockUpcoming: {
   isLoading: boolean;
   statuses: UpcomingServerStatus[];
   failed: string[];
+  refusals: RefusedServer[];
   retry: () => void;
   retrying?: boolean;
 };
@@ -104,6 +107,7 @@ const idle = {
   isLoading: false,
   statuses: [] as UpcomingServerStatus[],
   failed: [] as string[],
+  refusals: [] as RefusedServer[],
   retry: mockRetry,
 };
 
@@ -333,6 +337,17 @@ describe('UpcomingContent', () => {
     ).toBeTruthy();
     expect(screen.queryByText('No upcoming releases here')).toBeNull();
     expect(screen.queryByTestId('upcoming-skeleton', { includeHiddenElements: true })).toBeNull();
+  });
+
+  it('shows the refused proxy for the only eligible connection', async () => {
+    useSession.setState({
+      connections: [{ id: 'a', name: 'Home', serverUrl: 'u', token: 't', user: {} as never }],
+    });
+    mockUpcoming = { ...idle, available: false, refusals: [{ connectionId: 'a', proxy: true }] };
+    await render(<UpcomingContent />);
+    expect(screen.getByText(/sign-in proxy for Home turned this device away/)).toBeTruthy();
+    expect(screen.queryByText('No upcoming releases here')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 
   it('says no server answered, with a Retry, never that nothing is coming up', async () => {

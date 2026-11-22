@@ -1,3 +1,4 @@
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 
@@ -40,6 +41,8 @@ export function SeriesMode({ connectionId, libraryId }: LibraryModeProps) {
     );
   }
   if (!list.data) {
+    const refused = serverRefusalState(list.error, connectionId);
+    if (refused) return refused;
     return (
       <EmptyShelf
         title={t('series.mode.errorTitle')}

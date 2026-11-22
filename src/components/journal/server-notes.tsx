@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { ServerRefusal } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
@@ -26,8 +27,10 @@ export function ServerNotes({
   const themed = useThemeColors();
   const overall = overallStatus(sources);
   // Every server failed or none can list: the page's own state says it.
-  if (overall === 'error' || overall === 'unsupported') return null;
+  if (overall === 'unsupported') return null;
+  const refusals = sources.flatMap((s) => (s.refusal ? [s.refusal] : []));
   const notes = sources.flatMap((s): { id: string; text: string; retry?: () => void }[] => {
+    if (overall === 'error' || s.refusal) return [];
     if (s.status === 'error') {
       return [
         {
@@ -47,9 +50,12 @@ export function ServerNotes({
     }
     return [];
   });
-  if (notes.length === 0) return null;
+  if (notes.length === 0 && refusals.length === 0) return null;
   return (
     <View className="gap-2 pb-4">
+      {refusals.map((r) => (
+        <ServerRefusal key={r.connectionId} {...r} />
+      ))}
       {notes.map((n) => (
         <View key={n.id} className="flex-row items-center gap-2">
           <Icon name="server" size={13} color={themed.mutedForeground} />

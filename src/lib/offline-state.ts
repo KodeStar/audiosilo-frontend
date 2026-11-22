@@ -1,4 +1,5 @@
 import { ApiError } from '@/api/client';
+import { ServerReadError } from '@/api/server-read-error';
 
 import { useDeviceOnline } from './device-online';
 
@@ -50,7 +51,8 @@ export function useUnreadQuery(query: {
 }): UnreadState {
   const deviceOnline = useDeviceOnline();
   if (query.data !== undefined) return null;
-  if (query.error instanceof ApiError) return 'failed';
+  const error = query.error instanceof ServerReadError ? query.error.cause : query.error;
+  if (error instanceof ApiError) return 'failed';
   return offlineState({ waiting: query.isPaused, failed: !!query.error, deviceOnline });
 }
 

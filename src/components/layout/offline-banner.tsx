@@ -1,9 +1,8 @@
 import type { TFunction } from 'i18next';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
-import { useShallow } from 'zustand/react/shallow';
 
-import { useReachability } from '@/api/reachability';
+import { serverStatus, useReachability } from '@/api/reachability';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { useDeviceOnline } from '@/lib/device-online';
@@ -23,7 +22,7 @@ function Bar({ label }: { label: string }) {
 /** What the bar says (CONNECT-15): with no network on the device, that it is offline;
  * with one, the server that isn't answering, by name, when there is one ("Hearthside
  * isn't answering"), else that some servers are offline. `down` are the names of the
- * servers the bar is about that are not answering; null: no bar. Pure, so it is tested
+ * servers the bar is about that are offline (an unknown server has no name); null: no bar. Pure, so it is tested
  * without the stores. */
 export function offlineBannerText(
   down: readonly string[],
@@ -32,7 +31,8 @@ export function offlineBannerText(
 ): string | null {
   if (down.length === 0) return null;
   if (!deviceOnline) return t('nav.offline');
-  if (down.length === 1) return t('shell.notAnswering', { name: down[0] });
+  if (down.length === 1)
+    return down[0] ? t('shell.notAnswering', { name: down[0] }) : t('nav.offline');
   return t('nav.someOffline');
 }
 
@@ -54,24 +54,18 @@ export function offlineBannerText(
 export function OfflineBanner({ connectionId }: { connectionId?: string }) {
   const { t } = useTranslation();
   const deviceOnline = useDeviceOnline();
-  // The ids of the servers this bar is about that are down, compared shallowly so a
-  // re-render follows only a change in them.
-  const ids = useReachability(
-    useShallow((s) =>
-      connectionId
-        ? s.online[connectionId] === false
-          ? [connectionId]
-          : []
-        : Object.keys(s.online).filter((id) => s.online[id] === false),
-    ),
-  );
-  // Only the listening person's servers are named (another person's stays theirs).
   const connections = useProfileConnections();
-  const down = connections.filter((c) => ids.includes(c.id)).map((c) => c.name);
-  // A scoped page's server this device has no name for still says it is offline.
-  const label =
-    connectionId && ids.length > 0 && down.length === 0
-      ? t('nav.offline')
-      : offlineBannerText(down, deviceOnline, t);
+  const label = useReachability(({ online }) => {
+    // Name only this listener's servers. A link can carry an id whose name isn't known.
+    const scoped = connectionId
+      ? [connections.find((c) => c.id === connectionId) ?? { id: connectionId, name: '' }]
+      : connections;
+    const down = scoped.filter((c) => serverStatus(c, online, deviceOnline) === 'offline');
+    return offlineBannerText(
+      down.map((c) => c.name),
+      deviceOnline,
+      t,
+    );
+  });
   return label ? <Bar label={label} /> : null;
 }

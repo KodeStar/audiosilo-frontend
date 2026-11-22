@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
+import { ServerReadError } from '@/api/server-read-error';
 import { ApiError } from '@/api/client';
 import type { MyDevice } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -210,6 +211,56 @@ describe('DevicesSection', () => {
     };
     await mount();
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it.each([401, 403])('offers sign-in when /server refuses the gated read (%i)', async (status) => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          user: { username: 'chris' } as never,
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ServerReadError(new ApiError(status, 'refused')),
+    };
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it("shows a proxy's refusal without a device Retry or a server sign-in", async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          user: { username: 'chris' } as never,
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ServerReadError(new ApiError(403, 'proxy', undefined, undefined, true)),
+    };
+    await mount();
+    expect(screen.getByText(/sign-in proxy for Hearthside turned this device away/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
   });
 

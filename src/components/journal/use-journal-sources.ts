@@ -15,6 +15,7 @@ import {
   serverInfoQuery,
 } from '@/api/hooks';
 import { useApis } from '@/api/provider';
+import { type RefusedServer, refusedServer } from '@/api/server-read-error';
 import type { HistoryEntry, MyBookmark, MyNote, Page } from '@/api/types';
 import { type InfiniteQueriesResult, useInfiniteQueries } from '@/lib/use-infinite-queries';
 
@@ -36,6 +37,7 @@ export type Source<T> = SourceSnapshot<T> & {
   /** Whether the server can list it: false for an older one without the capability,
    * 'unknown' once its `/server` failed, undefined while not known. History: always. */
   supported: boolean | 'unknown' | undefined;
+  refusal?: RefusedServer;
   fetchNextPage: () => void;
   refetch: () => void;
 };
@@ -61,6 +63,7 @@ function rowsOf<T>(data: InfiniteData<Page<T>> | undefined): readonly T[] {
 
 type ServerAnnotations = {
   supported: boolean | 'unknown' | undefined;
+  refusal?: RefusedServer;
   /** Its `/server` is held for the network with no answer kept: the flag, and so the
    * list that waits on it, can't come meanwhile. */
   waiting: boolean;
@@ -69,8 +72,8 @@ type ServerAnnotations = {
 
 /** One infinite query's state as a source. `supported` false: the server can't list
  * this; 'unknown': its `/server` failed, so whether it can is not known (a failure, never
- * an endless load). Its retry asks `/server` again too (`info`): a list that never ran,
- * for want of the flag, has nothing of its own to retry (it runs once the flag says yes). */
+ * an endless load). Retry asks a failed list, or its missing flags if the list could
+ * not run. A sign-in refusal waits for the connection's credentials to change. */
 function toSource<T>(
   connection: { id: string; name: string },
   query: InfiniteQueriesResult<Page<T>, string | undefined>,
@@ -92,14 +95,15 @@ function toSource<T>(
     status,
     waiting: status === 'loading' && (isPaused || info?.waiting === true),
     supported,
+    refusal: status === 'error' ? info?.refusal : undefined,
     rows: rowsOf(data),
     hasNextPage: status === 'ready' && hasNextPage,
     isFetchingNextPage,
     fetchNextPage: () => void query.fetchNextPage(),
     refetch: () => {
-      void info?.refetch();
       // A list without its flag has no query function: the flag's answer starts it.
       if (supported === true) void query.refetch();
+      else if (info && !info.refusal && supported === 'unknown') void info.refetch();
     },
   };
 }
@@ -114,8 +118,9 @@ export function useJournalSources({ notes: wantNotes = true } = {}): JournalSour
   const infos = useQueries({
     queries: apis.map(({ connection, client }) => serverInfoQuery(connection.id, client)),
     combine: (results) =>
-      results.map((r): ServerAnnotations => ({
+      results.map((r, i): ServerAnnotations => ({
         supported: r.data ? !!r.data.capabilities.annotations : r.isError ? 'unknown' : undefined,
+        refusal: r.data ? undefined : refusedServer(apis[i].connection.id, r.error),
         waiting: !r.data && r.isPaused,
         refetch: r.refetch,
       })),

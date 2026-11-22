@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useUpcomingAll } from '@/api/hooks';
+import { ServerRefusal } from '@/components/layout/server-refusal-state';
 import { LoadError } from '@/components/library/books/book-states';
 import { EmptyState } from '@/components/ui/empty-state';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -53,7 +54,8 @@ function UpcomingSkeleton() {
  */
 export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   const { t } = useTranslation();
-  const { items, available, isLoading, statuses, failed, retry, retrying } = useUpcomingAll();
+  const { items, available, isLoading, statuses, failed, refusals, retry, retrying } =
+    useUpcomingAll();
   // Counted from when the page was last in front (its badges stay put while it is).
   const now = useUpcomingClock();
   const pending = statuses.filter((s) => s.status === 'pending').map((s) => s.connectionName);
@@ -68,7 +70,7 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
   if (available === undefined || (isLoading && items.length === 0)) {
     body = <UpcomingSkeleton />;
   } else if (available === false && failed.length === 0) {
-    body = (
+    body = refusals.length === 0 && (
       <EmptyState
         icon="book"
         title={t('upcoming.unavailable.title')}
@@ -158,6 +160,9 @@ export function UpcomingContent({ embedded = false }: { embedded?: boolean }) {
           {t('upcoming.title')}
         </Text>
       )}
+      {refusals.map((r) => (
+        <ServerRefusal key={r.connectionId} {...r} />
+      ))}
       {body}
       {available ? <UpcomingCalendarCard /> : null}
     </View>

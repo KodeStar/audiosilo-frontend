@@ -36,6 +36,7 @@ jest.mock('@/components/account/use-sign-out', () => ({
 const mockCaps: Record<string, { household?: boolean }> = {};
 // The connections whose /server read failed with nothing known, and their Retry.
 let mockCapsFailed: string[] = [];
+let mockRefusals: { connectionId: string; proxy: boolean }[] = [];
 let mockCapsReading = false;
 const mockCapsRetry = jest.fn();
 const mockMemberSession = { mutateAsync: jest.fn(), isPending: false };
@@ -46,6 +47,7 @@ jest.mock('@/api/hooks', () => ({
   useCapabilitiesAllRead: () => ({
     caps: mockCaps,
     failed: mockCapsFailed,
+    refusals: mockRefusals,
     retry: mockCapsRetry,
     reading: mockCapsReading,
   }),
@@ -116,6 +118,7 @@ beforeEach(async () => {
   resetProfilesForTests();
   for (const k of Object.keys(mockCaps)) delete mockCaps[k];
   mockCapsFailed = [];
+  mockRefusals = [];
   mockCapsReading = false;
   mockDeviceOnline = true;
   mockCapsRetry.mockClear();
@@ -705,6 +708,17 @@ describe('Household page: on this device (Phase 8, a page since 8b-1)', () => {
     mockCapsReading = true;
     await mount();
     expect(screen.getAllByRole('button', { name: 'Retry' }).at(-1)).toBeBusy();
+  });
+
+  it('offers the refused server its sign-in alongside a Retry for another server', async () => {
+    mockCapsFailed = ['a.1', 'b.1'];
+    mockRefusals = [{ connectionId: 'a.1', proxy: false }];
+    await mount();
+    const section = within(screen.getByTestId('household-sharing'));
+    expect(section.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(section.getByText("Couldn't check whether Maya's Shelf offers this.")).toBeTruthy();
+    await fireEvent.press(section.getByRole('button', { name: 'Retry' }));
+    expect(mockCapsRetry).toHaveBeenCalledTimes(1);
   });
 
   // With no network the read only waits for one: offline, and no Retry that can't work.

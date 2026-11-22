@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import type { ApiKey } from '@/api/types';
+import { OfflineState } from '@/components/layout/offline-state';
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FormError } from '@/components/ui/form-error';
@@ -35,42 +37,45 @@ function keyDetail(k: ApiKey, t: TFunction): string {
 
 /**
  * "Personal API keys": this connection's keys with when each was made and last used,
- * "Create key" (a name in {@link NewKeyDialog}; the secret is then revealed once by the
+ * "Create key" (a name in {@link NewKeyAction}; the secret is then revealed once by the
  * page's `ApiKeyCreatedModal`), and Revoke (confirmed by the page's dialog). Rendered
- * only where the server has `api_keys` and the account isn't a demo one; without the
- * capability the page shows {@link ApiKeysUnavailable} instead.
+ * for eligible accounts even when the server's capabilities cannot be read. With a
+ * known false flag the page shows {@link ApiKeysUnavailable}.
  *
  * State lives in `useApiKeysManager` (owned by the page, which renders the reveal and
  * the revoke confirmation); this component is the view over it.
  */
-export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
+export function ApiKeysSection({
+  manager,
+  supported,
+  connectionId,
+}: {
+  manager: ApiKeysManager;
+  supported: boolean;
+  connectionId: string;
+}) {
   const { t } = useTranslation();
-  const [creating, setCreating] = useState(false);
   return (
     <View className="gap-3">
       <SectionTitle
         title={t('settings.apiKeys.label')}
         sub={t('settings.apiKeys.sub')}
-        action={
-          <Button
-            variant="outline"
-            size="sm"
-            icon="plus"
-            title={t('settings.apiKeys.create')}
-            onPress={() => setCreating(true)}
-          />
-        }
+        action={supported && <NewKeyAction manager={manager} />}
       />
       <Card className="overflow-hidden p-0">
-        {manager.isLoading ? (
+        {manager.unread === 'offline' ? (
+          <OfflineState className="py-6" />
+        ) : manager.unread === 'failed' ? (
+          (serverRefusalState(manager.error, connectionId) ?? (
+            <Text variant="muted" className="p-5">
+              {t('settings.apiKeys.loadError')}
+            </Text>
+          ))
+        ) : manager.isLoading ? (
           <View className="gap-2 p-5" testID="api-keys-loading">
             <Skeleton className="h-3.5 w-1/3 rounded-sm" />
             <Skeleton className="h-3 w-2/3 rounded-sm" />
           </View>
-        ) : manager.isError ? (
-          <Text variant="muted" className="p-5">
-            {t('settings.apiKeys.loadError')}
-          </Text>
         ) : manager.keys.length === 0 ? (
           <Text variant="muted" className="p-5">
             {t('settings.apiKeys.empty')}
@@ -83,17 +88,20 @@ export function ApiKeysSection({ manager }: { manager: ApiKeysManager }) {
               title={k.label}
               detail={keyDetail(k, t)}
               first={i === 0}
-              action={{
-                title: t('settings.apiKeys.revokeShort'),
-                accessibilityLabel: t('settings.apiKeys.revoke', { name: k.label }),
-                onPress: () => manager.requestRevoke(k),
-              }}
+              action={
+                supported
+                  ? {
+                      title: t('settings.apiKeys.revokeShort'),
+                      accessibilityLabel: t('settings.apiKeys.revoke', { name: k.label }),
+                      onPress: () => manager.requestRevoke(k),
+                    }
+                  : undefined
+              }
             />
           ))
         )}
       </Card>
       <FormError error={manager.revokeError} />
-      <NewKeyDialog open={creating} onClose={() => setCreating(false)} manager={manager} />
     </View>
   );
 }
@@ -113,48 +121,49 @@ export function ApiKeysUnavailable({ serverName }: { serverName: string }) {
   );
 }
 
-/** Names a new key, in a dialog (a bottom sheet on a phone, above the keyboard). It
- * closes once the key exists, and the page reveals the secret. */
-function NewKeyDialog({
-  open,
-  onClose,
-  manager,
-}: {
-  open: boolean;
-  onClose: () => void;
-  manager: ApiKeysManager;
-}) {
+/** Unmounting this action closes its dialog if the account loses the capability. */
+function NewKeyAction({ manager }: { manager: ApiKeysManager }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
   const submit = async () => {
-    if (await manager.create()) onClose();
+    if (await manager.create()) setOpen(false);
   };
   return (
-    <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>{t('settings.apiKeys.dialogTitle')}</DialogTitle>
-          <DialogDescription>{t('settings.apiKeys.hint')}</DialogDescription>
-        </DialogHeader>
-        <Input
-          label={t('settings.apiKeys.nameLabel')}
-          placeholder={t('settings.apiKeys.namePlaceholder')}
-          autoCapitalize="none"
-          value={manager.label}
-          onChangeText={manager.setLabel}
-          error={manager.createError ?? undefined}
-          onSubmitEditing={() => void submit()}
-        />
-        <DialogFooter>
-          <Button title={t('common.cancel')} variant="ghost" onPress={onClose} />
-          <Button
-            title={t('settings.apiKeys.create')}
-            icon="plus"
-            loading={manager.createBusy}
-            disabled={!manager.canCreate}
-            onPress={() => void submit()}
+    <>
+      <Button
+        variant="outline"
+        size="sm"
+        icon="plus"
+        title={t('settings.apiKeys.create')}
+        onPress={() => setOpen(true)}
+      />
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{t('settings.apiKeys.dialogTitle')}</DialogTitle>
+            <DialogDescription>{t('settings.apiKeys.hint')}</DialogDescription>
+          </DialogHeader>
+          <Input
+            label={t('settings.apiKeys.nameLabel')}
+            placeholder={t('settings.apiKeys.namePlaceholder')}
+            autoCapitalize="none"
+            value={manager.label}
+            onChangeText={manager.setLabel}
+            error={manager.createError ?? undefined}
+            onSubmitEditing={() => void submit()}
           />
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+          <DialogFooter>
+            <Button title={t('common.cancel')} variant="ghost" onPress={() => setOpen(false)} />
+            <Button
+              title={t('settings.apiKeys.create')}
+              icon="plus"
+              loading={manager.createBusy}
+              disabled={!manager.canCreate}
+              onPress={() => void submit()}
+            />
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

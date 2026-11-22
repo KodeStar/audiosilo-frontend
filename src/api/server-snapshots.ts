@@ -1,9 +1,10 @@
-import { isServerInfoKey, serverResetCid } from '@/lib/auth-failure';
+import { isServerInfoKey, reportedServerId, serverResetCid } from '@/lib/auth-failure';
 import { getItem, setItem } from '@/lib/storage';
 import { isRecord, OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
 import { tabLock } from '@/lib/tab-lock';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
+import { acceptsServerAnswer } from './connection-clients';
 import { qk } from './hooks';
 import { queryClient } from './provider';
 import type { Capabilities, ServerInfo } from './types';
@@ -42,6 +43,7 @@ export type ServerSnapshot = { info: ServerInfo; savedAt: number };
 export function parseServerSnapshot(raw: unknown): ServerSnapshot | undefined {
   return isRecord(raw) &&
     isRecord(raw.info) &&
+    reportedServerId(raw.info) &&
     isRecord(raw.info.capabilities) &&
     typeof raw.savedAt === 'number'
     ? (raw as ServerSnapshot)
@@ -107,6 +109,12 @@ export function forgetServerSnapshot(connectionId: string): Promise<void> {
  */
 export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapshot): void {
   const key = qk.server(connectionId);
+  // An older build could have kept the answer from another host at a home address.
+  if (
+    !reportedServerId(snapshot.info) ||
+    serverResetCid(key, snapshot.info, useSession.getState().connections)
+  )
+    return;
   queryClient.setQueryDefaults(key, { gcTime: Infinity });
   const state = queryClient.getQueryState<ServerInfo>(key);
   if (state?.data !== undefined && state.dataUpdatedAt >= snapshot.savedAt) return;
@@ -143,34 +151,21 @@ export function watchServerAnswers(): void {
 }
 
 /**
- * An answer to `/server` read outside the query cache (the listening outbox asking the
- * server itself whether it still takes events): it is the connection's answer like any
- * other, so the cache holds it from now on and it is kept. Unless it names another server
- * (`serverResetCid`, the check every `/server` read in the cache gets): this server was
- * reset, the connection is flagged for it like a cached read flags it, and nothing is
- * kept (fe#270). Returns false then: the answer says nothing about this connection's
- * server. `savedAt`: when it was read (now, for an answer just in).
+ * Check the address that answered an outbox's /server request before changing routes.
+ * A different server at a home address can be another host on the new network. Only
+ * the current paired or away address can establish that the server was reset.
  */
-export function keepServerAnswer(
-  connectionId: string,
-  info: ServerInfo,
-  savedAt = Date.now(),
-): boolean {
+export function keepServerAnswer(connectionId: string, info: ServerInfo, address: string): boolean {
+  if (!acceptsServerAnswer(connectionId, address, info)) return false;
+  cacheServerAnswer(connectionId, info, Date.now());
+  return true;
+}
+
+function cacheServerAnswer(connectionId: string, info: ServerInfo, savedAt: number): void {
   const key = qk.server(connectionId);
-  const { connections, markNeedsReconnect } = useSession.getState();
-  if (serverResetCid(key, info, connections)) {
-    markNeedsReconnect(connectionId, 'server-reset');
-    return false;
-  }
-  const snapshot = parseServerSnapshot({ info, savedAt });
-  if (!snapshot) {
-    // Not an answer every reader can take (no flags at all): have the cache ask instead.
-    void queryClient.invalidateQueries({ queryKey: key });
-    return true;
-  }
+  const snapshot = { info, savedAt };
   queryClient.setQueryData(key, info, { updatedAt: snapshot.savedAt });
   void saveServerSnapshot(connectionId, snapshot);
-  return true;
 }
 
 /**
@@ -186,7 +181,9 @@ export function keepServerFlag(connectionId: string, flag: keyof Capabilities): 
   const state = queryClient.getQueryState<ServerInfo>(key);
   const held = state?.data;
   if (!state || !held?.capabilities || held.capabilities[flag]) return;
-  keepServerAnswer(
+  if (!reportedServerId(held) || serverResetCid(key, held, useSession.getState().connections))
+    return;
+  cacheServerAnswer(
     connectionId,
     { ...held, capabilities: { ...held.capabilities, [flag]: true } },
     state.dataUpdatedAt,

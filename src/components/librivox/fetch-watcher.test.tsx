@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, render } from '@testing-library/react-native';
 import { create } from 'zustand';
 
+import { ServerReadError } from '@/api/server-read-error';
 import { ApiError } from '@/api/client';
 import type { BridgeJob } from '@/api/types';
 import { useSession } from '@/stores/session';
@@ -188,7 +189,7 @@ describe('LibrivoxFetchWatcher', () => {
     async (status) => {
       // The hooks' gate lays the failed `/server` read over the job's (`useCapabilityQuery`).
       mockServerUnknown.setState({ c1: true });
-      mockReads.setState({ 41: { error: new ApiError(status, '') } });
+      mockReads.setState({ 41: { error: new ServerReadError(new ApiError(status, '')) } });
       const { worksAsks } = await mount();
       await act(async () => watchLibrivoxFetch('c1', 41));
       expect(watches()).toEqual([{ cid: 'c1', id: 41 }]);

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import { ServerReadError } from '@/api/server-read-error';
 import { ApiError } from '@/api/client';
 import type { Collection, CollectionDetail } from '@/api/types';
 
@@ -222,7 +223,7 @@ describe('CollectionScreen with the collection not read', () => {
   // 404 says nothing of this collection.
   it("reads a 404 as gone only once the server's flag is known", async () => {
     mockSupported = undefined;
-    mockCollection = unread({ error: new ApiError(404, 'not found') });
+    mockCollection = unread({ error: new ServerReadError(new ApiError(404, 'not found')) });
     await render(<CollectionScreen />);
     expect(screen.queryByText("This collection isn't here")).toBeNull();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeTruthy();

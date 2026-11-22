@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
+import { ServerReadError } from '@/api/server-read-error';
 import { useServerInfo } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { ContentScope } from '@/components/layout/content-scope';
@@ -88,6 +90,8 @@ function FindLibrivoxContent() {
     if (offline) return <OfflineState hint={t('common.offlinePage')} />;
     // Failed with nothing kept: say so with Retry, never a skeleton for ever.
     if (info.isError) {
+      const refused = serverRefusalState(new ServerReadError(info.error), cid);
+      if (refused) return refused;
       return (
         <View testID="find-librivox-error">
           <EmptyState

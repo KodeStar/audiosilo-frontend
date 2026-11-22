@@ -101,9 +101,24 @@ describe('snapshot and restore', () => {
     });
   });
 
+  it.each(['other', undefined, '', 42])(
+    'leaves out a /server answer that cannot be identified as this install (%j)',
+    (id) => {
+      const before = newClient();
+      before.setQueryData(['server', C], { server_id: id, capabilities: { queue: true } });
+      save(before);
+
+      const qc = newClient();
+      restore(qc);
+      expect(qc.getQueryData(['server', C])).toBeUndefined();
+    },
+  );
+
   it('puts the kept answers back, each to be asked for again on mount', async () => {
     const before = newClient();
     before.setQueryData(['server', C], { server_id: 'srv' });
+    const devices = [{ id: 1, name: 'Phone', current: true }];
+    before.setQueryData(['myDevices', C], devices);
     const listKey = ['libraryBooks', C, 1, { sort: 'recent' }, { pageSize: 200 }];
     before.setQueryData(listKey, {
       pages: [{ books: [book('A')], next_cursor: 'p2' }, { books: [book('B')] }],
@@ -114,6 +129,8 @@ describe('snapshot and restore', () => {
     const qc = newClient();
     restore(qc);
     expect(qc.getQueryData(['server', C])).toEqual({ server_id: 'srv' });
+    expect(qc.getQueryData(['myDevices', C])).toEqual(devices);
+    expect(qc.getQueryState(['myDevices', C])?.isInvalidated).toBe(true);
     // The list restarts from its first page, whose param is `undefined` again.
     expect(qc.getQueryData(listKey)).toEqual({
       pages: [{ books: [book('A')], next_cursor: 'p2' }],
@@ -412,10 +429,13 @@ describe('forget', () => {
     const qc = newClient();
     qc.setQueryData(['libraries', C], [{ id: 1 }]);
     qc.setQueryData(['libraries', 'other.2'], [{ id: 2 }]);
+    qc.setQueryData(['myDevices', C], [{ name: 'Phone' }]);
+    qc.setQueryData(['myDevices', 'other.2'], [{ name: 'Tablet' }]);
     save(qc);
     forget(C);
     expect(stored().entries.map((e: { key: unknown[] }) => e.key)).toEqual([
       ['libraries', 'other.2'],
+      ['myDevices', 'other.2'],
     ]);
   });
 });

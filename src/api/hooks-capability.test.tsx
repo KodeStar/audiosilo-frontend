@@ -8,7 +8,8 @@ import {
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
-import type { ApiClient } from '@/api/client';
+import { type ApiClient, ApiError } from '@/api/client';
+import { ServerReadError } from '@/api/server-read-error';
 import type { Capabilities, Page, ServerInfo } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
@@ -68,6 +69,7 @@ function makeClient() {
     })),
     clearListeningGoal: jest.fn(async () => undefined),
     myDevices: jest.fn(async () => []),
+    listApiKeys: jest.fn(async () => []),
     addresses: jest.fn(async () => ({})),
     revokeMyDevice: jest.fn(async () => ({ current: false })),
     createApiKey: jest.fn(async () => ({ id: 13, token: 'secret' })),
@@ -174,6 +176,7 @@ import {
   useRating,
   useRemoveCollectionItem,
   useRemoveFromQueue,
+  useApiKeys,
   useRevokeApiKey,
   useRevokeMyDevice,
   useSeriesList,
@@ -579,6 +582,7 @@ const ALL_1B = [
   'progress_edit',
   'user_stats',
   'my_devices',
+  'api_keys',
   // Phase 5 (the same gate, one more flag).
   'addresses',
 ] as const;
@@ -606,6 +610,13 @@ type QueryCase = {
 
 const queryCases: QueryCase[] = [
   { name: 'useQueue', flag: 'queue', useHook: () => useQueue(), method: 'queue', args: [] },
+  {
+    name: 'useApiKeys',
+    flag: 'api_keys',
+    useHook: () => useApiKeys(true),
+    method: 'listApiKeys',
+    args: [],
+  },
   {
     name: 'useCollections',
     flag: 'collections',
@@ -679,6 +690,16 @@ const queryCases: QueryCase[] = [
 ];
 
 describe('Phase 1b gated queries', () => {
+  it('keeps the API key list disabled for an ineligible account even when the server supports keys', async () => {
+    const { result } = await mount({ c1: { api_keys: true } }, () => ({
+      known: useCapability('api_keys'),
+      list: useApiKeys(false),
+    }));
+    await waitFor(() => expect(result.current.known).toBe(true));
+    expect(result.current.list.fetchStatus).toBe('idle');
+    expect(mockClients.c1.listApiKeys).not.toHaveBeenCalled();
+  });
+
   it.each(queryCases)(
     '$name asks nothing, even on refetch, of a server without $flag',
     async ({ flag, useHook, method }) => {
@@ -925,21 +946,30 @@ describe('a gated read while /server is held', () => {
   });
 
   // fe#271: Account shows its Signed-in devices section offline by this state, not hidden.
-  it("the caller's devices report paused too, then run by themselves", async () => {
+  it("holds the account's devices and API keys until /server can answer", async () => {
     onlineManager.setOnline(false);
     try {
-      const { result } = await mount({ c1: { my_devices: true } }, () => useMyDevices());
-      await waitFor(() => expect(result.current.isPaused).toBe(true));
+      const { result } = await mount({ c1: { my_devices: true, api_keys: true } }, () => ({
+        devices: useMyDevices(),
+        keys: useApiKeys(true),
+      }));
+      await waitFor(() =>
+        expect(result.current.devices.isPaused && result.current.keys.isPaused).toBe(true),
+      );
       expect(mockClients.c1.myDevices).not.toHaveBeenCalled();
+      expect(mockClients.c1.listApiKeys).not.toHaveBeenCalled();
       await act(async () => onlineManager.setOnline(true));
-      await waitFor(() => expect(result.current.isSuccess).toBe(true));
+      await waitFor(() =>
+        expect(result.current.devices.isSuccess && result.current.keys.isSuccess).toBe(true),
+      );
       expect(mockClients.c1.myDevices).toHaveBeenCalledTimes(1);
+      expect(mockClients.c1.listApiKeys).toHaveBeenCalledTimes(1);
     } finally {
       onlineManager.setOnline(true);
     }
   });
 
-  it("takes a failed /server read's error, and Retry asks /server again", async () => {
+  it('keeps the failed gate distinct from a resource error, and Retry asks /server again', async () => {
     const down = new Error('Network request failed');
     const { result } = await mount(
       { c1: { collections: true } },
@@ -947,7 +977,8 @@ describe('a gated read while /server is held', () => {
       () => mockClients.c1.serverInfo.mockRejectedValueOnce(down),
     );
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toBe(down);
+    expect(result.current.error).toBeInstanceOf(ServerReadError);
+    expect(result.current.error?.cause).toBe(down);
     expect(result.current.isPending).toBe(false);
     expect(mockClients.c1.collections).not.toHaveBeenCalled();
     await act(async () => {
@@ -956,6 +987,68 @@ describe('a gated read while /server is held', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(2);
     expect(mockClients.c1.collections).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed /server across mounts and forwards the held refetch options', async () => {
+    const missing = new ApiError(404, 'no /server here');
+    const first = await mount(
+      { c1: { collections: true } },
+      () => useCollections(),
+      () => mockClients.c1.serverInfo.mockRejectedValue(missing),
+    );
+    await waitFor(() => expect(first.result.current.isError).toBe(true));
+    await first.unmount();
+
+    const qc = queryClients[queryClients.length - 1];
+    const again = await renderHook(() => useCollection(2, 'c1'), {
+      wrapper: ({ children }) => <QueryClientProvider client={qc}>{children}</QueryClientProvider>,
+    });
+    expect(again.result.current.error).toBeInstanceOf(ServerReadError);
+    expect(again.result.current.error).not.toBeInstanceOf(ApiError);
+    expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(1);
+    expect(mockClients.c1.collection).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await expect(
+        again.result.current.refetch({ throwOnError: true, cancelRefetch: false }),
+      ).rejects.toMatchObject({ name: 'ServerReadError', cause: missing });
+    });
+    expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(2);
+    const next = new Error('Down again');
+    mockClients.c1.serverInfo.mockRejectedValueOnce(next);
+    await act(async () => {
+      const read = await again.result.current.refetch();
+      expect(read.isError).toBe(true);
+      expect(read.error).toMatchObject({ cause: next });
+    });
+  });
+
+  it('refreshes stale flags once and keeps them through further mounts when the refresh failed', async () => {
+    const initial = await mount({ c1: { collections: true } }, () => useCollections());
+    await waitFor(() => expect(initial.result.current.isSuccess).toBe(true));
+    await initial.unmount();
+    const qc = queryClients[queryClients.length - 1];
+    const key = qk.server('c1');
+    qc.setQueryData(key, serverWith('c1', { collections: true }), { updatedAt: 1 });
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+    );
+    mockClients.c1.serverInfo.mockRejectedValueOnce(new Error('network down'));
+
+    const second = await renderHook(() => useCollections(), { wrapper });
+    await waitFor(() => expect(qc.getQueryState(key)?.status).toBe('error'));
+    expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(2);
+    await second.unmount();
+    const third = await renderHook(() => useCollection(2, 'c1'), { wrapper });
+    await waitFor(() => expect(third.result.current.isSuccess).toBe(true));
+    expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(2);
+    expect(qc.getQueryState(key)?.dataUpdatedAt).toBe(1);
+
+    await act(async () => {
+      await qc.invalidateQueries({ queryKey: key });
+    });
+    expect(mockClients.c1.serverInfo).toHaveBeenCalledTimes(3);
+    expect(qc.getQueryState(key)?.status).toBe('success');
   });
 
   it('stays an ordinary pending read while /server is on its way, or for a disabled hook', async () => {

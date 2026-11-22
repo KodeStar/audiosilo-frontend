@@ -11,6 +11,7 @@ import {
   useLibrariesAll,
 } from '@/api/hooks';
 import { useApiRegistry } from '@/api/provider';
+import type { RefusedServer } from '@/api/server-read-error';
 import type { BookMeta, PeopleList, SeriesCount } from '@/api/types';
 import { communityCredit, LIVE_POSITION_BUCKET_S } from '@/components/library/meta-gating';
 import { useLivePosition } from '@/components/player/use-listening-position';
@@ -37,6 +38,7 @@ const BROWSE_STALE_MS = 5 * 60_000;
 type BrowseKind = 'authors' | 'narrators' | 'series';
 
 export type PeopleSources = {
+  refusals: RefusedServer[];
   authors: SourcedList<PeopleList['people'][number]>[];
   narrators: SourcedList<PeopleList['people'][number]>[];
   series: SourcedList<SeriesCount>[];
@@ -54,7 +56,12 @@ export type PeopleSources = {
  */
 export function usePeopleSources(enabled: boolean): PeopleSources {
   const { clients } = useApiRegistry();
-  const { caps, failed: capabilityFailures, retry: retryCapabilities } = useCapabilitiesAllRead();
+  const {
+    caps,
+    failed: capabilityFailures,
+    refusals,
+    retry: retryCapabilities,
+  } = useCapabilitiesAllRead();
   const {
     libraries,
     isLoading: librariesLoading,
@@ -120,9 +127,11 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
         authors,
         narrators,
         series,
+        refusals,
         supported: anyCapability(caps, 'browse_people', capabilityFailures),
         isLoading: (enabled && librariesLoading) || results.some((r) => r.isLoading),
-        isError: !!librariesError || failed.length > 0 || capabilityFailures.length > 0,
+        isError:
+          !!librariesError || failed.length > 0 || capabilityFailures.length > refusals.length,
         retry: () => {
           retryCapabilities();
           retryLibraries();
@@ -156,7 +165,12 @@ export function useCharacterSources(
   { refetchProgress = true }: { refetchProgress?: boolean } = {},
 ): CharacterSources {
   const { clients } = useApiRegistry();
-  const { caps, failed: capabilityFailures, retry: retryCapabilities } = useCapabilitiesAllRead();
+  const {
+    caps,
+    failed: capabilityFailures,
+    refusals,
+    retry: retryCapabilities,
+  } = useCapabilitiesAllRead();
   const {
     progress,
     isLoading: progressLoading,
@@ -233,7 +247,7 @@ export function useCharacterSources(
     books,
     supported: anyCapability(caps, 'metadata', capabilityFailures),
     isLoading: pending,
-    isError: !!progressError || failed.length > 0 || capabilityFailures.length > 0,
+    isError: !!progressError || failed.length > 0 || capabilityFailures.length > refusals.length,
     retry: () => {
       retryCapabilities();
       retryProgress();

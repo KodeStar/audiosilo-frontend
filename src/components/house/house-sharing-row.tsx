@@ -84,7 +84,7 @@ export function HouseSharingRow({
       </View>
     ) : pending ? (
       <Text variant="caption" accessibilityLiveRegion="polite">
-        {t('house.share.saving')}
+        {t(set.isPaused ? 'house.share.waiting' : 'house.share.saving')}
       </Text>
     ) : null;
 

@@ -888,7 +888,8 @@
     },
     "favourite": {
       "remove": "Remover dos favoritos",
-      "add": "Adicionar aos favoritos"
+      "add": "Adicionar aos favoritos",
+      "failed": "Não foi possível atualizar os teus favoritos. Tenta novamente."
     },
     "download": {
       "unavailable": "Transferências indisponíveis",
@@ -2003,7 +2004,6 @@
     },
     "home": "Início do AudioSilo",
     "offline": "Offline · as transferências tocam",
-    "offlinePlain": "Offline",
     "notAnswering": "{{name}} não responde",
     "serverMore_one": "{{name}} + mais {{count}}",
     "serverMore_other": "{{name}} + mais {{count}}",
@@ -2649,6 +2649,7 @@
       "switchLabel": "Partilhar com a casa o que estou a ouvir em {{server}}",
       "body": "O teu livro atual aparece na página inicial das outras pessoas em {{server}} que também partilham o seu. Desativado por predefinição.",
       "saving": "A guardar",
+      "waiting": "À espera de sincronizar",
       "loadFailed": "Não foi possível carregar esta definição.",
       "failed": "Não foi possível alterar a partilha em {{server}}",
       "failedBody": "Nada mudou. Verifica a ligação e tenta novamente.",

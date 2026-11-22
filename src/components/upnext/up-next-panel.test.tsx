@@ -1,5 +1,7 @@
 import { fireEvent, render, renderHook, screen } from '@testing-library/react-native';
 
+import { ApiError } from '@/api/client';
+import { ServerReadError } from '@/api/server-read-error';
 import type { Book, QueueEntry } from '@/api/types';
 import { setFontScale } from '@/testing/font-scale';
 import { expectNativeTarget } from '@/testing/touch-target';
@@ -88,6 +90,16 @@ describe('UpNextPanel', () => {
     expect(d.refetch).toHaveBeenCalled();
   });
 
+  it('shows a proxy refusal on the server check without offering a queue Retry', async () => {
+    const error = new ServerReadError(new ApiError(403, 'forbidden', undefined, undefined, true));
+    await render(
+      <UpNextPanel cid="c" data={data({ entries: undefined, unread: 'failed', error })} />,
+    );
+    expect(screen.getByText(/sign-in proxy for Home Library turned this device away/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+  });
+
   // frontend#124: a refused session is the sign-in state, never a Retry.
   it('asks to sign in again, with no Retry, when the session was refused', async () => {
     useSession.setState({
@@ -122,6 +134,20 @@ describe('UpNextPanel', () => {
     );
     expect(screen.getByText('Kept')).toBeTruthy();
     expect(screen.getByText(/Couldn't refresh Up next/)).toBeTruthy();
+  });
+
+  it.each<[string, Partial<Data>]>([
+    ['unread', { entries: undefined, unread: 'offline' }],
+    ['kept', { entries: [entry('Kept')], keptOffline: true }],
+  ])('offers Reconnect for a signed-out server with an offline %s queue', async (_, queue) => {
+    useSession.setState({
+      connections: [{ id: 'c', name: 'Home Library', needsReconnect: 'auth' }] as never,
+    });
+    await render(<UpNextPanel cid="c" data={data(queue)} />);
+    expect(screen.getByText('Sign in again to Home Library')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByText(/You're offline/)).toBeNull();
+    if (queue.entries) expect(screen.getByText('Kept')).toBeTruthy();
   });
 
   // fe#271: offline, a kept list said "Couldn't refresh" with a Retry that cannot work.

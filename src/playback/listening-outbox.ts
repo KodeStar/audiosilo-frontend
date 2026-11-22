@@ -1406,6 +1406,7 @@ type Next = 'more' | 'stop';
  * event sent alone (a batch refused as a whole, its events then taken one by one).
  */
 function tookSync(connectionId: string): void {
+  noteSuccess(connectionId);
   rolledBack.delete(connectionId);
   if (cachedCapability(connectionId, 'listening_sync') === false) {
     keepServerFlag(connectionId, 'listening_sync');
@@ -1429,7 +1430,6 @@ async function sendChunk(
           deviceId,
         ),
       );
-      noteSuccess(connectionId);
       tookSync(connectionId);
       await applyAnswer(connectionId, live, answer, { sentAt, answeredAt: Date.now() });
       return 'more';
@@ -1725,11 +1725,13 @@ function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
  * row, and a last-write-wins PUT of them could move another device's further place back.
  */
 async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
+  // The live client may select a new address while this request is in flight.
+  const address = client.baseUrl;
   const info = await client.serverInfo().catch(() => null);
   if (!info || info.capabilities?.listening_sync) return;
   // Its answer is the connection's `/server` from now on, kept for the next launch too;
   // another server's (a reset one) is no answer about this connection's route.
-  if (!keepServerAnswer(connectionId, info)) return;
+  if (!keepServerAnswer(connectionId, info, address)) return;
   rolledBack.add(connectionId);
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();

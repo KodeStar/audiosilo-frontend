@@ -396,7 +396,9 @@ async function whyRefused(
   }
   if (!isRecord(info) || !isRecord(info.capabilities)) return { failed: new Error('no flags') };
   if (info.capabilities.bookmark_client_id) return 'bookmark';
-  return keepServerAnswer(connectionId, info) ? 'id' : { failed: new Error('server reset') };
+  return keepServerAnswer(connectionId, info, client.baseUrl)
+    ? 'id'
+    : { failed: new Error('Unexpected server address or identity') };
 }
 
 /** Read `connectionId`'s flags when they are not known yet (whether its server takes a
