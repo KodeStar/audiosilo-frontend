@@ -74,6 +74,22 @@ describe('connection-clients', () => {
     expect(client!.baseUrl).toBe('https://h');
   });
 
+  it.each([
+    null,
+    { capabilities: {} },
+    { server_id: '', capabilities: {} },
+    { server_id: 123, capabilities: {} },
+    { server_id: '   ', capabilities: {} },
+    { server_id: 'c1' },
+  ])('rejects a malformed /server answer without flagging a reset (%j)', async (body) => {
+    setStore([{ id: 'c1', serverUrl: 'https://h', token: 't' }]);
+    installFetch(() => ({ status: 200, body }));
+    await expect(resolveClient('c1')!.serverInfo()).rejects.toMatchObject({
+      name: 'UnexpectedServerAnswerError',
+    });
+    expect(markNeedsReconnect).not.toHaveBeenCalled();
+  });
+
   it('a 401 through the resolved client flags THAT connection for reconnect', async () => {
     // This is the mutation-/progress-sync-path proof: the client resolveClient builds
     // carries the dead-token callback, so a revoked token surfacing as a 401 on any
@@ -278,7 +294,10 @@ describe('connection-clients', () => {
       await expect(stale.me()).rejects.toMatchObject({ status: 401, fromProxy: true });
       expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
       // Denied: the public `/server` says nothing of the token.
-      installFetch(() => ({ status: 200, body: { server_name: 'H', capabilities: {} } }));
+      installFetch(() => ({
+        status: 200,
+        body: { server_id: 'c1', server_name: 'H', capabilities: {} },
+      }));
       await stale.serverInfo();
       expect(useProxyRefusals.getState().refused).toEqual({ c1: 401 });
       // Denied: an answer to the token the connection held before Sign in again.

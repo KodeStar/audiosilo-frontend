@@ -1,6 +1,7 @@
 import { renderHook } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
+import { ServerReadError } from '@/api/server-read-error';
 
 let mockDeviceOnline = true;
 jest.mock('./device-online', () => ({
@@ -48,6 +49,18 @@ describe('useUnreadQuery', () => {
     mockDeviceOnline = deviceOnline;
     return (await renderHook(() => useUnreadQuery(query))).result.current;
   };
+
+  it('keeps a server refusal distinct from the network after the device goes offline', async () => {
+    mockDeviceOnline = false;
+    const { result } = await renderHook(() =>
+      useUnreadQuery({
+        data: undefined,
+        isPaused: false,
+        error: new ServerReadError(new ApiError(404, 'missing /server')),
+      }),
+    );
+    expect(result.current).toBe('failed');
+  });
 
   it('is offline while the query waits for the network', async () => {
     expect(await ask({ ...read, isPaused: true })).toBe('offline');

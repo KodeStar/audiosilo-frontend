@@ -2,7 +2,7 @@ import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useFavourites, useToggleFavourite } from '@/api/hooks';
+import { useFavourites } from '@/api/hooks';
 import type { FsEntry } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
 import { PressableRow } from '@/components/ui/row-surface';
@@ -13,6 +13,8 @@ import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { GlyphTile } from './glyph-tile';
+import { useFavouriteAction } from './use-favourite-action';
+
 /** One row in the filesystem browse view: a folder (muted glyph tile, drill in) or
  * an audio file (blue glyph tile, opens the book). A book folder, indexed or one the
  * server flags `pending_book` (not scanned yet, read on demand by the book screen),
@@ -34,7 +36,7 @@ export function EntryRow({
   const large = useLargeText();
   const isDir = entry.is_dir;
   const { data: favourites } = useFavourites();
-  const toggleFavourite = useToggleFavourite();
+  const toggleFavourite = useFavouriteAction();
   const isFavourite = !!favourites?.some(
     (f) => f.library_id === libraryId && f.path === entry.path,
   );
@@ -86,7 +88,7 @@ export function EntryRow({
       </Link>
       <PressableRow
         onPress={() =>
-          toggleFavourite.mutate({
+          toggleFavourite({
             libraryId,
             path: entry.path,
             on: !isFavourite,

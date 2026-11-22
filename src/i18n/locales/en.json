@@ -888,7 +888,8 @@
     },
     "favourite": {
       "remove": "Remove from favourites",
-      "add": "Add to favourites"
+      "add": "Add to favourites",
+      "failed": "Couldn't update your favourites. Try again."
     },
     "download": {
       "unavailable": "Downloads unavailable",
@@ -2003,7 +2004,6 @@
     },
     "home": "AudioSilo home",
     "offline": "Offline · downloads play",
-    "offlinePlain": "Offline",
     "notAnswering": "{{name}} isn't answering",
     "serverMore_one": "{{name}} + {{count}} more",
     "serverMore_other": "{{name}} + {{count}} more",
@@ -2649,6 +2649,7 @@
       "switchLabel": "Share what I'm listening to with the house on {{server}}",
       "body": "Your current book shows on the Home page of other people on {{server}} who share theirs too. Off by default.",
       "saving": "Saving",
+      "waiting": "Waiting to sync",
       "loadFailed": "Couldn't load this setting.",
       "failed": "Couldn't change sharing on {{server}}",
       "failedBody": "Nothing changed. Check the connection and try again.",

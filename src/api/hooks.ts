@@ -83,6 +83,7 @@ import {
   type BookListQuery,
   type BookMetaOptions,
 } from './client';
+import { type RefusedServer, refusedServer, ServerReadError } from './server-read-error';
 import { resolveClient } from './connection-clients';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteFailure, useReachability } from './reachability';
@@ -340,6 +341,11 @@ export function serverInfoQuery(cid: string, client: MaybeClient) {
   return queryOptions({
     queryKey: qk.server(cid),
     queryFn: client ? ({ signal }) => client.serverInfo(signal) : skipToken,
+    // A dependent screen mounting after a failure must not restart every other gate.
+    // Retry, reconnect and a new sign-in still ask again.
+    retryOnMount: false,
+    // TanStack uses refetchOnMount when a failed re-read holds an older answer.
+    refetchOnMount: (query) => query.state.status !== 'error',
     staleTime: 5 * 60_000,
     gcTime: Infinity,
   });
@@ -805,29 +811,45 @@ export function useCapabilitiesAll(): Record<string, Capabilities | undefined> {
  * {@link useCapabilitiesAll} with what it can't tell: `failed` lists the connections whose
  * `/server` read has failed with nothing known (an error, or held for the network), which
  * `caps` keeps reading as `undefined` (not known yet), so a screen that waits on the flags
- * can settle; `retry` asks each of them again, and `reading` is true while one of those is
+ * can settle. A 401 or 403 is listed in `refusals` with the sign-in it needs, and
+ * `retryable` is `failed` without those. `retry` asks the other failed reads again, and `reading` is true while one of those is
  * read again (a Retry's busy state). A failed read asked again stays in `failed` meanwhile
  * (`failedRead`), so the screen keeps its Retry, busy, rather than reading as loading.
  */
 export function useCapabilitiesAllRead(): {
   caps: Record<string, Capabilities | undefined>;
   failed: string[];
+  retryable: string[];
+  refusals: RefusedServer[];
   retry: () => void;
   reading: boolean;
 } {
   const apis = useApis();
   return useQueries({
     queries: apis.map(({ connection, client }) => serverInfoQuery(connection.id, client)),
-    combine: (results) => ({
-      caps: Object.fromEntries(
-        results.map((r, i) => [apis[i].connection.id, r.data?.capabilities]),
-      ),
-      failed: results.flatMap((r, i) => (failedRead(r) ? [apis[i].connection.id] : [])),
-      retry: () => {
-        for (const r of results) if (!r.data && (r.isError || r.isPaused)) void r.refetch();
-      },
-      reading: results.some((r) => failedRead(r) && r.isFetching),
-    }),
+    combine: (results) => {
+      const refusals = results.flatMap((r, i) => {
+        const refusal = !r.data && refusedServer(apis[i].connection.id, r.error);
+        return refusal ? [refusal] : [];
+      });
+      const refused = new Set(refusals.map((r) => r.connectionId));
+      const failed = results.flatMap((r, i) => (failedRead(r) ? [apis[i].connection.id] : []));
+      return {
+        caps: Object.fromEntries(
+          results.map((r, i) => [apis[i].connection.id, r.data?.capabilities]),
+        ),
+        failed,
+        retryable: failed.filter((id) => !refused.has(id)),
+        refusals,
+        retry: () => {
+          results.forEach((r, i) => {
+            if (!r.data && (r.isError || r.isPaused) && !refused.has(apis[i].connection.id))
+              void r.refetch();
+          });
+        },
+        reading: results.some((r) => failedRead(r) && r.isFetching),
+      };
+    },
   });
 }
 
@@ -884,7 +906,7 @@ export class CapabilityError extends Error {
  *
  * While the flag is unknown because the connection's `/server` read is itself held for
  * the network (paused) or failed with nothing kept, the query takes that read's state
- * (fe#270): `isPaused`, or the error, so `useUnreadQuery` says offline or names the
+ * (fe#270): `isPaused`, or a `ServerReadError` that identifies the failed gate, so `useUnreadQuery` says offline or names the
  * server instead of the screen drawing a skeleton for good. A `refetch` then asks
  * `/server` again; once it answers, the query runs by itself. */
 function useCapabilityQuery<T, S = T>(
@@ -909,6 +931,7 @@ function useCapabilityQuery<T, S = T>(
   const cid = useCid(connectionId);
   // `useServerInfo`, with the connection resolved once.
   const info = useQuery(serverInfoQuery(cid, api));
+  const gateError = useMemo(() => info.error && new ServerReadError(info.error), [info.error]);
   const caps = info.data?.capabilities;
   const supported = caps?.[flag] === true;
   const query = useQuery<T, Error, S, readonly unknown[]>({
@@ -934,29 +957,40 @@ function useCapabilityQuery<T, S = T>(
     (info.isPaused || info.isError) &&
     query.data === undefined;
   if (!held) return query;
-  const refetch: typeof query.refetch = async () => {
-    await info.refetch();
+  const refetch: typeof query.refetch = async (options) => {
+    const result = await info.refetch({ ...options, throwOnError: false });
+    if (!result.data && result.error) {
+      const failure = new ServerReadError(result.error);
+      if (options?.throwOnError) throw failure;
+      return heldResult(false, failure);
+    }
+    // This refetch waited for /server. The resource has its own observer and runs once
+    // the component receives the flag, if the feature is available.
     return query;
   };
-  const state: Record<string, unknown> = info.isPaused
-    ? { isPaused: true, fetchStatus: 'paused', refetch }
-    : {
-        error: info.error,
-        isError: true,
-        isPending: false,
-        isLoading: false,
-        isLoadingError: true,
-        status: 'error',
-        fetchStatus: 'idle',
-        refetch,
-      };
-  // Laid over the query's own result, not spread from it: that result tracks the props a
-  // caller reads, and a spread would read every one of them, subscribing the caller to
-  // every change of this query for good.
-  return new Proxy(query, {
-    get: (target, key) =>
-      typeof key === 'string' && key in state ? state[key] : Reflect.get(target, key),
-  });
+  return heldResult(info.isPaused, gateError);
+
+  function heldResult(paused: boolean, error: ServerReadError | null): typeof query {
+    const state: Record<string, unknown> = paused
+      ? { isPaused: true, fetchStatus: 'paused', refetch }
+      : {
+          error,
+          isError: true,
+          isPending: false,
+          isLoading: false,
+          isLoadingError: true,
+          status: 'error',
+          fetchStatus: 'idle',
+          refetch,
+        };
+    // Laid over the query's own result, not spread from it: that result tracks the props a
+    // caller reads, and a spread would read every one of them, subscribing the caller to
+    // every change of this query for good.
+    return new Proxy(query, {
+      get: (target, key) =>
+        typeof key === 'string' && key in state ? state[key] : Reflect.get(target, key),
+    });
+  }
 }
 
 /** A capability-gated mutation: `request` runs against the connection's client only
@@ -1958,7 +1992,7 @@ export type ToggleFavouriteVars = {
  * a heart's read is still out reaches the server after the add, never before it; and
  * only the last of a run reads the list again, so an earlier one's answer can't flip
  * the heart back while a later toggle is still waiting. */
-export function useToggleFavourite(connectionId?: string) {
+export function useToggleFavourite(connectionId?: string, onFailure?: () => void) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
   const qc = useQueryClient();
@@ -2015,6 +2049,8 @@ export function useToggleFavourite(connectionId?: string) {
       return { prev };
     },
     onError: (_e, { libraryId, path, on }, ctx) => {
+      // An optimistic removal can already have unmounted the button that sent it.
+      onFailure?.();
       if (!ctx) return;
       if (!ctx.prev && qc.isMutating({ mutationKey }) === 1) {
         // Nothing was read before the toggle (the list waits for the network, or failed):
@@ -2050,23 +2086,17 @@ export function useToggleFavourite(connectionId?: string) {
 // User-minted, named keys for headless integrations, scoped (like every other
 // hook here) to a connection: each key belongs to one server, so the list query
 // and both mutations key/invalidate on that connection's `qk.apiKeys(cid)` only.
-// `enabled` lets the caller gate the list on the server's `api_keys` capability
-// (and the non-demo rule) so an older server is never queried.
 
-/** The caller's API keys for this connection (metadata only), newest first. Resolves
- * the client *optionally*: the account screen can render before a connection is scoped
- * (bare `/account` with no `?connection=`, so `cid` is `''`), and the rest of that
- * screen tolerates a missing client via `useOptionalApi` - so these hooks must too,
- * rather than throwing at render like `useApi`. The query simply stays disabled until
- * a client exists. */
+/** This account's key metadata, newest first. The account page also disables the
+ * read for demo and kid accounts. */
 export function useApiKeys(enabled: boolean, connectionId?: string) {
-  const api = useOptionalApi(connectionId);
-  const cid = useCid(connectionId);
-  return useQuery({
-    queryKey: qk.apiKeys(cid),
-    queryFn: () => api!.listApiKeys(),
-    enabled: enabled && !!api && !!cid,
-  });
+  return useCapabilityQuery(
+    'api_keys',
+    qk.apiKeys,
+    (api, signal) => api.listApiKeys(signal),
+    connectionId,
+    { ready: enabled },
+  );
 }
 
 /** Mint a named API key; the plaintext secret is in the resolved value (shown once).
@@ -3702,11 +3732,12 @@ const UPCOMING_STALE_MS = 15 * 60_000;
  * server whose flags could not be read counts as `unreadable`, never as still loading. */
 function useUpcomingEligibility() {
   const apis = useApis();
-  const { caps, failed, retry, reading } = useCapabilitiesAllRead();
+  const { caps, failed, refusals, retry, reading } = useCapabilitiesAllRead();
   return {
     apis,
     retryFlags: retry,
     readingFlags: reading,
+    refusals,
     ...upcomingEligibility(
       apis.map((a) => a.connection),
       caps,
@@ -3732,8 +3763,8 @@ export function useUpcomingAvailable(): boolean | undefined {
  * servers (`mergeUpcoming`). A server that fails adds nothing to the list but is named in
  * `failed` (no answer: its request failed, or waits for the network), so a screen never
  * reads a failure as "nothing coming up"; a server whose `/server` flags could not be read
- * is named there too (it may have Upcoming), so a cold link settles instead of loading
- * forever. `retry` asks each failed one again, its flags included, and `retrying` is true
+ * is named there too (it may have Upcoming), unless that read was refused: `refusals`
+ * names the connection needing attention. `retry` asks each failed one again, its flags included, and `retrying` is true
  * while one of those reads is on its way. `statuses`
  * holds each answered connection's job status (`pending` before its first run, `stale`
  * after 48 h). A server is named as the app names it elsewhere (`serverDisplayName`: two
@@ -3745,11 +3776,13 @@ export function useUpcomingAll(): {
   isLoading: boolean;
   statuses: UpcomingServerStatus[];
   failed: string[];
+  refusals: RefusedServer[];
   retry: () => void;
   retrying: boolean;
 } {
-  const { apis, eligible, available, unreadable, retryFlags, readingFlags } =
+  const { apis, eligible, available, unreadable, refusals, retryFlags, readingFlags } =
     useUpcomingEligibility();
+  const refused = refusals.filter((r) => unreadable.has(r.connectionId));
   const saved = useSession((s) => s.connections);
   // `combine` re-runs whenever its identity changes, so it is keyed on what it reads (each
   // connection, in order, its name, whether it is asked, and whether its flags could not be
@@ -3757,7 +3790,12 @@ export function useUpcomingAll(): {
   const sources = JSON.stringify(
     apis.map(
       ({ connection: c }) =>
-        [c.id, serverDisplayName(c, saved), eligible.has(c.id), unreadable.has(c.id)] as const,
+        [
+          c.id,
+          serverDisplayName(c, saved),
+          eligible.has(c.id),
+          unreadable.has(c.id) && !refused.some((r) => r.connectionId === c.id),
+        ] as const,
     ),
   );
   const combine = useCallback(
@@ -3824,6 +3862,7 @@ export function useUpcomingAll(): {
   // retry is a new function every render and would re-key it).
   return {
     ...all,
+    refusals: refused,
     retry: () => {
       all.retry();
       retryFlags();

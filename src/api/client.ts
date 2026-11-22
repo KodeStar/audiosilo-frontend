@@ -143,6 +143,15 @@ export class ApiError extends Error {
   }
 }
 
+/** A /server response that cannot identify the connection at its current address.
+ * It gives reachability no answer about that connection. */
+export class UnexpectedServerAnswerError extends Error {
+  constructor() {
+    super('The server answer does not identify this connection at its current address');
+    this.name = 'UnexpectedServerAnswerError';
+  }
+}
+
 /** Whether `e` is a 4xx the same request can never get past: not a 408 or a 429 (the
  * server's rate limit), which say "not now", nor a proxy's own 401 or 403 (`fromProxy`,
  * fe#295): the server never saw the request, which gets past once the proxy headers are
@@ -832,6 +841,7 @@ export class ApiClient {
     proxy?: ProxyHeaders | null,
     onProxyAnswer?: (refused: ProxyRefusalStatus | false) => void,
     marksUnauthorized?: () => boolean | undefined,
+    private readonly acceptsServerInfo?: (info: ServerInfo) => boolean,
   ) {
     this.baseUrl = baseUrl.replace(/\/+$/, '');
     this.token = token;
@@ -1005,8 +1015,12 @@ export class ApiClient {
   }
 
   // --- Discovery & auth (public) -------------------------------------------
-  serverInfo(signal?: AbortSignal) {
-    return this.request<ServerInfo>('GET', '/server', { signal, publicRoute: true });
+  async serverInfo(signal?: AbortSignal) {
+    const info = await this.request<ServerInfo>('GET', '/server', { signal, publicRoute: true });
+    if (this.acceptsServerInfo && !this.acceptsServerInfo(info)) {
+      throw new UnexpectedServerAnswerError();
+    }
+    return info;
   }
   redeemCode(code: string) {
     return this.request<PairingPayload>('POST', '/auth/redeem', {
@@ -1132,8 +1146,8 @@ export class ApiClient {
     return this.request<ApiKeyCreated>('POST', '/auth/tokens', { body: { label } });
   }
   /** The caller's non-revoked API keys (metadata only), newest first. */
-  async listApiKeys() {
-    const r = await this.request<{ api_keys: ApiKey[] | null }>('GET', '/auth/tokens');
+  async listApiKeys(signal?: AbortSignal) {
+    const r = await this.request<{ api_keys: ApiKey[] | null }>('GET', '/auth/tokens', { signal });
     return r.api_keys ?? [];
   }
   /** Revoke a key by id. Success is any 2xx and may carry an empty body (204);

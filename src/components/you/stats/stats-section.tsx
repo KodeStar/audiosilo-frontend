@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWindowDimensions, View } from 'react-native';
 
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import {
   useCapability,
   useLibrariesAll,
@@ -132,6 +133,9 @@ function StatsBody({ cid, server, width }: { cid: string; server: string; width:
     // no Retry can work), then the error. An answer that came but can't be read is that
     // error even signed out: no read was refused for it (fe#147).
     const unreadable = unreadAnswer && !offline && !listening.isError && !stats.isError;
+    const refused =
+      serverRefusalState(listening.error, cid) ?? serverRefusalState(stats.error, cid);
+    if (refused) return refused;
     if (signedOut && !unreadable) return <SignInAgainState connection={signedOut} />;
     if (offline) return <OfflineState variant="card" hint={t('common.offlinePage')} />;
     return (

@@ -322,6 +322,21 @@ describe('JournalScreen: the Diary', () => {
     }
   });
 
+  it('keeps a proxy refusal visible beside a retryable annotation failure', async () => {
+    mockParams = { tab: 'notes' };
+    const proxy = source<MyNote>('c1', [], {
+      status: 'error',
+      refusal: { connectionId: 'c1', proxy: true },
+    });
+    const down = source<MyNote>('c2', [], { status: 'error' });
+    mockSources.notes = [proxy, down];
+    await mount();
+    expect(screen.getByText(/sign-in proxy for Hearthside turned this device away/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(down.refetch).toHaveBeenCalledTimes(1);
+    expect(proxy.refetch).not.toHaveBeenCalled();
+  });
+
   it('says when nothing was listened to', async () => {
     await mount();
     expect(screen.getByText('Nothing listened yet')).toBeTruthy();

@@ -17,6 +17,7 @@ import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
 import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
+import { useDeviceOnline } from '@/lib/device-online';
 import { openHousehold, openJournal, openSettings } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
 import { serverDisplayName } from '@/lib/server-display-name';
@@ -45,6 +46,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
   const savedConnections = useSession((s) => s.connections);
   const defaultId = useSession((s) => s.defaultConnectionId);
   const online = useReachability((s) => s.online);
+  const deviceOnline = useDeviceOnline();
   const profiles = useProfiles((s) => s.profiles);
   const active = useActiveProfile();
   const { choose, dialog } = useChooseProfile();
@@ -56,7 +58,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
   const defaultConnection = connections.find((c) => c.id === defaultId);
   const dark = scheme === 'dark';
   const statusLine = (c: Connection) => {
-    const status = serverStatus(c, online);
+    const status = serverStatus(c, online, deviceOnline);
     if (status === 'reconnect') return t('shell.profile.reconnect');
     if (status === 'offline') return t('shell.profile.offline');
     return t('shell.profile.signedInAs', { name: c.user.username });

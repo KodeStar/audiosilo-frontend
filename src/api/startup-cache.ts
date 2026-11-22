@@ -1,6 +1,8 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
+import type { MyDevice } from './types';
+import { foreignServerAnswer, isServerInfoKey } from '@/lib/auth-failure';
 import { isInProgress } from '@/lib/progress-view';
 import { isRecord, STARTUP_CACHE_KEY } from '@/lib/storage-keys';
 import { APP_VERSION } from '@/lib/version';
@@ -25,14 +27,17 @@ import { APP_VERSION } from '@/lib/version';
  * id, so a kept entry of another connection or a signed-out one is never read (and the
  * query cache drops it unread). A sign-out drops the connection's entries (`forget`); a
  * storage reset wipes the document (`SCOPED_STORAGE_KEYS`), and a document of another
- * app version is ignored (the answers' shapes may have changed).
+ * app version (or document version) is removed unread (the answers' shapes may have
+ * changed, and a version 1 document holds device addresses). A device row is kept without
+ * its address (`DEVICE_FIELD_KEPT`).
  *
  * Native keeps none of it: its query cache lives as long as the app, a cold start is not
  * the browser's reload, and AsyncStorage can't be read before the first render.
  */
 
-/** The document's shape version: a document of another is ignored (and replaced). */
-const VERSION = 1;
+/** The document's shape version: a document of another is removed. Version 1 kept full
+ * device rows, including the address of their last request. */
+const VERSION = 2;
 /** The most (characters of JSON) the document holds: localStorage is one small quota per
  * origin (about 5 MB, counted in UTF-16 by some browsers) that the session, the progress
  * queue and the downloads registry share, and their writes fail quietly once it is full. */
@@ -83,6 +88,7 @@ const KEPT = new Set([
   'collections',
   'listeningGoal',
   'household',
+  'myDevices',
   'authors',
   'narrators',
   'seriesList',
@@ -114,6 +120,33 @@ function isInfinite(data: unknown): data is InfiniteData<unknown, unknown> {
   return isRecord(data) && Array.isArray(data.pages) && Array.isArray(data.pageParams);
 }
 
+/** Which fields of a device row are kept: those the Devices list draws offline, never its
+ * address. Every field of `MyDevice` is named, so one it gains is kept or left out on
+ * purpose (the build fails until it is); a field a server adds that the type doesn't
+ * name is never kept. */
+const DEVICE_FIELD_KEPT = {
+  id: true,
+  kind: true,
+  name: true,
+  client: true,
+  created_at: true,
+  last_seen: true,
+  last_ip: false,
+  current: true,
+  member_sign_ins: true,
+} as const satisfies Record<keyof MyDevice, boolean>;
+const DEVICE_FIELDS = Object.entries(DEVICE_FIELD_KEPT)
+  .filter(([, kept]) => kept)
+  .map(([f]) => f);
+
+/** `rec` with only `fields`, those it has. */
+function pickFields(
+  rec: Record<string, unknown>,
+  fields: readonly string[],
+): Record<string, unknown> {
+  return Object.fromEntries(fields.filter((f) => rec[f] !== undefined).map((f) => [f, rec[f]]));
+}
+
 /** The kept entries of `client`'s cache: each startup query's last answer (of an infinite
  * one only the first page, the one a reload starts from), of the queries `keep` takes. */
 export function snapshot(
@@ -131,8 +164,12 @@ export function snapshot(
     const cid = q.queryKey[2];
     if (q.queryKey[0] === 'progress' && typeof cid === 'string' && Array.isArray(q.state.data))
       progressLists.push({ cid, rows: q.state.data });
-    const { data, dataUpdatedAt: updatedAt } = q.state;
+    const updatedAt = q.state.dataUpdatedAt;
     const key = [...q.queryKey];
+    const data =
+      key[0] === 'myDevices' && Array.isArray(q.state.data)
+        ? q.state.data.filter(isRecord).map((d) => pickFields(d, DEVICE_FIELDS))
+        : q.state.data;
     if (!isInfinite(data)) out.push({ key, data, updatedAt });
     else if (data.pages.length > 0)
       out.push({ key, data: data.pages[0], updatedAt, firstPage: true });
@@ -180,11 +217,7 @@ function progressBooks(client: QueryClient, cid: string, rows: unknown[]): unkno
       // Kept copies are titled: only titled books are written. A row with none (an episode,
       // a row never drawn) takes no place, so it never costs a book its title.
       if (!book) continue;
-      out.push(
-        Object.fromEntries(
-          BOOK_FIELDS.filter((f) => book[f] !== undefined).map((f) => [f, book[f]]),
-        ),
-      );
+      out.push(pickFields(book, BOOK_FIELDS));
     }
     return out;
   };
@@ -222,11 +255,16 @@ export function save(client: QueryClient, keep?: (key: readonly unknown[]) => bo
 }
 
 /** The kept entries, or none when there is no document, it can't be read or another
- * version of the app wrote it. */
+ * version of the app (or of the document) wrote it, which is then removed. */
 function readEntries(store: Storage): Entry[] {
   try {
     const doc: unknown = JSON.parse(store.getItem(STARTUP_CACHE_KEY) ?? 'null');
-    if (!isRecord(doc) || doc.v !== VERSION || doc.app !== APP_VERSION) return [];
+    if (doc === null) return [];
+    if (!isRecord(doc) || doc.v !== VERSION || doc.app !== APP_VERSION) {
+      // Not kept until the next save: an older version's document may hold device addresses.
+      store.removeItem(STARTUP_CACHE_KEY);
+      return [];
+    }
     if (!Array.isArray(doc.entries)) return [];
     return doc.entries.filter(
       (e): e is Entry =>
@@ -267,6 +305,7 @@ export function restore(
   const kept = new Set<string>();
   const unasked = new Set<string>();
   for (const e of readEntries(store)) {
+    if (isServerInfoKey(e.key) && foreignServerAnswer(e.key, e.data)) continue;
     if (cache.find({ queryKey: e.key, exact: true })) continue;
     // An infinite query restarts from its first page (whose param is always `undefined`:
     // JSON can't keep it).

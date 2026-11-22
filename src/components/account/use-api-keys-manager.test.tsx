@@ -7,10 +7,11 @@ import type { ApiKey } from '@/api/types';
 // drives pure orchestration (label input, one-time reveal, revoke confirmation) without
 // a QueryClient. useCreateApiKey exposes mutateAsync (awaited) + isPending; useRevokeApiKey
 // exposes mutate (fire-and-forget).
-const mockList: { data: ApiKey[]; isLoading: boolean; isError: boolean } = {
+const mockList: { data: ApiKey[]; isPending: boolean; isPaused: boolean; error: Error | null } = {
   data: [],
-  isLoading: false,
-  isError: false,
+  isPending: false,
+  isPaused: false,
+  error: null,
 };
 const mockCreate = { mutateAsync: jest.fn(), isPending: false };
 const mockRevoke = { mutate: jest.fn() };
@@ -24,17 +25,14 @@ jest.mock('@/api/hooks', () => ({
 // eslint-disable-next-line import/first
 import { useApiKeysManager } from './use-api-keys-manager';
 
-// renderHook is incompatible with this jest-expo + React 19 setup, so mount a probe
-// component that re-captures the hook value on every render (see use-sign-out.test).
+// Capture the current manager after each update to its form and confirmations.
 async function mountHook<T>(useHook: () => T): Promise<() => T> {
   const ref: { value: T | null } = { value: null };
   function Probe() {
     ref.value = useHook();
     return null;
   }
-  await act(async () => {
-    render(<Probe />);
-  });
+  await render(<Probe />);
   return () => ref.value as T;
 }
 
@@ -48,14 +46,24 @@ const madeKey = (over: Partial<ApiKey> = {}): ApiKey => ({
 
 beforeEach(() => {
   mockList.data = [];
-  mockList.isLoading = false;
-  mockList.isError = false;
+  mockList.isPending = false;
+  mockList.isPaused = false;
+  mockList.error = null;
   mockCreate.mutateAsync.mockReset();
   mockCreate.isPending = false;
   mockRevoke.mutate.mockReset();
 });
 
 describe('useApiKeysManager', () => {
+  it('keeps known keys visible when their refresh fails', async () => {
+    const key = madeKey();
+    mockList.data = [key];
+    mockList.error = new Error('Network request failed');
+    const hook = await mountHook(() => useApiKeysManager('c1', true));
+    expect(hook().keys).toEqual([key]);
+    expect(hook().unread).toBeNull();
+  });
+
   it('does not create when the label is blank (server would 400)', async () => {
     const hook = await mountHook(() => useApiKeysManager('c1', true));
     expect(hook().canCreate).toBe(false);

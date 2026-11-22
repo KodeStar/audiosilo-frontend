@@ -4,6 +4,7 @@ import { Platform, Pressable, View } from 'react-native';
 import { useKnownBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
@@ -103,9 +104,9 @@ export function UpNextPanel({
         ) : null}
       </View>
 
-      {data.unread === 'offline' ? (
-        // Before the error: no Retry can work without a network, and the list is asked
-        // again by itself once it is back.
+      {signedOut && (data.unread || data.keptOffline || data.error) ? (
+        <SignInAgainState connection={signedOut} compact className="mx-1.5 mb-2" />
+      ) : data.unread === 'offline' ? (
         <OfflineState className="mb-2" hint={t('common.offlineList')} />
       ) : data.keptOffline ? (
         // Offline, the list kept from before: no Retry can work without a network.
@@ -115,9 +116,7 @@ export function UpNextPanel({
           </Text>
         </View>
       ) : data.error ? (
-        signedOut ? (
-          <SignInAgainState connection={signedOut} compact className="mx-1.5 mb-2" />
-        ) : (
+        (serverRefusalState(data.error, cid) ?? (
           <View className="mx-1.5 mb-2 flex-row items-center gap-2 rounded-xl bg-muted px-3 py-2.5">
             <Text variant="caption" className="flex-1">
               {entries ? t('upnext.refreshFailed') : t('upnext.loadFailed')}
@@ -129,7 +128,7 @@ export function UpNextPanel({
               onPress={() => void data.refetch()}
             />
           </View>
-        )
+        ))
       ) : null}
 
       {entries === undefined ? (

@@ -7,13 +7,16 @@ import { useSession } from '@/stores/session';
 
 import { setAddressPick, useAddressRoute } from './address-route';
 import { ApiError, TimeoutError } from './client';
-import { qk } from './hooks';
+import { qk, serverInfoQuery, useServerInfo } from './hooks';
+import type { ServerInfo } from './types';
+import { resolveClient } from './connection-clients';
 import { noteSuccess, useReachability } from './reachability';
 import {
   type ApiConnection,
   ApiProvider,
   buildClients,
   ConnectionScope,
+  forgetUnobservedServerFailures,
   queryClient,
   retryQuery,
   useApi,
@@ -242,6 +245,7 @@ describe('buildClients', () => {
     })) as unknown as typeof globalThis.fetch;
     try {
       mockNoteAnswer.mockClear();
+      useSession.setState({ connections: conns });
       const built = buildClients(conns, {}, new Map(), {});
       await expect(built.get('c2')!.client.serverInfo()).rejects.toBeInstanceOf(ApiError);
       expect(mockNoteAnswer).toHaveBeenCalledWith('c2');
@@ -311,22 +315,86 @@ describe('the query cache with `<server_id>.<user_id>` connection ids', () => {
     expect(queryClient.getQueryData(qk.libraries('srv.30'))).toEqual([2]);
   });
 
+  it('a stale home address cannot seed the cache or flag a reset', async () => {
+    const cid = 'srv.3';
+    const home = 'http://home';
+    const away = 'https://away';
+    useSession.setState({
+      connections: [
+        {
+          id: cid,
+          serverId: 'srv',
+          name: 'H',
+          serverUrl: away,
+          addresses: { home, away },
+          token: 't',
+        },
+      ],
+    } as never);
+    queryClient.removeQueries({ queryKey: qk.server(cid) });
+    const saved = globalThis.fetch;
+    let release!: () => void;
+    const response = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const request = jest.fn(async () => {
+      await response;
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ server_id: 'other', capabilities: { listening_sync: false } }),
+      };
+    });
+    globalThis.fetch = request as unknown as typeof fetch;
+    setAddressPick(cid, home);
+    try {
+      const read = queryClient.fetchQuery({
+        ...serverInfoQuery(cid, resolveClient(cid)),
+        retry: false,
+      });
+      await waitFor(() => expect(request).toHaveBeenCalled());
+      setAddressPick(cid, away);
+      release();
+      await expect(read).rejects.toThrow();
+      expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+      expect(queryClient.getQueryData(qk.server(cid))).toBeUndefined();
+    } finally {
+      release();
+      setAddressPick(cid, null);
+      globalThis.fetch = saved;
+    }
+  });
+
   it("a /server answer from the connection's own server flags nothing; another server_id flags it", async () => {
     useSession.setState({
       connections: [
         { id: 'srv.3', serverId: 'srv', name: 'H', serverUrl: 'https://h', token: 't' },
       ],
     } as never);
-    await queryClient.fetchQuery({
-      queryKey: qk.server('srv.3'),
-      queryFn: async () => ({ server_id: 'srv' }),
-    });
-    expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
-    await queryClient.fetchQuery({
-      queryKey: qk.server('srv.3'),
-      queryFn: async () => ({ server_id: 'rebuilt' }),
-      staleTime: 0,
-    });
+    const key = qk.server('srv.3');
+    const saved = globalThis.fetch;
+    let id = 'srv';
+    globalThis.fetch = jest.fn(async () => ({
+      ok: true,
+      status: 200,
+      text: async () => JSON.stringify({ server_id: id, capabilities: {} }),
+    })) as unknown as typeof fetch;
+    try {
+      const ask = () =>
+        queryClient.fetchQuery({
+          ...serverInfoQuery('srv.3', resolveClient('srv.3')),
+          staleTime: 0,
+          retry: false,
+        });
+      await ask();
+      expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+      id = 'rebuilt';
+      await expect(ask()).rejects.toThrow();
+      expect(queryClient.getQueryData(key)).toMatchObject({ server_id: 'srv' });
+    } finally {
+      globalThis.fetch = saved;
+    }
     expect(useSession.getState().connections[0].needsReconnect).toBe('server-reset');
   });
 });
@@ -356,16 +424,129 @@ describe('a connection signed in again (a new token, 8b-1)', () => {
       .catch(() => undefined);
     const stale = (key: readonly unknown[]) =>
       queryClient.getQueryState(key)?.isInvalidated === true;
+    queryClient.removeQueries({ queryKey: qk.server('srv.3') });
+    await expect(
+      queryClient.fetchQuery({
+        queryKey: qk.server('srv.3'),
+        queryFn: () => Promise.reject(new ApiError(401, 'refused')),
+      }),
+    ).rejects.toThrow();
     expect(stale(qk.libraries('srv.3'))).toBe(false);
 
     await act(async () =>
       useSession.setState({ connections: [at('srv.3', 'fresh'), at('srv.1', 't')] } as never),
     );
+    expect(queryClient.getQueryState(qk.server('srv.3'))).toBeUndefined();
     expect(stale(qk.libraries('srv.3'))).toBe(true);
     expect(stale(qk.libraryBooks('srv.3', 4, {}))).toBe(true);
     // An answer that was fine stays, and another connection is left alone.
     expect(stale(qk.allProgress('srv.3'))).toBe(false);
     expect(stale(qk.libraries('srv.1'))).toBe(false);
+  });
+
+  it.each(['reconnect', 'sign-in'])(
+    'preserves failed kept flags and their age until the next read after %s',
+    async (event) => {
+      const conn = {
+        id: 'srv.8',
+        serverId: 'srv',
+        serverUrl: 'https://h',
+        name: 'H',
+        token: 'old',
+      };
+      const key = qk.server(conn.id);
+      useSession.setState({ connections: [conn] } as never);
+      await render(ui(0));
+      queryClient.setQueryData(
+        key,
+        { server_id: 'srv', capabilities: { queue: true } },
+        { updatedAt: 1 },
+      );
+      await expect(
+        queryClient.fetchQuery({
+          queryKey: key,
+          staleTime: 0,
+          retry: false,
+          queryFn: () => Promise.reject(new Error('down')),
+        }),
+      ).rejects.toThrow();
+      if (event === 'reconnect') {
+        await act(async () => mockReconnect?.(conn.id));
+      } else {
+        await act(async () =>
+          useSession.setState({ connections: [{ ...conn, token: 'new' }] } as never),
+        );
+      }
+      expect(queryClient.getQueryState(key)).toMatchObject({
+        status: 'success',
+        dataUpdatedAt: 1,
+        isInvalidated: true,
+      });
+      const queryFn = jest.fn(
+        async () => ({ server_id: 'srv', capabilities: { queue: false } }) as ServerInfo,
+      );
+      const observer = new QueryObserver(queryClient, {
+        ...serverInfoQuery(conn.id, resolveClient(conn.id)),
+        queryFn,
+      });
+      const stop = observer.subscribe(() => {});
+      try {
+        await waitFor(() =>
+          expect(observer.getCurrentResult().data?.capabilities.queue).toBe(false),
+        );
+        expect(queryFn).toHaveBeenCalledTimes(1);
+      } finally {
+        stop();
+      }
+    },
+  );
+
+  it('a first /server request in flight cannot carry its old refusal over a new sign-in', async () => {
+    const id = 'srv.9';
+    const conn = { id, serverId: 'srv', serverUrl: 'https://h', name: 'H', token: 'old' };
+    useSession.setState({ connections: [conn] } as never);
+    const saved = globalThis.fetch;
+    let refuse!: () => void;
+    const old = new Promise<void>((resolve) => {
+      refuse = resolve;
+    });
+    const request = jest.fn(async (_url: unknown, options: RequestInit) => {
+      if ((options.headers as Record<string, string>).Authorization === 'Bearer old') {
+        await old;
+        return { ok: false, status: 401, text: async () => '{"error":"unauthorized"}' };
+      }
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ server_id: 'srv', capabilities: { queue: true } }),
+      };
+    });
+    globalThis.fetch = request as unknown as typeof fetch;
+    function Flags() {
+      const info = useServerInfo(id);
+      return <Text>{info.data?.capabilities.queue ? 'ready' : 'waiting'}</Text>;
+    }
+    try {
+      await render(
+        <ApiProvider>
+          <Flags />
+        </ApiProvider>,
+      );
+      await waitFor(() => expect(request).toHaveBeenCalledTimes(1));
+      expect(request.mock.calls[0][1].headers).toMatchObject({ Authorization: 'Bearer old' });
+      expect(queryClient.getQueryState(qk.server(id))?.data).toBeUndefined();
+      await act(async () =>
+        useSession.setState({ connections: [{ ...conn, token: 'new' }] } as never),
+      );
+      await waitFor(() => expect(screen.getByText('ready')).toBeTruthy());
+      await act(async () => refuse());
+      expect(request).toHaveBeenCalledTimes(2);
+      expect(queryClient.getQueryState(qk.server(id))?.status).toBe('success');
+      expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+    } finally {
+      refuse();
+      globalThis.fetch = saved;
+    }
   });
 
   it('reads nothing again for a connection that is new, or whose token stayed', async () => {
@@ -378,6 +559,152 @@ describe('a connection signed in again (a new token, 8b-1)', () => {
       useSession.setState({ connections: [{ ...c, name: 'Renamed' }] } as never),
     );
     expect(queryClient.getQueryState(qk.libraries('srv.5'))?.isInvalidated).toBe(false);
+  });
+});
+
+describe('a recovered sign-in proxy', () => {
+  it.each([true, false])(
+    'recovers a refused /server when an authenticated request gets through (observed: %s)',
+    async (observed) => {
+      const cid = 'srv.80';
+      const other = 'srv.81';
+      useSession.setState({
+        connections: [cid, other].map((id) => ({
+          id,
+          serverId: 'srv',
+          serverUrl: 'https://h',
+          token: 't',
+        })),
+      } as never);
+      const original = globalThis.fetch;
+      const info = { server_id: 'srv', capabilities: { listening_sync: true } };
+      let allowed = false;
+      globalThis.fetch = jest.fn(async (url: string) => ({
+        ok: allowed,
+        status: allowed ? 200 : 403,
+        text: async () =>
+          allowed
+            ? JSON.stringify(url.endsWith('/server') ? info : { id: 80 })
+            : 'Refused by proxy',
+      })) as unknown as typeof fetch;
+      const client = resolveClient(cid)!;
+      const spec = { ...serverInfoQuery(cid, client), retry: false };
+      let stop: (() => void) | undefined;
+      try {
+        await expect(queryClient.fetchQuery(spec)).rejects.toMatchObject({ fromProxy: true });
+        await expect(
+          queryClient.fetchQuery({ ...serverInfoQuery(other, resolveClient(other)), retry: false }),
+        ).rejects.toMatchObject({ fromProxy: true });
+        if (observed) stop = new QueryObserver(queryClient, spec).subscribe(() => {});
+        allowed = true;
+        await client.me();
+        if (!observed) {
+          expect(queryClient.getQueryState(spec.queryKey)).toBeUndefined();
+          stop = new QueryObserver(queryClient, spec).subscribe(() => {});
+        }
+        await waitFor(() => expect(queryClient.getQueryData(spec.queryKey)).toEqual(info));
+        expect(queryClient.getQueryState(qk.server(other))?.error).toMatchObject({
+          fromProxy: true,
+        });
+      } finally {
+        stop?.();
+        globalThis.fetch = original;
+        queryClient.removeQueries({ queryKey: spec.queryKey });
+        queryClient.removeQueries({ queryKey: qk.server(other) });
+      }
+    },
+  );
+});
+
+// fe#270: a failed /server is not asked again by every screen mounting, so the app coming
+// back to the foreground drops one nobody watches, or the next screen would never ask.
+describe('a failed /server nobody watches, on the foreground refresh', () => {
+  it('is asked again by the next screen that needs it', async () => {
+    const cid = 'srv.90';
+    useSession.setState({
+      connections: [{ id: cid, serverId: 'srv', serverUrl: 'https://h', token: 't' }],
+    } as never);
+    const serverInfo = jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError(502, 'bad gateway'))
+      .mockResolvedValue({ server_id: 'srv', capabilities: {} });
+    const spec = { ...serverInfoQuery(cid, { serverInfo } as never), retry: false };
+    let stop: (() => void) | undefined;
+    try {
+      await expect(queryClient.fetchQuery(spec)).rejects.toMatchObject({ status: 502 });
+      // A screen mounting now does not ask (fe#270's first item).
+      const quiet = new QueryObserver(queryClient, spec).subscribe(() => {});
+      quiet();
+      expect(serverInfo).toHaveBeenCalledTimes(1);
+      forgetUnobservedServerFailures();
+      await queryClient.invalidateQueries();
+      stop = new QueryObserver(queryClient, spec).subscribe(() => {});
+      await waitFor(() => expect(queryClient.getQueryData(spec.queryKey)).toBeDefined());
+      expect(serverInfo).toHaveBeenCalledTimes(2);
+    } finally {
+      stop?.();
+      queryClient.removeQueries({ queryKey: spec.queryKey });
+    }
+  });
+});
+
+// Another host at the home address fails the read; nothing else asks it again once the
+// address runner moves the connection away.
+describe('a failed /server on an address the connection left', () => {
+  beforeEach(() => resetProfilesForTests());
+
+  it('is asked again through the client on the address it moved to', async () => {
+    const cid = 'srv.95';
+    const home = 'http://192.168.1.20:8080';
+    const away = 'https://away.example';
+    useSession.setState({
+      connections: [
+        {
+          id: cid,
+          serverId: 'srv',
+          name: 'H',
+          serverUrl: away,
+          addresses: { home, away },
+          token: 't',
+        },
+      ],
+    } as never);
+    setAddressPick(cid, home);
+    const saved = globalThis.fetch;
+    const request = jest.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          url.startsWith(home)
+            ? { server_id: 'other', capabilities: {} }
+            : { server_id: 'srv', capabilities: {} },
+        ),
+    }));
+    globalThis.fetch = request as unknown as typeof fetch;
+    function Info() {
+      const info = useServerInfo(cid);
+      return <Text>{info.data ? 'read' : info.isError ? 'failed' : 'waiting'}</Text>;
+    }
+    try {
+      await expect(
+        queryClient.fetchQuery({ ...serverInfoQuery(cid, resolveClient(cid)), retry: false }),
+      ).rejects.toThrow();
+      await render(
+        <ApiProvider>
+          <Info />
+        </ApiProvider>,
+      );
+      expect(screen.getByText('failed')).toBeTruthy();
+      await act(async () => setAddressPick(cid, away));
+      await waitFor(() => expect(screen.getByText('read')).toBeTruthy());
+      expect(String(request.mock.calls.at(-1)?.[0])).toContain(away);
+      expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+    } finally {
+      globalThis.fetch = saved;
+      await act(async () => setAddressPick(cid, null));
+      queryClient.removeQueries({ queryKey: qk.server(cid) });
+    }
   });
 });
 
@@ -491,6 +818,51 @@ describe('queries and reachability', () => {
       expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
     },
   );
+
+  it('ignores a valid reply from the previous address while the provider is still switching clients', async () => {
+    const id = 'srv.5';
+    const home = 'http://home';
+    const away = 'https://away';
+    useSession.setState({
+      connections: [
+        { id, serverId: 'srv', serverUrl: away, addresses: { home, away }, name: 'H', token: 't' },
+      ],
+    } as never);
+    useReachability.setState({ online: { [id]: false } });
+    setAddressPick(id, home);
+    const old = resolveClient(id)!;
+    // The routing store switches first. The provider's effect has not replaced this map yet.
+    reachability.setReachabilityClients(new Map([[id, old]]));
+    const saved = globalThis.fetch;
+    let release!: () => void;
+    const wait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const request = jest.fn(async () => {
+      await wait;
+      return {
+        ok: true,
+        status: 200,
+        text: async () => JSON.stringify({ server_id: 'srv', capabilities: {} }),
+      };
+    });
+    globalThis.fetch = request as unknown as typeof fetch;
+    try {
+      mockNoteAnswer.mockClear();
+      const check = reachability.checkReachability(id);
+      await waitFor(() => expect(request).toHaveBeenCalled());
+      setAddressPick(id, away);
+      release();
+      await check;
+      expect(useReachability.getState().online[id]).toBe(false);
+      expect(mockNoteAnswer).not.toHaveBeenCalled();
+    } finally {
+      reachability.setReachabilityClients(new Map());
+      release();
+      setAddressPick(id, null);
+      globalThis.fetch = saved;
+    }
+  });
 
   it('brings a down server back on its own /server answer, with no second check', async () => {
     useReachability.setState({ online: { c1: false } });

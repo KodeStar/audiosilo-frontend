@@ -19,7 +19,12 @@ jest.mock('@/stores/session', () => {
     useSession: create(() => ({
       status: 'ready',
       connections: [
-        { id: 'c1', serverId: 'srv' },
+        {
+          id: 'c1',
+          serverId: 'srv',
+          serverUrl: 'https://away',
+          addresses: { home: 'http://home', away: 'https://away' },
+        },
         { id: 'c2', serverId: 'srv' },
       ],
       markNeedsReconnect: jest.fn(),
@@ -33,6 +38,7 @@ jest.mock('@/stores/session', () => {
 });
 
 /* eslint-disable import/first */
+import { setAddressPick } from '@/api/address-route';
 import { cachedCapability, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
@@ -86,6 +92,23 @@ describe('seeding a kept /server answer', () => {
     expect(query?.state.dataUpdatedAt).toBe(7);
     expect(query?.gcTime).toBe(Infinity);
   });
+
+  it('ignores a snapshot an older build kept for another server', () => {
+    seedServerSnapshot('c1', { info: server({ metadata: true }, 'other'), savedAt: 7 });
+    expect(qc.getQueryData(qk.server('c1'))).toBeUndefined();
+  });
+
+  it.each([undefined, '', 42])(
+    'ignores flags kept without an install identity (%j)',
+    async (id) => {
+      const info = { capabilities: { listening_sync: false }, server_id: id };
+      const snapshot = { info: info as ServerInfo, savedAt: 7 };
+      await AsyncStorage.setItem(OFFLINE_SERVERS_KEY, JSON.stringify({ c1: snapshot }));
+      expect(await readServerSnapshots()).toEqual({});
+      seedServerSnapshot('c1', snapshot);
+      expect(cachedCapability('c1', 'listening_sync')).toBeUndefined();
+    },
+  );
 
   it("never replaces an answer read later (the server's own this launch)", () => {
     qc.setQueryData(qk.server('c2'), server({ metadata: false }), { updatedAt: 50 });
@@ -184,34 +207,53 @@ describe('keeping every answer', () => {
   });
 
   it('keeps an answer read outside the cache, and the cache takes it', async () => {
-    keepServerAnswer('c1', server({ listening_sync: false }));
+    keepServerAnswer('c1', server({ listening_sync: false }), 'https://away');
     expect(cachedCapability('c1', 'listening_sync')).toBe(false);
     await written();
     expect((await readServerSnapshots()).c1.info.capabilities.listening_sync).toBe(false);
   });
 
-  it('asks the cache again for an answer with no flags at all', async () => {
-    const invalidate = jest.spyOn(qc, 'invalidateQueries');
-    keepServerAnswer('c1', { name: 'S' } as ServerInfo);
+  it('keeps an outbox rollback unconfirmed for a malformed answer', async () => {
+    expect(keepServerAnswer('c1', { server_id: 'srv' } as ServerInfo, 'https://away')).toBe(false);
+    expect(keepServerAnswer('c1', { capabilities: {} } as ServerInfo, 'https://away')).toBe(false);
     expect(qc.getQueryData(qk.server('c1'))).toBeUndefined();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.server('c1') });
     await written();
     expect(await readServerSnapshots()).toEqual({});
-    invalidate.mockRestore();
+  });
+
+  it('ignores another server at home and a late answer after switching away', async () => {
+    const mark = jest.mocked(useSession.getState().markNeedsReconnect);
+    mark.mockClear();
+    setAddressPick('c1', 'http://home');
+    try {
+      expect(keepServerAnswer('c1', server({}, 'other'), 'http://home')).toBe(false);
+      expect(keepServerAnswer('c1', server({ queue: true }), 'http://home')).toBe(true);
+      setAddressPick('c1', 'https://away');
+      expect(keepServerAnswer('c1', server({}, 'other'), 'http://home')).toBe(false);
+      expect(keepServerAnswer('c1', server({ queue: false }), 'http://home')).toBe(false);
+      expect(mark).not.toHaveBeenCalled();
+      expect(cachedCapability('c1', 'queue')).toBe(true);
+      await written();
+      expect((await readServerSnapshots()).c1.info.capabilities.queue).toBe(true);
+    } finally {
+      setAddressPick('c1', null);
+    }
   });
 
   it("keeps no answer that names another server, and flags the reset as the cache's read does", async () => {
     const mark = useSession.getState().markNeedsReconnect as jest.Mock;
     mark.mockClear();
     seedServerSnapshot('c1', { info: server({ listening_sync: true }), savedAt: 7 });
-    expect(keepServerAnswer('c1', server({ listening_sync: false }, 'rebuilt'))).toBe(false);
+    expect(
+      keepServerAnswer('c1', server({ listening_sync: false }, 'rebuilt'), 'https://away'),
+    ).toBe(false);
     expect(mark).toHaveBeenCalledWith('c1', 'server-reset');
     expect(cachedCapability('c1', 'listening_sync')).toBe(true);
     await written();
     expect(await readServerSnapshots()).toEqual({});
     // This server's own answer is kept, and flags nothing.
     mark.mockClear();
-    expect(keepServerAnswer('c1', server({ listening_sync: false }))).toBe(true);
+    expect(keepServerAnswer('c1', server({ listening_sync: false }), 'https://away')).toBe(true);
     expect(mark).not.toHaveBeenCalled();
     expect(cachedCapability('c1', 'listening_sync')).toBe(false);
   });

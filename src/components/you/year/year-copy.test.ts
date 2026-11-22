@@ -126,7 +126,8 @@ describe('yearStateCopy', () => {
       /Hearthside/,
     );
     expect(
-      yearStateCopy({ status: 'error', serverName: 'Hearthside', retry: () => {} }, t).title,
+      yearStateCopy({ status: 'error', serverName: 'Hearthside', error: null, retry: () => {} }, t)
+        .title,
     ).toBe("Couldn't load your year");
     const past = yearStateCopy(
       { status: 'empty', serverName: 'Hearthside', year: '2024', current: false },

@@ -1562,8 +1562,8 @@ export type MyDevice = {
   client: ClientInfo | null;
   created_at: string;
   last_seen: string | null;
-  /** The address of the token's newest request (`''` before any). */
-  last_ip: string;
+  /** The address of the token's newest request (`''` before any). Omitted from cached rows. */
+  last_ip?: string;
   /** Whether this is the token making the request (this device). */
   current: boolean;
   /** The caller's household members signed in on this device (made here, still live):

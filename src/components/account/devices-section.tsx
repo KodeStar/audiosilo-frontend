@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { ApiError } from '@/api/client';
 import { CapabilityError, useMyDevices, useRevokeMyDevice } from '@/api/hooks';
 import type { MyDevice } from '@/api/types';
@@ -93,6 +94,7 @@ export function DevicesSection({
   const revoke = useRevokeMyDevice(connectionId);
   const [pending, setPending] = useState<MyDevice | null>(null);
   const [busyId, setBusyId] = useState<number | null>(null);
+  const refused = serverRefusalState(devices.error, connectionId);
   const rows = signedInSessions(devices.data);
   // "last seen 5 minutes ago" moves by the minute.
   const now = useNow(60_000);
@@ -138,60 +140,61 @@ export function DevicesSection({
     <View className="gap-3">
       <SectionTitle title={t('account.devices.title')} sub={t('account.devices.sub')} />
       <Card className="overflow-hidden p-0">
-        {unread === 'offline' ? (
-          // Before the error and the skeleton: a list held for the network stays pending
-          // (`useUnreadQuery`), and no Retry can work without one.
-          <OfflineState className="py-6" />
-        ) : unread === 'failed' && signedOut ? (
-          // The server ended this sign-in: signing in again is the way, not a Retry
-          // (CONNECT-15).
-          <SignInAgainState connection={signedOut} compact className="m-4" />
-        ) : unread === 'failed' ? (
-          // Only with no list to show: a read again that fails (after a password change, a
-          // revoke) keeps the list as it was, never its error in its place (server#285).
-          <View className="gap-3 p-5">
-            <Text variant="muted">{t('account.devices.loadError', { server: serverName })}</Text>
-            <Button
-              variant="outline"
-              className="self-start"
-              title={t('common.retry')}
-              onPress={() => void devices.refetch()}
-            />
-          </View>
-        ) : devices.isPending ? (
-          <DevicesSkeleton />
-        ) : (
-          rows.map((d, i) => {
-            const name = deviceName(d, t);
-            return (
-              <AccountListRow
-                key={d.id}
-                testID={`device-${d.id}`}
-                icon={deviceGlyph(d)}
-                title={name}
-                badge={
-                  d.current ? (
-                    <Badge variant="success">
-                      <Text>{t('account.devices.thisDevice')}</Text>
-                    </Badge>
-                  ) : null
-                }
-                detail={deviceDetail(d, t, now)}
-                first={i === 0}
-                action={
-                  canRevoke(d)
-                    ? {
-                        title: t('account.devices.signOut'),
-                        accessibilityLabel: t('account.devices.signOutLabel', { name }),
-                        loading: busyId === d.id,
-                        onPress: () => setPending(d),
-                      }
-                    : undefined
-                }
+        {refused ??
+          (unread === 'offline' ? (
+            // Before the error and the skeleton: a list held for the network stays pending
+            // (`useUnreadQuery`), and no Retry can work without one.
+            <OfflineState className="py-6" />
+          ) : unread === 'failed' && signedOut ? (
+            // The server ended this sign-in: signing in again is the way, not a Retry
+            // (CONNECT-15).
+            <SignInAgainState connection={signedOut} compact className="m-4" />
+          ) : unread === 'failed' ? (
+            // Only with no list to show: a read again that fails (after a password change, a
+            // revoke) keeps the list as it was, never its error in its place (server#285).
+            <View className="gap-3 p-5">
+              <Text variant="muted">{t('account.devices.loadError', { server: serverName })}</Text>
+              <Button
+                variant="outline"
+                className="self-start"
+                title={t('common.retry')}
+                onPress={() => void devices.refetch()}
               />
-            );
-          })
-        )}
+            </View>
+          ) : devices.isPending ? (
+            <DevicesSkeleton />
+          ) : (
+            rows.map((d, i) => {
+              const name = deviceName(d, t);
+              return (
+                <AccountListRow
+                  key={d.id}
+                  testID={`device-${d.id}`}
+                  icon={deviceGlyph(d)}
+                  title={name}
+                  badge={
+                    d.current ? (
+                      <Badge variant="success">
+                        <Text>{t('account.devices.thisDevice')}</Text>
+                      </Badge>
+                    ) : null
+                  }
+                  detail={deviceDetail(d, t, now)}
+                  first={i === 0}
+                  action={
+                    canRevoke(d)
+                      ? {
+                          title: t('account.devices.signOut'),
+                          accessibilityLabel: t('account.devices.signOutLabel', { name }),
+                          loading: busyId === d.id,
+                          onPress: () => setPending(d),
+                        }
+                      : undefined
+                  }
+                />
+              );
+            })
+          ))}
       </Card>
       {devices.isSuccess && rows.length <= 1 ? (
         <Text variant="caption">{t('account.devices.onlyThis')}</Text>

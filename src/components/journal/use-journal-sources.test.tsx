@@ -7,6 +7,7 @@ import {
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { ApiError } from '@/api/client';
 import type { Capabilities, Page } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
@@ -72,6 +73,29 @@ beforeEach(() => {
 });
 
 describe('useJournalSources', () => {
+  it('identifies a refused parent and leaves it alone on retry', async () => {
+    const stub = mockConnections[1].client;
+    stub.serverInfo.mockRejectedValue(new ApiError(401, 'refused'));
+    const { result } = await mount();
+    await waitFor(() =>
+      expect(result.current.notes[1].refusal).toEqual({ connectionId: 'c2', proxy: false }),
+    );
+    await act(async () => result.current.notes[1].refetch());
+    expect(stub.serverInfo).toHaveBeenCalledTimes(1);
+    expect(stub.myNotes).not.toHaveBeenCalled();
+  });
+
+  it('retries the list alone once its server has confirmed the flag', async () => {
+    const client = mockConnections[0].client;
+    client.myNotes.mockRejectedValueOnce(new Error('down'));
+    const { result } = await mount();
+    await waitFor(() => expect(result.current.notes[0].status).toBe('error'));
+    await act(async () => result.current.notes[0].refetch());
+    await waitFor(() => expect(result.current.notes[0].status).toBe('ready'));
+    expect(client.serverInfo).toHaveBeenCalledTimes(1);
+    expect(client.myNotes).toHaveBeenCalledTimes(2);
+  });
+
   it("reports each server's lists, in connection order", async () => {
     const { result } = await mount();
     await waitFor(() => expect(result.current.notes[0].status).toBe('ready'));

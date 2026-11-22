@@ -8,12 +8,16 @@ let mockSettings: {
   refetch: jest.Mock;
 };
 const mockMutate = jest.fn();
+let mockSavePaused = false;
 jest.mock('@/api/hooks', () => {
   class CapabilityError extends Error {}
   return {
     CapabilityError,
     useHousehold: () => mockSettings,
-    useSetHousehold: () => ({ mutateAsync: (share: boolean) => mockMutate(share) }),
+    useSetHousehold: () => ({
+      mutateAsync: (share: boolean) => mockMutate(share),
+      isPaused: mockSavePaused,
+    }),
   };
 });
 /** The stored user's `member_kind` on c1 (a test's own). */
@@ -48,6 +52,7 @@ function deferred<T>() {
 
 beforeEach(() => {
   mockKind = undefined;
+  mockSavePaused = false;
   mockSettings = { data: { share_listening: false }, isError: false, refetch: jest.fn() };
   mockMutate.mockReset();
   mockToast.mockReset();
@@ -89,6 +94,25 @@ describe('HouseSharingRow', () => {
     expect(screen.getByRole('switch', { name: SWITCH })).toBeEnabled();
     expect(screen.queryByText('Saving')).toBeNull();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('shows a paused change waiting to sync, then saving when the write resumes', async () => {
+    const save = deferred<HouseholdSettings>();
+    mockMutate.mockReturnValue(save.promise);
+    mockSavePaused = true;
+    const row = await render(<HouseSharingRow connectionId="c1" />);
+    await fireEvent.press(screen.getByRole('switch', { name: SWITCH }));
+    expect(screen.getByText('Waiting to sync')).toBeTruthy();
+    expect(screen.queryByText('Saving')).toBeNull();
+    expect(screen.getByRole('switch', { name: SWITCH })).toBeDisabled();
+
+    mockSavePaused = false;
+    await row.rerender(<HouseSharingRow connectionId="c1" />);
+    expect(screen.getByText('Saving')).toBeTruthy();
+    expect(screen.queryByText('Waiting to sync')).toBeNull();
+    mockSettings.data = { share_listening: true };
+    await act(async () => save.resolve({ share_listening: true }));
+    expect(screen.getByRole('switch', { name: SWITCH })).toBeEnabled();
   });
 
   it('puts the switch back and says so when the change fails', async () => {

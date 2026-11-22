@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { ApiError } from '@/api/client';
 import type { Capabilities, ServerInfo, UpcomingResponse } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 import { upcomingItem } from '@/testing/upcoming-fixtures';
@@ -56,7 +57,7 @@ const queryClients: QueryClient[] = [];
 type Setup = {
   id: string;
   /** `fail`: the server's `/server` read fails (unreachable, or refusing). */
-  caps: Partial<Capabilities> | 'pending' | 'fail';
+  caps: Partial<Capabilities> | 'pending' | 'fail' | ApiError;
   kid?: boolean;
   answer?: Partial<UpcomingResponse> | 'fail';
 };
@@ -70,6 +71,7 @@ async function mount<T>(setups: Setup[], useHook: () => T) {
   for (const s of setups) {
     const stub: Stub = { serverInfo: jest.fn(), upcoming: jest.fn() };
     if (s.caps === 'pending') stub.serverInfo.mockReturnValue(new Promise(() => {}));
+    else if (s.caps instanceof ApiError) stub.serverInfo.mockRejectedValue(s.caps);
     else if (s.caps === 'fail') stub.serverInfo.mockRejectedValue(new Error('unreachable'));
     else stub.serverInfo.mockResolvedValue(serverWith(s.id, s.caps));
     if (s.answer === 'fail') stub.upcoming.mockRejectedValue(new Error('down'));
@@ -91,6 +93,26 @@ afterEach(() => {
 });
 
 describe('useUpcomingAll', () => {
+  it('keeps a refused /server out of Retry and retries a transient failure beside it', async () => {
+    const { result } = await mount(
+      [
+        { id: 'proxy', caps: new ApiError(403, 'proxy', undefined, undefined, true) },
+        { id: 'down', caps: 'fail' },
+        { id: 'kid', kid: true, caps: new ApiError(401, 'refused') },
+      ],
+      useUpcomingAll,
+    );
+    await waitFor(() => expect(result.current.available).toBe(false));
+    expect(result.current.refusals).toEqual([{ connectionId: 'proxy', proxy: true }]);
+    expect(result.current.failed).toEqual(['Server down']);
+    mockClients.down.serverInfo.mockResolvedValue(serverWith('down', { upcoming: true }));
+    await act(async () => result.current.retry());
+    await waitFor(() => expect(result.current.statuses).toHaveLength(1));
+    expect(mockClients.down.upcoming).toHaveBeenCalledTimes(1);
+    expect(mockClients.proxy.serverInfo).toHaveBeenCalledTimes(1);
+    expect(mockClients.kid.serverInfo).toHaveBeenCalledTimes(1);
+  });
+
   it('merges two servers, each work once, in the order across servers', async () => {
     const { result } = await mount(
       [

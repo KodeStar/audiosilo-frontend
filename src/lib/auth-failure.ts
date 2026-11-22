@@ -3,8 +3,7 @@ import { serverIdOf } from '@/lib/connection-id';
 
 // Dead-token DETECTION (the 401-only rule and why 403/network failures don't count)
 // lives on the ApiClient's `onAuthError` callback - see `client.ts`. This module keeps
-// only the success-side helpers the React Query cache uses: resolving which connection
-// a key belongs to (to CLEAR a flag) and spotting a server reset from a `/server` response.
+// the cache key helpers and the identity check used when the connection's /server answers.
 
 /**
  * The connection id a React Query key belongs to: the first known connection id present
@@ -40,12 +39,18 @@ export function serverInfoKey(cid: string) {
   return ['server', cid] as const;
 }
 
+/** The install that answered /server, when the response identifies one. */
+export function reportedServerId(data: unknown): string | undefined {
+  const id = (data as Partial<ServerInfo> | null)?.server_id;
+  return typeof id === 'string' && id.trim() ? id : undefined;
+}
+
 /**
  * The connection id to flag as `server-reset`, given a `/server` response for a known
  * connection key. If the server now reports a different `server_id` than the connection's
  * server (`serverIdOf`: never the connection id itself, which also names the user), the
- * install was rebuilt from scratch - this identity is gone, so re-pairing is required.
- * Piggybacks on the existing `useServerInfo()` fetch (no dedicated poller). Returns null when
+ * answer names another install. Only a current paired or away address can prove that
+ * the server was reset (`acceptsServerAnswer`). Returns null when
  * the key isn't a server key or the id still matches (nothing to flag). `connections` are
  * the signed-in ones (their `serverId`); a key naming none of them is read by its id alone
  * (`parseConnectionId`).
@@ -57,8 +62,19 @@ export function serverResetCid(
 ): string | null {
   if (!isServerInfoKey(key)) return null;
   const cid = typeof key[1] === 'string' ? key[1] : null;
-  const serverId = (data as ServerInfo | undefined)?.server_id;
-  if (!cid || typeof serverId !== 'string' || !serverId) return null;
+  const serverId = reportedServerId(data);
+  if (!cid || !serverId) return null;
   const conn = connections.find((c) => c.id === cid) ?? { id: cid };
   return serverId !== serverIdOf(conn) ? cid : null;
+}
+
+/** Whether a `/server` answer kept for the connection `key` names can't be taken as its
+ * own: it names no install, or another one (`serverResetCid`). Kept answers are read
+ * without the address that gave them, so neither case flags the connection. */
+export function foreignServerAnswer(
+  key: readonly unknown[],
+  data: unknown,
+  connections: readonly { id: string; serverId?: string }[] = [],
+): boolean {
+  return !reportedServerId(data) || serverResetCid(key, data, connections) !== null;
 }

@@ -101,6 +101,19 @@ describe('snapshot and restore', () => {
     });
   });
 
+  it.each(['other', undefined, '', 42])(
+    'leaves out a /server answer that cannot be identified as this install (%j)',
+    (id) => {
+      const before = newClient();
+      before.setQueryData(['server', C], { server_id: id, capabilities: { queue: true } });
+      save(before);
+
+      const qc = newClient();
+      restore(qc);
+      expect(qc.getQueryData(['server', C])).toBeUndefined();
+    },
+  );
+
   it('puts the kept answers back, each to be asked for again on mount', async () => {
     const before = newClient();
     before.setQueryData(['server', C], { server_id: 'srv' });
@@ -132,6 +145,53 @@ describe('snapshot and restore', () => {
     unsubscribe();
   });
 
+  it('keeps device addresses in the live query and only offline row details in storage', () => {
+    const key = ['myDevices', C];
+    const phone = {
+      id: 1,
+      name: 'Phone',
+      kind: 'session',
+      current: false,
+      client: { app: 'AudioSilo', version: '1.4.2', platform: 'ios' },
+      created_at: '2026-10-01T10:00:00Z',
+      last_seen: '2026-11-01T10:00:00Z',
+      member_sign_ins: [{ id: 9, name: 'Evie' }],
+    };
+    const browser = { ...phone, id: 2, name: 'Browser', current: true, client: null };
+    const live = newClient();
+    live.setQueryData(key, [
+      { ...phone, last_ip: '192.0.2.1', location: 'Home' },
+      { ...browser, last_ip: '2001:db8::2' },
+    ]);
+    save(live);
+
+    expect(stored().entries[0].data).toStrictEqual([phone, browser]);
+    expect(live.getQueryData(key)).toMatchObject([
+      { last_ip: '192.0.2.1', location: 'Home' },
+      { last_ip: '2001:db8::2' },
+    ]);
+    const offline = newClient();
+    restore(offline);
+    expect(offline.getQueryData(key)).toStrictEqual([phone, browser]);
+    expect(offline.getQueryState(key)?.isInvalidated).toBe(true);
+  });
+
+  it('removes a document of another version or app version, with its device addresses', () => {
+    const doc = (v: number, app: string) =>
+      JSON.stringify({
+        v,
+        app,
+        entries: [{ key: ['myDevices', C], data: [{ id: 1, last_ip: '192.0.2.9' }], updatedAt: 1 }],
+      });
+    for (const old of [doc(1, '9.9.9'), doc(1, '9.9.8'), doc(2, '9.9.8')]) {
+      items.set(STARTUP_CACHE_KEY, old);
+      const qc = newClient();
+      restore(qc);
+      expect(qc.getQueryData(['myDevices', C])).toBeUndefined();
+      expect(items.has(STARTUP_CACHE_KEY)).toBe(false);
+    }
+  });
+
   it('never replaces a query already in the cache', () => {
     const before = newClient();
     before.setQueryData(['libraries', C], [{ id: 1, name: 'old' }]);
@@ -143,7 +203,7 @@ describe('snapshot and restore', () => {
     expect(qc.getQueryState(['libraries', C])?.isInvalidated).toBe(false);
   });
 
-  it('ignores a document of another version, an unreadable one and foreign entries', () => {
+  it('restores nothing from a document of another version or an unreadable one, nor foreign entries', () => {
     const restored = () => {
       const qc = newClient();
       restore(qc);
@@ -173,7 +233,7 @@ describe('snapshot and restore', () => {
     items.set(
       STARTUP_CACHE_KEY,
       JSON.stringify({
-        v: 1,
+        v: 2,
         app: '9.9.9',
         entries: [
           { key: ['item', C, 1, 'a'], data: {}, updatedAt: 1 },
@@ -412,10 +472,13 @@ describe('forget', () => {
     const qc = newClient();
     qc.setQueryData(['libraries', C], [{ id: 1 }]);
     qc.setQueryData(['libraries', 'other.2'], [{ id: 2 }]);
+    qc.setQueryData(['myDevices', C], [{ name: 'Phone' }]);
+    qc.setQueryData(['myDevices', 'other.2'], [{ name: 'Tablet' }]);
     save(qc);
     forget(C);
     expect(stored().entries.map((e: { key: unknown[] }) => e.key)).toEqual([
       ['libraries', 'other.2'],
+      ['myDevices', 'other.2'],
     ]);
   });
 });

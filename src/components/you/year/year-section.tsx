@@ -3,6 +3,7 @@ import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { useMyStats } from '@/api/hooks';
 import { useCid } from '@/api/provider';
 import { OfflineState } from '@/components/layout/offline-state';
@@ -116,14 +117,16 @@ export function YearSection() {
       />
     );
   } else {
+    const refused = story.status === 'error' ? serverRefusalState(story.error, cid) : null;
     body = (
       <View className="gap-5">
         {story.status === 'unsupported' ? null : pickers}
-        {(story.status === 'error' || story.status === 'offline') && signedOut ? (
-          <SignInAgainState connection={signedOut} />
-        ) : (
-          <YearState story={story} phone={phone} width={width} />
-        )}
+        {refused ??
+          ((story.status === 'error' || story.status === 'offline') && signedOut ? (
+            <SignInAgainState connection={signedOut} />
+          ) : (
+            <YearState story={story} phone={phone} width={width} />
+          ))}
       </View>
     );
   }

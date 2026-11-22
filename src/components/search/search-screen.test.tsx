@@ -62,6 +62,7 @@ const source = { connectionId: 'a', connectionName: 'Home Library', libraryId: 1
 const idle = () => ({ supported: true, isLoading: false, isError: false, retry: jest.fn() });
 type Results = Record<string, unknown>;
 const empty = (): Results => ({
+  refusals: [],
   books: [],
   booksState: idle(),
   series: [],
@@ -112,6 +113,18 @@ beforeEach(() => {
 afterEach(() => jest.useRealTimers());
 
 describe('SearchScreen, nothing typed', () => {
+  it('shows a refused /server once for the affected result groups', async () => {
+    useSession.setState({
+      connections: [{ id: 'a', name: 'Home', serverUrl: 'u', token: 't', user: {} as never }],
+    });
+    mockResults = { ...empty(), refusals: [{ connectionId: 'a', proxy: true }] };
+    await render(<SearchScreen />);
+    await type('kaladin');
+    expect(screen.getAllByText(/sign-in proxy for Home turned this device away/)).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    expect(screen.queryByText(/No matches for/)).toBeNull();
+  });
+
   it('offers the recent searches and the Browse cards with the library counts', async () => {
     useRecentSearches.setState({ recent: ['kaladin'] });
     await render(<SearchScreen />);
