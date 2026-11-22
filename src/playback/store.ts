@@ -3883,12 +3883,15 @@ async function createService(): Promise<PlaybackService> {
       } else {
         // Unknown file lengths give consecutive tracks the same book offset. A natural
         // advance starts a new file at zero even after minutes of listening in the last.
+        // Also on a report after the file change's, which can carry no place yet (NaN) or,
+        // until the new file's first tick, the old file's (Android's item change).
+        const offset = np.queue.offsets[snapshot.trackIndex];
         if (
           !askedPlace &&
-          snapshot.trackIndex > prev.trackIndex &&
           snapshot.trackIndex > resumeFloor.trackIndex &&
-          np.queue.offsets[snapshot.trackIndex] !== undefined &&
-          np.queue.offsets[snapshot.trackIndex] === np.queue.offsets[prev.trackIndex]
+          offset !== undefined &&
+          (offset === np.queue.offsets[resumeFloor.trackIndex] ||
+            (snapshot.trackIndex > prev.trackIndex && offset === np.queue.offsets[prev.trackIndex]))
         ) {
           lowerFloorTo(
             toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position),

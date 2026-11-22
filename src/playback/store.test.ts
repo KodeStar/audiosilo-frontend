@@ -3764,6 +3764,22 @@ describe('a book whose files have no known length', () => {
     expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([2, 4]);
   });
 
+  it('rebases the save floor on a later report when the tied-file change carried no place', async () => {
+    const prefix = { ...chapters.files[0], rel_path: 'intro', duration: 100, seq: -1 };
+    const data = { ...chapters, files: [prefix, ...chapters.files] };
+    await usePlayer.getState().playBook('c1', 2, book, data, 300);
+    pushSnapshot(snap('playing', 220, { trackIndex: 1 }));
+    pushSnapshot(snap('paused', 220, { trackIndex: 1 }));
+    await flushMicrotasks();
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 220, { trackIndex: 1 }));
+    pushSnapshot(snap('playing', NaN, { trackIndex: 2 }));
+    pushSnapshot(snap('playing', 2, { trackIndex: 2 }));
+    pushSnapshot(snap('paused', 4, { trackIndex: 2 }));
+    await flushMicrotasks();
+    expect(savedPositions()).toContain(104);
+  });
+
   it('Retry keeps the file that established the floor when a low snapshot names a different tied file', async () => {
     await usePlayer.getState().playBook('c1', 2, book, chapters, 200, { path: files[1], pos: 200 });
     pushSnapshot(snap('playing', 215, { trackIndex: 1 }));
