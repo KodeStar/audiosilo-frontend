@@ -1048,7 +1048,7 @@ async function persist(opts?: {
   }
   if (saveHold && !forceFinished) return;
   const total = nowPlaying.queue.total;
-  const seeking = pendingSeek?.np === nowPlaying ? pendingSeek : null;
+  const seeking = seekOf(nowPlaying);
   // A seek the engine could still refuse is no periodic save. Mark as finished saves the
   // listener's chosen place for Undo before unloading, and does not raise the floor there.
   if (seeking?.landedAt === null && !forceFinished && !opts?.beforeFinish) return;
@@ -1677,6 +1677,17 @@ let pendingSeek: EngineAsk | null = null;
 const seekCalls = new Set<EngineAsk>();
 let seekReported = false;
 
+/** `np`'s seek still on its way, if any. */
+const seekOf = (np: NowPlaying | null): EngineAsk | null =>
+  pendingSeek?.np === np ? pendingSeek : null;
+
+/** No seek is on its way any more (the engine went elsewhere, or another book is loaded). */
+function dropSeeks() {
+  pendingSeek = null;
+  seekReported = false;
+  seekCalls.clear();
+}
+
 function settleSeek() {
   if (seekReported && seekCalls.size === 0) pendingSeek = null;
 }
@@ -1708,8 +1719,7 @@ function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: Pl
     now - pendingSeek.at >= ASK_SETTLE_MAX_MS &&
     playedOn
   ) {
-    seekCalls.clear();
-    pendingSeek = null;
+    dropSeeks();
     return;
   }
   seekReported = there && (changed || seekReported);
@@ -1719,7 +1729,8 @@ function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: Pl
 }
 
 function pendingSeekEnd(np: NowPlaying): SpanEnd | null {
-  return pendingSeek?.np === np ? endAt(np, pendingSeek.trackIndex, pendingSeek.position) : null;
+  const seeking = seekOf(np);
+  return seeking ? endAt(np, seeking.trackIndex, seeking.position) : null;
 }
 
 /**
@@ -2737,15 +2748,17 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
 }
 
 /** The store asks the engine for `(trackIndex, position)` of `np`'s queue, and `move` is the
- * engine call that makes it (`engineTakes`). With no book loaded there is nothing to ask. */
+ * engine call that makes it (`engineTakes`); `seek` as `askEngineTo`'s. With no book loaded
+ * there is nothing to ask. */
 function engineMove<T>(
   np: NowPlaying | null,
   trackIndex: number,
   position: number,
   move: () => Promise<T>,
+  seek = false,
 ): Promise<T> {
   if (!np) return move();
-  const ask = askEngineTo(np, trackIndex, position);
+  const ask = askEngineTo(np, trackIndex, position, seek);
   return engineTakes(ask, move());
 }
 
@@ -2773,8 +2786,7 @@ async function listenerMove(
     return;
   }
   if (engineHoldsOtherBook()) {
-    pendingSeek = null;
-    seekCalls.clear();
+    dropSeeks();
     // Not once another book is the store's (a start or an adoption landed meanwhile).
     if (usePlayer.getState().nowPlaying === np) placeShown(np, trackIndex, position);
     return;
@@ -3188,9 +3200,11 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
  * nobody heard. So the listening begun there is dropped, as an answer's move drops it
  * (`onGaveWayAnswer`), and begins again at the place while it plays.
  *
- * Not once the listener moved, another book started or another such move began meanwhile
- * (`localMoves`, `catchingUp`: the place is theirs), nor when the engine is not at the
- * place (a queue replaced under the seek).
+ * Not once the listener moved or the store asked the engine elsewhere (either clears
+ * `lateTabSeek`), another book started or another such move began meanwhile (`catchingUp`),
+ * nor when the engine is not at the place (a queue replaced under the seek). `'unconfirmed'`:
+ * the report reached the place by playing on from `prev`, which is no landing yet; the report
+ * handler runs its tick after this report settles.
  */
 function landTabPlaceLate(prev?: PlaybackSnapshot) {
   const late = lateTabSeek;
@@ -3703,8 +3717,7 @@ function switchBook(request: PlayRequest) {
   // resume.
   nextStart = 'resume';
   unfinishDue = false;
-  pendingSeek = null;
-  seekCalls.clear();
+  dropSeeks();
   cancelStallWatchdog();
   cancelOtherBookDeadline();
   stopSaveLoop();
@@ -4220,8 +4233,7 @@ async function createService(): Promise<PlaybackService> {
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
     if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to ?? null });
-    pendingSeek = null;
-    seekCalls.clear();
+    dropSeeks();
     // The engine tells the move before its landed place reaches the snapshot (so no
     // save, cut or keep in between ends the span there, fe#211): the save waits for it.
     void Promise.resolve().then(() => persist());
@@ -4800,16 +4812,20 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       at = local;
     }
     ownLoadTakesEngine();
-    const ask = askEngineTo(loaded, at.index, at.positionInTrack, true);
-    await engineTakes(
-      ask,
-      svc.load(
-        loaded.queue.tracks,
-        at.index,
-        at.positionInTrack,
-        loaded.queue.chapterClips,
-        bookRefOf(loaded),
-      ),
+    // A seek: its transient zero is no move to the start (`pendingSeek`).
+    await engineMove(
+      loaded,
+      at.index,
+      at.positionInTrack,
+      () =>
+        svc.load(
+          loaded.queue.tracks,
+          at.index,
+          at.positionInTrack,
+          loaded.queue.chapterClips,
+          bookRefOf(loaded),
+        ),
+      true,
     );
     await svc.setRate(get().rate);
     await startLoadedEngine(svc);
@@ -4823,7 +4839,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         ? Math.max(0, Math.min(bookPosition, np.queue.total))
         : Math.max(0, bookPosition);
     const svc = service ?? (await ensureService());
-    const seeking = pendingSeek?.np === np ? pendingSeek : null;
+    const seeking = seekOf(np);
     const target = locate(
       np.queue.offsets,
       clamped,
@@ -4849,8 +4865,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     if (!Number.isFinite(positionInTrack)) return;
     const svc = service ?? (await ensureService());
     const { nowPlaying: np, snapshot } = get();
-    const trackIndex =
-      pendingSeek && pendingSeek.np === np ? pendingSeek.trackIndex : snapshot.trackIndex;
+    const trackIndex = seekOf(np)?.trackIndex ?? snapshot.trackIndex;
     const dur =
       trackIndex === snapshot.trackIndex
         ? snapshot.duration
@@ -4883,7 +4898,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
   skipSeconds: async (delta) => {
     const { nowPlaying: np, snapshot } = get();
     if (!np) return;
-    const here = pendingSeek?.np === np ? pendingSeek : snapshot;
+    const here = seekOf(np) ?? snapshot;
     // No reliable whole-book timeline (file durations unknown): seek within the
     // current track using the engine's reported position instead.
     if (np.queue.total <= 0) {
