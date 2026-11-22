@@ -2897,7 +2897,9 @@ media GETs only.
     Previous at the book's start; a book with unknown file lengths starts every file at 0) is no
     move: the span goes on and no event says it. While a seek is still landing, the player
     compares the next move with its pending target and closes the span there. A move from 30
-    back to 0 therefore sends `moved_back` even while the engine still reports 0. A paused
+    back to 0 therefore sends `moved_back` even while the engine still reports 0. Until the
+    seek lands no periodic save or cut runs, but a stop or a Mark as finished saves its target,
+    where the span closed. A paused
     lock-screen move with no prior place (`from: null`) still counts. The watches share the
     bare-move and same-place rules
     (`Spans`). A

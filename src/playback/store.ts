@@ -1005,12 +1005,13 @@ type PlayerState = {
  * position/slip guards (they exist to protect an in-progress place, not a deliberate
  * completion) and records the whole-book duration so the book reads as 100% done.
  * `local`: only this device's own record of the place, with no request (`placeLoop`).
+ * `leaving`: the book unloads after this save (a stop, a Mark as finished).
  * Resolves the whole-book place saved (this device's record of it, and its server's save
  * when one goes), else undefined: none saved, or the server held it back or refused it. */
 async function persist(opts?: {
   forceFinished?: boolean;
   local?: boolean;
-  beforeFinish?: boolean;
+  leaving?: boolean;
 }): Promise<number | undefined> {
   const { nowPlaying, snapshot, rate, loadingBook } = usePlayer.getState();
   if (!nowPlaying) return;
@@ -1049,9 +1050,10 @@ async function persist(opts?: {
   if (saveHold && !forceFinished) return;
   const total = nowPlaying.queue.total;
   const seeking = seekOf(nowPlaying);
-  // A seek the engine could still refuse is no periodic save. Mark as finished saves the
-  // listener's chosen place for Undo before unloading, and does not raise the floor there.
-  if (seeking?.landedAt === null && !forceFinished && !opts?.beforeFinish) return;
+  // A seek the engine could still refuse is no periodic save. A stop or a Mark as finished
+  // saves the listener's chosen place before unloading (where the span closed, and the one
+  // an Undo goes back to), and does not raise the floor there.
+  if (seeking?.landedAt === null && !forceFinished && !opts?.leaving) return;
   const end =
     pendingSeekEnd(nowPlaying) ?? endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
   let position = end?.pos ?? Number.NaN;
@@ -1064,7 +1066,7 @@ async function persist(opts?: {
   if (forceFinished) {
     if (total > 0) position = Math.max(position, total); // a completed book reads as 100%
   } else {
-    if (position <= 0 && !(opts?.beforeFinish && seeking)) return;
+    if (position <= 0 && !(opts?.leaving && seeking)) return;
     // Guard against a slipped-through restart corrupting real progress: a position far
     // below the resume floor (without a deliberate backward seek, which lowers the floor)
     // is treated as a spurious reset and not saved. The server is last-write-wins, so a
@@ -1144,7 +1146,7 @@ async function persist(opts?: {
  * saves that place. */
 function saveForStop(key: string | null): Promise<unknown> {
   if (pendingStopSave?.key === key) return pendingStopSave.saved;
-  const entry = { key, saved: persist() };
+  const entry = { key, saved: persist({ leaving: true }) };
   pendingStopSave = entry;
   const done = () => {
     if (pendingStopSave === entry) pendingStopSave = null;
@@ -1925,7 +1927,7 @@ function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
   closeListeningSpan();
   endHistory();
   // Reads the book synchronously, before it is unloaded below.
-  const saved = persist({ beforeFinish: true }).catch(() => undefined);
+  const saved = persist({ leaving: true }).catch(() => undefined);
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
   void service?.reset();
   return saved.then((position) => {

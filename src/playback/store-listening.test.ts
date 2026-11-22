@@ -1202,6 +1202,17 @@ describe('with listening_sync', () => {
     },
   );
 
+  it('a stop while a seek is still landing saves the place its span closed at', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 10));
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+    void usePlayer.getState().seekBook(40);
+    await settle();
+    await usePlayer.getState().stop();
+    expect(mockClosed.at(-1)).toMatchObject({ start: 'jump', to: { pos: 40 } });
+    expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 40 });
+  });
+
   it('a paused seek still waiting after ten seconds keeps its target across stale reports', async () => {
     await start();
     pushSnapshot(snap('paused', 0, 30));
