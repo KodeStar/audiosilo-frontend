@@ -474,12 +474,14 @@ describe('timeline math', () => {
       size: 1,
       format: 'mp3',
     }));
-    const chapters = v.markers.map(([f, start], index) =>
+    // A marker is [file, start] or [file, start, end].
+    const chapters = v.markers.map(([f, start, end], index) =>
       chapter({
         index,
         file_index: index === v.missingPathAt ? f : 0,
         file_path: index === v.missingPathAt ? '' : `p${f}`,
         start,
+        ...(end !== undefined ? { end } : {}),
       }),
     );
     const q = buildBookQueue(fakeApi, 2, makeBook({ files: [...files].reverse(), chapters }));
@@ -537,15 +539,29 @@ describe('timeline math', () => {
     expect(chapterAt(tied, 0, (f) => f === 'B/04.mp3')?.index).toBe(0);
   });
 
-  it('chapterAt takes the first of two chapters starting together in one file', () => {
-    // Equal markers keep their listed order within the chosen file.
+  it('chapterAt passes over a marker of no length for the chapter starting with it', () => {
+    // A duplicated marker before the real chapter is no tie: the real one plays.
     const chapters = [
       chapter({ index: 0, book_offset: 0, start: 0, end: 0, file_path: 'B/01.mp3' }),
       chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
       chapter({ index: 2, book_offset: 600, start: 600, end: 900, file_path: 'B/01.mp3' }),
     ];
+    expect(chapterAt(chapters, 30)?.index).toBe(1);
+    expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(1);
+    // Alone at its start, a marker of no length is still the chapter there.
+    const lone = [
+      chapters[1],
+      { ...chapters[0], index: 3, book_offset: 300, start: 300, end: 300 },
+    ];
+    expect(chapterAt(lone, 400)?.index).toBe(3);
+  });
+
+  it('chapterAt keeps the first of equal markers that both have a length', () => {
+    const chapters = [
+      chapter({ index: 0, book_offset: 0, start: 0, end: 300, file_path: 'B/01.mp3' }),
+      chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
+    ];
     expect(chapterAt(chapters, 30)?.index).toBe(0);
-    expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(0);
   });
 
   it('chapterAt finds the active chapter and clamps below the first', () => {

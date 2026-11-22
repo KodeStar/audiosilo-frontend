@@ -194,9 +194,11 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
     let url = try XCTUnwrap(Bundle.module.url(forResource: "timeline-ties", withExtension: "json"))
     for v in try JSONDecoder().decode([Vector].self, from: Data(contentsOf: url)) {
       let files = v.durations.enumerated().map { file("p\($0.offset)", seq: $0.offset, duration: $0.element) }
+      // A marker is [file, start] or [file, start, end].
       let chapters = v.markers.enumerated().map { i, marker in
         ch(index: i, fileIndex: i == v.missingPathAt ? marker[0] : 0,
-           filePath: i == v.missingPathAt ? "" : "p\(marker[0])", start: Double(marker[1]))
+           filePath: i == v.missingPathAt ? "" : "p\(marker[0])", start: Double(marker[1]),
+           end: marker.count > 2 ? Double(marker[2]) : 0)
       }
       let t = Timeline(book: makeBook(files: files.reversed(), chapters: chapters))
       let at = t.locate(v.position)

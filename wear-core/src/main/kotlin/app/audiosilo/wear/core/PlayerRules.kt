@@ -123,21 +123,35 @@ object ChapterNav {
    */
   const val AT_START: Double = 0.01
 
-  /** The index of the chapter at `position` (the first before every chapter); null with none. */
+  /**
+   * The index of the chapter at `position` (the first before every chapter); null with none. In
+   * `file` (the playing one) when it has a chapter there; equal starts go by `winsTie`.
+   */
   fun index(chapters: List<Chapter>, position: Double, file: String? = null): Int? {
     if (chapters.isEmpty()) return null
     var current: Int? = null
     var own: Int? = null
+    fun takes(ch: Chapter, over: Int?): Boolean {
+      val best = over?.let { chapters[it] } ?: return true
+      return ch.bookOffset > best.bookOffset || (ch.bookOffset == best.bookOffset && winsTie(ch, best))
+    }
     for ((i, ch) in chapters.withIndex()) {
       if (!(ch.bookOffset <= position + AT_START)) continue
-      val best = current?.let { chapters[it] }
-      if (best == null || ch.bookOffset > best.bookOffset ||
-          (ch.bookOffset == best.bookOffset && ch.fileIndex >= 0 && (best.fileIndex < 0 || ch.fileIndex < best.fileIndex))) {
-        current = i
-      }
-      if (ch.filePath == file && (own == null || ch.bookOffset > chapters[own].bookOffset)) own = i
+      if (takes(ch, current)) current = i
+      if (ch.filePath == file && takes(ch, own)) own = i
     }
     return own ?: current ?: 0
+  }
+
+  /**
+   * Markers at one start (the phone's `tiedMarkerWins`): the first in book file order (an unknown
+   * file after every known one); within one file a marker with length over one of none (a
+   * duplicated marker before the real chapter); else list order.
+   */
+  fun winsTie(a: Chapter, b: Chapter): Boolean {
+    val fa = if (a.fileIndex < 0) Int.MAX_VALUE else a.fileIndex
+    val fb = if (b.fileIndex < 0) Int.MAX_VALUE else b.fileIndex
+    return fa < fb || (fa == fb && a.end - a.start > 0 && !(b.end - b.start > 0))
   }
 
   /**

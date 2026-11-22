@@ -11,7 +11,7 @@ import type { LayoutClass } from '@/lib/layout';
 import { type BookPlace, type FilePlace, pathLeaf } from '@/lib/paths';
 import { yearOf } from '@/lib/published';
 import { seriesNumber } from '@/lib/series-position';
-import { indexAtOffset, synthesizeChapters } from '@/playback/book-queue';
+import { indexAtOffset, synthesizeChapters, tiedMarkerWins } from '@/playback/book-queue';
 import { codecLabel } from '@/playback/transcode';
 import { seriesOf } from '@/components/series/series-model';
 
@@ -295,19 +295,24 @@ export function timelineStarts(rows: readonly ListRow[]): number[] {
  * reached. */
 export function rowAt(rows: readonly ListRow[], position: number, file?: FilePlace): number {
   if (file) {
-    const own = indexAtOffset(rows, file.pos, (row) =>
-      row.jump.file?.path === file.path ? row.jump.file.pos : NaN,
+    const own = indexAtOffset(
+      rows,
+      file.pos,
+      (row) => (row.jump.file?.path === file.path ? row.jump.file.pos : NaN),
+      rowWinsTie,
     );
     if (own >= 0) return own;
   }
-  const index = indexAtOffset(
-    rows,
-    position,
-    (row) => row.start,
-    (row) => (row.fileIndex !== undefined && row.fileIndex >= 0 ? row.fileIndex : Infinity),
-  );
+  const index = indexAtOffset(rows, position, (row) => row.start, rowWinsTie);
   return rows.length ? Math.max(0, index) : -1;
 }
+
+/** Rows tie as the player's chapters do (`tiedMarkerWins`). */
+const rowWinsTie = (a: ListRow, b: ListRow) =>
+  tiedMarkerWins(
+    { file: a.fileIndex ?? -1, length: a.length },
+    { file: b.fileIndex ?? -1, length: b.length },
+  );
 
 /** "Chapter 23 of 81" / "Part 3 of 12", or '' for files or a book not started. A
  * chapter whose `title` contradicts its number names itself: "Chapter 10 · 11 of 25". */

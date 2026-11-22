@@ -272,9 +272,12 @@ class SynthesizeAndTimelineMathTest {
     val json = requireNotNull(javaClass.getResource("/timeline-ties.json")).readText()
     for (v in Json.decodeFromString<List<Vector>>(json)) {
       val files = v.durations.mapIndexed { i, duration -> file("p$i", i, duration) }
-      val chapters = v.markers.mapIndexed { i, (f, start) ->
+      // A marker is [file, start] or [file, start, end].
+      val chapters = v.markers.mapIndexed { i, marker ->
+        val (f, start) = marker
         ch(index = i, fileIndex = if (i == v.missingPathAt) f else 0,
-           filePath = if (i == v.missingPathAt) "" else "p$f", start = start.toDouble())
+           filePath = if (i == v.missingPathAt) "" else "p$f", start = start.toDouble(),
+           end = marker.getOrNull(2)?.toDouble() ?: 0.0)
       }
       val t = Timeline.of(makeBook(files = files.reversed(), chapters = chapters))
       assertEquals(v.name, Located(v.track, v.seconds), t.locate(v.position))

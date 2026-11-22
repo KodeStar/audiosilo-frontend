@@ -98,21 +98,30 @@ enum ChapterNav {
   static let AT_START: Double = 0.01
 
   /// The index of the chapter at `position` (the first before every chapter); nil with none.
+  /// In `file` (the playing one) when it has a chapter there; equal starts go by `winsTie`.
   static func index(_ chapters: [Chapter], _ position: Double, file: String? = nil) -> Int? {
     guard !chapters.isEmpty else { return nil }
     var current: Int?
     var own: Int?
+    func takes(_ ch: Chapter, over at: Int?) -> Bool {
+      guard let at else { return true }
+      let best = chapters[at]
+      return ch.bookOffset > best.bookOffset || (ch.bookOffset == best.bookOffset && winsTie(ch, best))
+    }
     for (i, ch) in chapters.enumerated() where ch.bookOffset <= position + AT_START {
-      if let at = current {
-        let best = chapters[at]
-        if ch.bookOffset > best.bookOffset ||
-          (ch.bookOffset == best.bookOffset && ch.fileIndex >= 0 && (best.fileIndex < 0 || ch.fileIndex < best.fileIndex)) {
-          current = i
-        }
-      } else { current = i }
-      if ch.filePath == file && (own.map { ch.bookOffset > chapters[$0].bookOffset } ?? true) { own = i }
+      if takes(ch, over: current) { current = i }
+      if ch.filePath == file && takes(ch, over: own) { own = i }
     }
     return own ?? current ?? 0
+  }
+
+  /// Markers at one start (the phone's `tiedMarkerWins`): the first in book file order (an
+  /// unknown file after every known one); within one file a marker with length over one of
+  /// none (a duplicated marker before the real chapter); else list order.
+  static func winsTie(_ a: Chapter, _ b: Chapter) -> Bool {
+    let fa = a.fileIndex < 0 ? Int.max : a.fileIndex
+    let fb = b.fileIndex < 0 ? Int.max : b.fileIndex
+    return fa < fb || (fa == fb && a.end - a.start > 0 && !(b.end - b.start > 0))
   }
 
   /// Previous chapter: this one's start when more than 3 s in, else the one before's (0 before

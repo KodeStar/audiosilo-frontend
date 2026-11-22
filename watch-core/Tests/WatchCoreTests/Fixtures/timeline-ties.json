@@ -79,6 +79,21 @@
     "playingChapter": 1
   },
   {
+    "name": "a marker of no length before the real chapter",
+    "durations": [1000],
+    "markers": [
+      [0, 0, 0],
+      [0, 0, 600],
+      [0, 600, 1000]
+    ],
+    "position": 30,
+    "track": 0,
+    "seconds": 30,
+    "chapter": 1,
+    "playingFile": 0,
+    "playingChapter": 1
+  },
+  {
     "name": "first distinct start after a tie",
     "durations": [0, 60, 40],
     "markers": [

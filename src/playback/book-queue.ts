@@ -412,14 +412,15 @@ function distinctFilesFromChapters(chapters: Chapter[]): { path: string; duratio
   return order.map((path) => ({ path, duration: durations.get(path) ?? 0 }));
 }
 
-/** Index at the greatest start at or before a place. Equal starts keep the first marker
- * in book file order. Chapter offsets can repeat on either side of a later start when
- * durations are unknown, so the next row need not be the next boundary. */
+/** Index at the greatest start at or before a place. Equal starts keep the first in list
+ * order unless `winsTie(item, over)` says a later one takes it (`tiedMarkerWins`). Chapter
+ * offsets can repeat on either side of a later start when durations are unknown, so the
+ * next row need not be the next boundary. */
 export function indexAtOffset<T>(
   items: readonly T[],
   position: number,
   offsetOf: (item: T) => number,
-  fileOrder?: (item: T) => number,
+  winsTie?: (item: T, over: T) => boolean,
 ): number {
   let index = -1;
   let start = -Infinity;
@@ -429,7 +430,7 @@ export function indexAtOffset<T>(
     if (
       index < 0 ||
       offset > start ||
-      (offset === start && fileOrder && fileOrder(items[i]) < fileOrder(items[index]))
+      (offset === start && winsTie !== undefined && winsTie(items[i], items[index]))
     ) {
       index = i;
       start = offset;
@@ -437,6 +438,23 @@ export function indexAtOffset<T>(
   }
   return index;
 }
+
+/** The tie rule for markers at one start: the first in book file order (`file`, negative
+ * when unknown: after every known file); within one file a marker with length over one of
+ * none (a duplicated marker before the real chapter, which is the one playing); else list
+ * order. A zero-length marker alone at its start is not a tie and stays the current one. */
+export function tiedMarkerWins(
+  a: { file: number; length: number },
+  b: { file: number; length: number },
+): boolean {
+  const fa = a.file < 0 ? Infinity : a.file;
+  const fb = b.file < 0 ? Infinity : b.file;
+  return fa < fb || (fa === fb && a.length > 0 && !(b.length > 0));
+}
+
+const chapterTieKey = (ch: Chapter) => ({ file: ch.file_index, length: ch.end - ch.start });
+const chapterWinsTie = (a: Chapter, b: Chapter) =>
+  tiedMarkerWins(chapterTieKey(a), chapterTieKey(b));
 
 /**
  * Map a whole-book position to (trackIndex, positionInTrack).
@@ -523,7 +541,8 @@ export function chapterEndPosition(ch: Chapter): number {
  * The chapter active at a given whole-book position (the first chapter before any).
  *
  * A known playing file disambiguates overlapping chapter timelines in different files.
- * Without it, tied chapters follow the book's file order and then their order in the file.
+ * Without it, tied chapters follow the book's file order and then their order in the file
+ * (`tiedMarkerWins`: a marker of no length yields to the chapter starting with it).
  */
 export function chapterAt(
   chapters: Chapter[],
@@ -531,17 +550,15 @@ export function chapterAt(
   playing?: (filePath: string) => boolean,
 ): Chapter | null {
   if (playing) {
-    const own = indexAtOffset(chapters, bookPosition, (ch) =>
-      playing(ch.file_path) ? ch.book_offset : NaN,
+    const own = indexAtOffset(
+      chapters,
+      bookPosition,
+      (ch) => (playing(ch.file_path) ? ch.book_offset : NaN),
+      chapterWinsTie,
     );
     if (own >= 0) return chapters[own];
   }
-  const index = indexAtOffset(
-    chapters,
-    bookPosition,
-    (ch) => ch.book_offset,
-    (ch) => (ch.file_index < 0 ? Infinity : ch.file_index),
-  );
+  const index = indexAtOffset(chapters, bookPosition, (ch) => ch.book_offset, chapterWinsTie);
   return chapters[Math.max(0, index)] ?? null;
 }
 
