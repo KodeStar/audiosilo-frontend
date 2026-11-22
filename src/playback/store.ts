@@ -5122,8 +5122,11 @@ function commitLocalSwap(
     const position = Math.max(0, resumeFloor.position + swap.shift);
     const index = resumeFloor.trackIndex;
     const file = trackIndexById(swap.queue, nowPlaying.queue.tracks[index]?.id);
+    // Within a millisecond: `shift` is a difference of sums of seconds, so it can miss the
+    // offsets' own difference in the last bits.
     const followsFile =
-      file >= 0 && swap.queue.offsets[file] - nowPlaying.queue.offsets[index] === swap.shift;
+      file >= 0 &&
+      Math.abs(swap.queue.offsets[file] - nowPlaying.queue.offsets[index] - swap.shift) < 0.001;
     resumeFloor = {
       position,
       trackIndex: followsFile ? file : locate(swap.queue.offsets, position, swap.index).index,
