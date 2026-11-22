@@ -3885,18 +3885,19 @@ async function createService(): Promise<PlaybackService> {
         // advance starts a new file at zero even after minutes of listening in the last.
         // Also on a report after the file change's, which can carry no place yet (NaN) or,
         // until the new file's first tick, the old file's (Android's item change).
+        // Only a place below the floor: one still carrying the old file's seconds can equal
+        // it, and taking that would end the rebase before the new file's first tick.
         const offset = np.queue.offsets[snapshot.trackIndex];
+        const at = toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position);
         if (
           !askedPlace &&
           snapshot.trackIndex > resumeFloor.trackIndex &&
           offset !== undefined &&
+          at < resumeFloor.position &&
           (offset === np.queue.offsets[resumeFloor.trackIndex] ||
             (snapshot.trackIndex > prev.trackIndex && offset === np.queue.offsets[prev.trackIndex]))
         ) {
-          lowerFloorTo(
-            toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position),
-            snapshot.trackIndex,
-          );
+          lowerFloorTo(at, snapshot.trackIndex);
         }
         const duration = fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration);
         if (duration !== snapshot.duration) snapshot = { ...snapshot, duration };
