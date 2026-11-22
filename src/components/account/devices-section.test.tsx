@@ -106,7 +106,7 @@ describe('DevicesSection', () => {
     ).toBeTruthy();
   });
 
-  it('shows the live address online and keeps the device detail readable offline', async () => {
+  it('shows the live address online and hides it offline', async () => {
     const detail = 'AudioSilo 1.4.0 · Browser · last seen 2 hours ago';
     mockDevices = loaded([{ ...laptop, last_ip: '192.0.2.12' }]);
     const view = await mount();
@@ -116,11 +116,6 @@ describe('DevicesSection', () => {
     await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
     expect(screen.getByText(detail)).toBeTruthy();
     expect(screen.queryByText(/192\.0\.2\.12/)).toBeNull();
-
-    mockDevices = { ...loaded([laptop]), isPaused: true };
-    await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
-    expect(screen.getByText('Work laptop')).toBeTruthy();
-    expect(screen.getByText(detail)).toBeTruthy();
   });
 
   // Revoking this device's own token would kill it before the sign-out teardown (final

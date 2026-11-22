@@ -1,6 +1,7 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
+import type { MyDevice } from './types';
 import { foreignServerAnswer, isServerInfoKey } from '@/lib/auth-failure';
 import { isInProgress } from '@/lib/progress-view';
 import { isRecord, STARTUP_CACHE_KEY } from '@/lib/storage-keys';
@@ -32,7 +33,8 @@ import { APP_VERSION } from '@/lib/version';
  * the browser's reload, and AsyncStorage can't be read before the first render.
  */
 
-/** Version 1 kept full device rows, including the address of their last request. */
+/** The document's shape version: a document of another is removed. Version 1 kept full
+ * device rows, including the address of their last request. */
 const VERSION = 2;
 /** The most (characters of JSON) the document holds: localStorage is one small quota per
  * origin (about 5 MB, counted in UTF-16 by some browsers) that the session, the progress
@@ -116,23 +118,25 @@ function isInfinite(data: unknown): data is InfiniteData<unknown, unknown> {
   return isRecord(data) && Array.isArray(data.pages) && Array.isArray(data.pageParams);
 }
 
-/** Keep only the device fields used offline. A server can add network or location fields. */
-function cachedDevices(data: unknown) {
-  if (!Array.isArray(data)) return [];
-  return data.filter(isRecord).map((d) => ({
-    id: d.id,
-    kind: d.kind,
-    name: d.name,
-    client: isRecord(d.client)
-      ? { app: d.client.app, version: d.client.version, platform: d.client.platform }
-      : null,
-    created_at: d.created_at,
-    last_seen: d.last_seen,
-    current: d.current,
-    member_sign_ins: Array.isArray(d.member_sign_ins)
-      ? d.member_sign_ins.filter(isRecord).map(({ id, name }) => ({ id, name }))
-      : undefined,
-  }));
+/** The fields a device row draws offline (the Devices list): never its address, nor any
+ * network or location field a server adds. */
+const DEVICE_FIELDS = [
+  'id',
+  'kind',
+  'name',
+  'client',
+  'created_at',
+  'last_seen',
+  'current',
+  'member_sign_ins',
+] as const satisfies readonly (keyof MyDevice)[];
+
+/** `rec` with only `fields`, those it has. */
+function pickFields(
+  rec: Record<string, unknown>,
+  fields: readonly string[],
+): Record<string, unknown> {
+  return Object.fromEntries(fields.filter((f) => rec[f] !== undefined).map((f) => [f, rec[f]]));
 }
 
 /** The kept entries of `client`'s cache: each startup query's last answer (of an infinite
@@ -154,7 +158,10 @@ export function snapshot(
       progressLists.push({ cid, rows: q.state.data });
     const updatedAt = q.state.dataUpdatedAt;
     const key = [...q.queryKey];
-    const data = key[0] === 'myDevices' ? cachedDevices(q.state.data) : q.state.data;
+    const data =
+      key[0] === 'myDevices' && Array.isArray(q.state.data)
+        ? q.state.data.filter(isRecord).map((d) => pickFields(d, DEVICE_FIELDS))
+        : q.state.data;
     if (!isInfinite(data)) out.push({ key, data, updatedAt });
     else if (data.pages.length > 0)
       out.push({ key, data: data.pages[0], updatedAt, firstPage: true });
@@ -202,11 +209,7 @@ function progressBooks(client: QueryClient, cid: string, rows: unknown[]): unkno
       // Kept copies are titled: only titled books are written. A row with none (an episode,
       // a row never drawn) takes no place, so it never costs a book its title.
       if (!book) continue;
-      out.push(
-        Object.fromEntries(
-          BOOK_FIELDS.filter((f) => book[f] !== undefined).map((f) => [f, book[f]]),
-        ),
-      );
+      out.push(pickFields(book, BOOK_FIELDS));
     }
     return out;
   };
@@ -244,13 +247,18 @@ export function save(client: QueryClient, keep?: (key: readonly unknown[]) => bo
 }
 
 /** The kept entries, or none when there is no document, it can't be read or another
- * version of the app wrote it. */
+ * version of the app (or of the document) wrote it, which is then removed. */
 function readEntries(store: Storage): Entry[] {
   try {
     const doc: unknown = JSON.parse(store.getItem(STARTUP_CACHE_KEY) ?? 'null');
-    if (!isRecord(doc) || (doc.v !== 1 && doc.v !== VERSION) || doc.app !== APP_VERSION) return [];
+    if (doc === null) return [];
+    if (!isRecord(doc) || doc.v !== VERSION || doc.app !== APP_VERSION) {
+      // Not kept until the next save: an older version's document may hold device addresses.
+      store.removeItem(STARTUP_CACHE_KEY);
+      return [];
+    }
     if (!Array.isArray(doc.entries)) return [];
-    const entries = doc.entries.filter(
+    return doc.entries.filter(
       (e): e is Entry =>
         isRecord(e) &&
         Array.isArray(e.key) &&
@@ -260,13 +268,6 @@ function readEntries(store: Storage): Entry[] {
         // The whole-library list is the one infinite query kept: only ever its first page.
         (e.firstPage === true) === (e.key[0] === 'libraryBooks'),
     );
-    if (doc.v === 1) {
-      for (const e of entries) {
-        if (e.key[0] === 'myDevices') e.data = cachedDevices(e.data);
-      }
-      write(store, entries);
-    }
-    return entries;
   } catch {
     return [];
   }

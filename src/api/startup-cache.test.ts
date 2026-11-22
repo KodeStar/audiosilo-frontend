@@ -176,25 +176,20 @@ describe('snapshot and restore', () => {
     expect(offline.getQueryState(key)?.isInvalidated).toBe(true);
   });
 
-  it('cleans a legacy device list on disk before restoring it offline', () => {
-    const key = ['myDevices', C];
-    const device = { id: 1, name: 'Tablet', current: false, client: null };
-    const entry = { key, data: [device], updatedAt: 17 };
-    const other = { key: ['queue', C], data: [], updatedAt: 23 };
-    items.set(
-      STARTUP_CACHE_KEY,
+  it('removes a document of another version or app version, with its device addresses', () => {
+    const doc = (v: number, app: string) =>
       JSON.stringify({
-        v: 1,
-        app: '9.9.9',
-        entries: [{ ...entry, data: [{ ...device, last_ip: '192.0.2.9' }] }, other],
-      }),
-    );
-
-    const offline = newClient();
-    restore(offline);
-    expect(stored().entries).toStrictEqual([entry, other]);
-    expect(offline.getQueryData(key)).toEqual([device]);
-    expect(offline.getQueryState(key)?.dataUpdatedAt).toBe(17);
+        v,
+        app,
+        entries: [{ key: ['myDevices', C], data: [{ id: 1, last_ip: '192.0.2.9' }], updatedAt: 1 }],
+      });
+    for (const old of [doc(1, '9.9.9'), doc(1, '9.9.8'), doc(2, '9.9.8')]) {
+      items.set(STARTUP_CACHE_KEY, old);
+      const qc = newClient();
+      restore(qc);
+      expect(qc.getQueryData(['myDevices', C])).toBeUndefined();
+      expect(items.has(STARTUP_CACHE_KEY)).toBe(false);
+    }
   });
 
   it('never replaces a query already in the cache', () => {
@@ -238,7 +233,7 @@ describe('snapshot and restore', () => {
     items.set(
       STARTUP_CACHE_KEY,
       JSON.stringify({
-        v: 1,
+        v: 2,
         app: '9.9.9',
         entries: [
           { key: ['item', C, 1, 'a'], data: {}, updatedAt: 1 },
