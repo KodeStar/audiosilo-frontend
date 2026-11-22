@@ -55,12 +55,14 @@ private func distinctFilesFromChapters(_ chapters: [Chapter]) -> [(path: String,
 /// in-file start. Located by `file_path`, else a valid `file_index`, else 0 files before (never
 /// the server's `book_offset`, which some books send as 0 for every chapter).
 func chapterBookOffset(_ files: [FileSpec], _ ch: Chapter) -> Double {
-  let byPath = files.firstIndex { $0.path == ch.filePath }
-  let inRange = ch.fileIndex >= 0 && ch.fileIndex < files.count
-  let upto = byPath ?? (inRange ? ch.fileIndex : 0)
+  let upto = max(0, fileIndexOf(files, ch))
   var acc = 0.0
   for i in 0..<min(upto, files.count) where files[i].duration > 0 { acc += files[i].duration }
   return acc + ch.start
+}
+
+private func fileIndexOf(_ files: [FileSpec], _ ch: Chapter) -> Int {
+  files.firstIndex { $0.path == ch.filePath } ?? (files.indices.contains(ch.fileIndex) ? ch.fileIndex : -1)
 }
 
 /// Evenly spaced chapters for a long chapterless single file (`ceil(total / interval)` of them,
@@ -109,7 +111,8 @@ func wallClockSeconds(_ contentSeconds: Double, rate: Double) -> Double {
 func locateIn(_ offsets: [Double], _ position: Double) -> (index: Int, positionInTrack: Double) {
   var index = 0
   for (i, o) in offsets.enumerated() {
-    if position >= o { index = i } else { break }
+    guard position >= o else { break }
+    if o != offsets[index] { index = i }
   }
   let start = offsets.indices.contains(index) ? offsets[index] : 0
   return (index, max(0, position - start))
@@ -146,7 +149,9 @@ struct Timeline: Equatable, Sendable {
     }
     let chapters = raw.map { ch -> Chapter in
       var c = ch
-      c.bookOffset = chapterBookOffset(specs, ch)
+      c.fileIndex = fileIndexOf(specs, ch)
+      if specs.indices.contains(c.fileIndex) { c.filePath = specs[c.fileIndex].path }
+      c.bookOffset = toBookPosition(offsets, c.fileIndex, ch.start)
       return c
     }
     let furthest = chapters.reduce(0.0) { max($0, chapterEndPosition($1)) }

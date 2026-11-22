@@ -1,4 +1,4 @@
-import { chapterNumberAt } from '@/components/library/meta-gating';
+import { indexAtOffset } from '@/playback/book-queue';
 
 /**
  * The Now card's whole-book scale (STYLEGUIDE section 8, "Now card"): one tick per
@@ -54,7 +54,10 @@ export function scaleRuns(starts: readonly number[], total: number, max: number)
 
 /** The 0-based index of the chapter holding `position` (0 before the first start). */
 export function chapterIndexAt(starts: readonly number[], position: number): number {
-  return Math.max(0, chapterNumberAt(starts, position) - 1);
+  return Math.max(
+    0,
+    indexAtOffset(starts, position, (start) => start),
+  );
 }
 
 /** A run's state against the chapter the listener is in. */
@@ -114,6 +117,6 @@ export function chapterPlace(
   position: number,
 ): ChapterPlace | null {
   if (titles.length === 0 || starts.length !== titles.length) return null;
-  const number = Math.max(1, chapterNumberAt(starts, position));
+  const number = chapterIndexAt(starts, position) + 1;
   return { number, count: titles.length, title: titles[number - 1] ?? '' };
 }

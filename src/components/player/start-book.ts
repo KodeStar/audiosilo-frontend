@@ -4,6 +4,7 @@ import { isReachable } from '@/api/reachability';
 import type { Book } from '@/api/types';
 import { downloadedEntryOf } from '@/downloads/store';
 import { contentKeyOf } from '@/lib/content-key';
+import type { BookPlace } from '@/lib/paths';
 import { isDeviceOnline } from '@/lib/device-online';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
 import { readPlaceEarly } from '@/playback/progress-sync';
@@ -25,13 +26,7 @@ import { dropStartedBook } from './drop-started';
 import { selectIsLoaded } from './playing-target';
 
 /** Where `startBookInPlace` starts a book, when not from its saved place. */
-export type StartOptions = {
-  /** Whole-book seconds to start at (lowers the resume floor there, so the start's own
-   * saves are not refused as a slip). */
-  position?: number;
-  /** A file to start at, by index, when no `position` says where (a file of a book
-   * whose durations are unknown). */
-  track?: number;
+export type StartOptions = BookPlace & {
   /** The speed to play at, from the start (else the book's saved speed, which the store
    * restores at an explicit `position` too, from what this device knows). */
   speed?: number;
@@ -119,7 +114,7 @@ export function startBookInPlace(
   const key = JSON.stringify([
     contentKeyOf(target),
     opts.position,
-    opts.track,
+    opts.file ?? opts.track,
     opts.speed,
     !!how.fetched,
     // A start that may be called off (the car's) is never joined by one that may not.
@@ -176,7 +171,12 @@ let latestStart: string | null = null;
  */
 async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions): Promise<boolean> {
   if (book.rel_path === target.path) return false;
-  if (opts.position !== undefined || opts.track !== undefined || opts.speed !== undefined) {
+  if (
+    opts.position !== undefined ||
+    opts.track !== undefined ||
+    opts.file ||
+    opts.speed !== undefined
+  ) {
     return false;
   }
   const player = usePlayer.getState();
@@ -194,7 +194,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
   // (`readPlaceEarly`), so a frozen server holds the start for one wait, not two.
   const asked = downloadedClient(target);
   const saved = asked ? downloadedEntryOf(target)?.manifest.book : undefined;
-  if (asked && saved && opts.position === undefined && opts.track === undefined) {
+  if (asked && saved && opts.position === undefined && opts.track === undefined && !opts.file) {
     readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
   }
   const source = await startSourceOf(target, asked);
@@ -235,7 +235,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
       source.book,
       source.chapters,
       opts.position,
-      opts.track,
+      opts.file ?? opts.track,
       opts.speed,
       how.wanted,
       how.superseded,

@@ -3742,6 +3742,38 @@ describe('a book whose files have no known length', () => {
     expect(selectCurrentChapter(usePlayer.getState())?.title).toBe('Part 2');
   });
 
+  it('keeps the whole-book save floor within a file and rebases it on a forward tied-file transition', async () => {
+    const prefix = { ...chapters.files[0], rel_path: 'intro', duration: 100, seq: -1 };
+    const data = { ...chapters, files: [prefix, ...chapters.files] };
+    await usePlayer.getState().playBook('c1', 2, book, data, 300);
+    pushSnapshot(snap('playing', 220, { trackIndex: 1 }));
+    pushSnapshot(snap('paused', 220, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(savedPositions()).toContain(320);
+    mockSaveProgress.mockClear();
+    pushSnapshot(snap('playing', 4, { trackIndex: 1 }));
+    pushSnapshot(snap('paused', 4, { trackIndex: 1 }));
+    await flushMicrotasks();
+    expect(savedPositions()).toEqual([]);
+    pushSnapshot(snap('playing', 220, { trackIndex: 1 }));
+    pushSnapshot(snap('playing', 0, { trackIndex: 2 }));
+    pushSnapshot(snap('paused', 4, { trackIndex: 2 }));
+    await flushMicrotasks();
+    expect(savedPositions()).toContain(104);
+    await usePlayer.getState().retry();
+    expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([2, 4]);
+  });
+
+  it('Retry keeps the file that established the floor when a low snapshot names a different tied file', async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chapters, 200, { path: files[1], pos: 200 });
+    pushSnapshot(snap('playing', 215, { trackIndex: 1 }));
+    pushSnapshot(snap('paused', 215, { trackIndex: 1 }));
+    await flushMicrotasks();
+    pushSnapshot(snap('error', 2, { trackIndex: 0 }));
+    await usePlayer.getState().retry();
+    expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 215]);
+  });
+
   it("a skip on the book in error keeps the engine's length of the file", async () => {
     await usePlayer.getState().playBook('c1', 2, book, chapters, 0);
     pushSnapshot(snap('playing', 30, { trackIndex: 1, duration: 300 }));

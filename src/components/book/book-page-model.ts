@@ -1,7 +1,6 @@
 import type { TFunction } from 'i18next';
 
 import type { Book, BookFile, Chapter, ChaptersSource, History, Progress } from '@/api/types';
-import { chapterIndexAt } from '@/components/home/now-card-model';
 import type { BookStatus } from '@/components/library/books/books-view';
 import { hasSaved } from '@/components/player/effects-model';
 import { listeningSummary } from '@/components/player/end-credits-logic';
@@ -9,10 +8,10 @@ import type { IconName } from '@/components/ui/icon';
 import { contradictedTitle, resumeChapterLabel } from '@/lib/chapter-label';
 import { formatBytes, formatDuration, formatRecordDate, formatSpeed } from '@/lib/format';
 import type { LayoutClass } from '@/lib/layout';
-import { type BookPlace, pathLeaf } from '@/lib/paths';
+import { type BookPlace, type FilePlace, pathLeaf } from '@/lib/paths';
 import { yearOf } from '@/lib/published';
 import { seriesNumber } from '@/lib/series-position';
-import { synthesizeChapters } from '@/playback/book-queue';
+import { indexAtOffset, synthesizeChapters } from '@/playback/book-queue';
 import { codecLabel } from '@/playback/transcode';
 import { seriesOf } from '@/components/series/series-model';
 
@@ -179,6 +178,7 @@ export type ListRow = {
   /** Seconds (0 when unknown). */
   length: number;
   jump: Jump;
+  fileIndex?: number;
 };
 
 export type ChapterList = { kind: ListKind; rows: ListRow[] };
@@ -244,23 +244,23 @@ export function chapterList(input: {
     }
   }
   if (chapters.length > 0) {
-    // From the first file of unknown length on, files share whole-book starts (an unknown
-    // length adds nothing), so a start can't say which file it means: a chapter opening
-    // such a file jumps to the file instead (fe#324).
-    const unknownFrom = files.findIndex((f) => !(f.duration > 0));
+    // The partial download can have a different file order or different measured lengths.
+    // Carry the file place through the tap until the actual queue is known.
+    const fileIndices = new Map(files.map((f, i) => [f.rel_path, i]));
     return {
       kind: 'chapters',
       rows: chapters.map((c, i) => {
         const start = chapterStarts[i] ?? c.book_offset;
-        const file =
-          unknownFrom < 0 || c.start > 0 ? -1 : files.findIndex((f) => f.rel_path === c.file_path);
+        const file = fileIndices.get(c.file_path) ?? c.file_index;
+        const path = files[file]?.rel_path ?? c.file_path;
         return {
           key: `c${c.index}`,
           index: i,
           title: c.title,
           start,
           length: Math.max(0, c.end - c.start),
-          jump: file >= 0 && file >= unknownFrom ? { track: file } : { position: start },
+          fileIndex: file,
+          jump: path ? { position: start, file: { path, pos: c.start } } : { position: start },
         };
       }),
     };
@@ -292,13 +292,20 @@ export function timelineStarts(rows: readonly ListRow[]): number[] {
 /** The row holding `position` (the chapter it is in; the first row before any start),
  * or -1 when there are no rows. A start after a file of unknown length (NaN) is never
  * reached. */
-export function rowAt(rows: readonly ListRow[], position: number): number {
-  return rows.length === 0
-    ? -1
-    : chapterIndexAt(
-        rows.map((r) => r.start),
-        position,
-      );
+export function rowAt(rows: readonly ListRow[], position: number, file?: FilePlace): number {
+  if (file) {
+    const own = indexAtOffset(rows, file.pos, (row) =>
+      row.jump.file?.path === file.path ? row.jump.file.pos : NaN,
+    );
+    if (own >= 0) return own;
+  }
+  const index = indexAtOffset(
+    rows,
+    position,
+    (row) => row.start,
+    (row) => (row.fileIndex !== undefined && row.fileIndex >= 0 ? row.fileIndex : Infinity),
+  );
+  return rows.length ? Math.max(0, index) : -1;
 }
 
 /** "Chapter 23 of 81" / "Part 3 of 12", or '' for files or a book not started. A

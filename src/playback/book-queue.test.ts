@@ -18,6 +18,8 @@ import {
   synthesizeChapters,
   toBookPosition,
 } from '@/playback/book-queue';
+import { chapterList, rowAt } from '@/components/book/book-page-model';
+import vectors from '../../watch-core/Tests/WatchCoreTests/Fixtures/timeline-ties.json';
 import { toNativeTrack } from '@/playback/types';
 
 // A fake client exposing only what the queue builder calls.
@@ -358,6 +360,20 @@ describe('buildChapterClips', () => {
     expect(buildChapterClips(specs, chapters).map((c) => c.fileIndex)).toEqual([0, 1]);
   });
 
+  it('plays native chapter clips in file order when tied markers arrive in reverse order', () => {
+    const specs = [spec('one.mp3', 0), spec('two.mp3', 80)];
+    const chapters = [
+      chapter({ file_path: 'two.mp3', title: 'Two' }),
+      chapter({ file_path: 'one.mp3', title: 'One', start: 0, end: 10 }),
+      chapter({ file_path: 'one.mp3', title: 'One continued', start: 10, end: 30 }),
+    ];
+    expect(buildChapterClips(specs, chapters)).toEqual([
+      { fileIndex: 0, startInFile: 0, endInFile: 10, title: 'One' },
+      { fileIndex: 0, startInFile: 10, endInFile: 0, title: 'One continued' },
+      { fileIndex: 1, startInFile: 0, endInFile: 0, title: 'Two' },
+    ]);
+  });
+
   it('falls back to [] if any chapter cannot be mapped to a file (avoids a broken queue)', () => {
     const specs = [spec('a.m4b', 100)];
     const chapters = [
@@ -450,6 +466,41 @@ describe('synthesizeChapters', () => {
 describe('timeline math', () => {
   const offsets = [0, 60, 160];
 
+  it.each(vectors)('$name (shared with watchOS and Wear OS)', (v) => {
+    const files = v.durations.map((duration, seq) => ({
+      rel_path: `p${seq}`,
+      seq,
+      duration,
+      size: 1,
+      format: 'mp3',
+    }));
+    const chapters = v.markers.map(([f, start], index) =>
+      chapter({
+        index,
+        file_index: index === v.missingPathAt ? f : 0,
+        file_path: index === v.missingPathAt ? '' : `p${f}`,
+        start,
+      }),
+    );
+    const q = buildBookQueue(fakeApi, 2, makeBook({ files: [...files].reverse(), chapters }));
+    expect(locate(q.offsets, v.position)).toEqual({ index: v.track, positionInTrack: v.seconds });
+    const path = `p${v.playingFile}`;
+    expect(chapterAt(q.chapters, v.position)?.index).toBe(v.chapter);
+    expect(chapterAt(q.chapters, v.position, (f) => f === path)?.index).toBe(v.playingChapter);
+    const { rows } = chapterList({
+      chapters,
+      files,
+      chapterStarts: q.chapters.map((c) => c.book_offset),
+      total: q.total,
+      interval: 1800,
+      bookPath: 'B',
+    });
+    expect(rowAt(rows, v.position)).toBe(v.chapter);
+    expect(rowAt(rows, v.position, { path, pos: v.position - q.offsets[v.playingFile] })).toBe(
+      v.playingChapter,
+    );
+  });
+
   it('locate / toBookPosition round-trips across tracks', () => {
     expect(locate(offsets, 0)).toEqual({ index: 0, positionInTrack: 0 });
     expect(locate(offsets, 70)).toEqual({ index: 1, positionInTrack: 10 });
@@ -486,15 +537,15 @@ describe('timeline math', () => {
     expect(chapterAt(tied, 0, (f) => f === 'B/04.mp3')?.index).toBe(0);
   });
 
-  it('chapterAt takes the later of two chapters starting together in one file', () => {
-    // A chapter of no length (a duplicated marker) before the real one: the real one plays.
+  it('chapterAt takes the first of two chapters starting together in one file', () => {
+    // Equal markers keep their listed order within the chosen file.
     const chapters = [
       chapter({ index: 0, book_offset: 0, start: 0, end: 0, file_path: 'B/01.mp3' }),
       chapter({ index: 1, book_offset: 0, start: 0, end: 600, file_path: 'B/01.mp3' }),
       chapter({ index: 2, book_offset: 600, start: 600, end: 900, file_path: 'B/01.mp3' }),
     ];
-    expect(chapterAt(chapters, 30)?.index).toBe(1);
-    expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(1);
+    expect(chapterAt(chapters, 30)?.index).toBe(0);
+    expect(chapterAt(chapters, 30, (f) => f === 'B/01.mp3')?.index).toBe(0);
   });
 
   it('chapterAt finds the active chapter and clamps below the first', () => {

@@ -2530,6 +2530,14 @@ media GETs only.
 - **Whole-book timeline.** The engine works per-track; `store.ts` maps
   `(trackIndex, position)` ↔ whole-book position via cumulative `offsets`, and
   overlays chapters by `book_offset`. The full player's seek bar is **chapter-relative**.
+  When starts tie, a whole-book place picks the first marker in file play order, then
+  chapter list order within that file. A tap, a file-backed resume and a playing file use
+  their own file and seconds. Unknown lengths can put another file's markers between
+  equal starts. The phone and the watch Core tests read the same cases in
+  `watch-core/Tests/WatchCoreTests/Fixtures/timeline-ties.json` (fe#348).
+  The save floor stays in whole-book seconds. When playback advances to a later file with
+  the same offset, the floor can move back to that file's start. Retry moving a file to
+  a different place on the download's timeline resets the jump-undo baseline.
 - **An engine's file length is not the book's** (`fileDurationOf`, `engineFault` in
   `store.ts`). The snapshot's `duration` is the server's for a file whose engine length is
   unknown or more than `FINISHED_TOLERANCE` shorter (the seek clamp, "left in the file").

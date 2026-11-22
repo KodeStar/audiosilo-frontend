@@ -40,12 +40,16 @@ export default function PlayerScreen() {
     path: pathParam,
     position,
     track,
+    file,
+    filePos,
   } = useRouteParams<{
     connection?: string;
     libraryId?: string;
     path?: string | string[];
     position?: string;
     track?: string;
+    file?: string;
+    filePos?: string;
   }>();
   // The route-connection rule (`useRouteConnection`): an old id (a widget's or Live
   // Activity's link) resolves; an unknown connection or another person's (Phase 8: switch
@@ -139,7 +143,12 @@ export default function PlayerScreen() {
     // Keyed on the book's canonical rel_path (playBook stores that as nowPlaying.path,
     // which can differ from the decoded route param).
     const key = `${cid}|${libraryId}|${book.rel_path}`;
-    const jumpKey = `${key}|${position ?? ''}|${track ?? ''}`;
+    const fileSeconds = Number(filePos);
+    const filePlace =
+      file && Number.isFinite(fileSeconds) && fileSeconds >= 0
+        ? { path: file, pos: fileSeconds }
+        : undefined;
+    const jumpKey = JSON.stringify([key, position, track, filePlace]);
     // Compare against the book's canonical rel_path - playBook stores that as
     // nowPlaying.path, which can differ from the decoded route param. Using the
     // route param here made the guard never match for some paths, re-invoking
@@ -148,7 +157,8 @@ export default function PlayerScreen() {
       startedKeyRef.current = key; // this target is handled; don't auto-start it again
       if (jumpedKeyRef.current === jumpKey) return; // this jump is already done
       jumpedKeyRef.current = jumpKey;
-      if (hasPos) quietly(seekBook(posParam));
+      if (filePlace) quietly(seekBook(posParam ?? 0, filePlace));
+      else if (hasPos) quietly(seekBook(posParam));
       else if (hasTrack) quietly(goToTrack(trackParam));
       return;
     }
@@ -167,6 +177,7 @@ export default function PlayerScreen() {
     if (!onDevice && needsEpisodeFetch(book, podcastFetch)) {
       requestEpisodeFetch({ connectionId: cid, libraryId, path: book.rel_path }, book, {
         position: startAt,
+        ...(filePlace ? { file: filePlace } : {}),
         track: hasTrack ? trackParam : undefined,
       });
       return;
@@ -180,7 +191,14 @@ export default function PlayerScreen() {
     // once it started, so a start that failed keeps its place in the queue, and says why.
     void usePlayer
       .getState()
-      .playBook(cid, libraryId, book, chapterData, startAt, hasTrack ? trackParam : undefined)
+      .playBook(
+        cid,
+        libraryId,
+        book,
+        chapterData,
+        startAt,
+        filePlace ?? (hasTrack ? trackParam : undefined),
+      )
       .then(() => dropStartedBook(cid, libraryId, book.rel_path, path))
       .catch((err) => playFailedToast(err));
   }, [
@@ -192,6 +210,8 @@ export default function PlayerScreen() {
     path,
     position,
     track,
+    file,
+    filePos,
     nowPlaying,
     routePlaying,
     seekBook,

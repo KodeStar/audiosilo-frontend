@@ -21,6 +21,7 @@ import { legacyIdOf, resolveConnectionId, sameConnection } from '@/lib/connectio
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { isDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
+import type { FilePlace } from '@/lib/paths';
 import { quietly } from '@/lib/quietly';
 import { flushReadingConnection } from '@/reader/reading-progress';
 import { quietOffScreen } from '@/lib/visible-store';
@@ -36,10 +37,13 @@ import {
   bookFileSpecs,
   buildBookQueue,
   chapterAt,
+  fileOf,
+  filePlaceIn,
   endsShortOfBook,
   fileDurationOf,
   FINISHED_TOLERANCE,
   locate,
+  locateBookPlace,
   restreamQueue,
   shortOfFileEnd,
   toBookPosition,
@@ -575,8 +579,8 @@ const STALL_PAUSE_FENCE_MS = 1_000;
 /** The whole-book position the current book resumed from, kept as a running high-water
  * mark. `persist` refuses to save a position far below this unless the user deliberately
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
- * real saved progress. Reset per book in `playBook`. */
-let resumeFloor = 0;
+ * real saved progress. The file disambiguates that mark where offsets tie. Reset per book in `playBook`. */
+let resumeFloor = { position: 0, trackIndex: 0 };
 /** The book (`contentKey`) whose session began at a place not checked against its server
  * (`ResumeLookup.unchecked`): on the legacy PUT path its saves carry the replay guard
  * (`ProgressSave.guard`, fe#198) until one of them is PUT. Set per session in `playBook`,
@@ -836,20 +840,22 @@ const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor i
 
 /** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
  * move (or a restart) is allowed to save instead of being blocked by the guard. */
-function lowerFloorTo(bookPosition: number) {
-  if (Number.isFinite(bookPosition)) resumeFloor = Math.min(resumeFloor, Math.max(0, bookPosition));
+function lowerFloorTo(bookPosition: number, trackIndex: number) {
+  if (Number.isFinite(bookPosition) && bookPosition <= resumeFloor.position) {
+    resumeFloor = { position: Math.max(0, bookPosition), trackIndex };
+  }
 }
 
 /** A move of the listener's own in the loaded book (a seek, a track jump, a book
  * started): counted for the place reconcile (`localMoves`), and, given where it lands,
  * the resume floor lowered to it (`lowerFloorTo`). The place is theirs from here, whatever
  * another tab played meanwhile (`otherTabPlayed`). */
-function userMoved(bookPosition?: number) {
+function userMoved(bookPosition?: number, trackIndex = 0) {
   localMoves++;
   quietAdopted = null;
   otherTabPlayed = null;
   placeChosen = true;
-  if (bookPosition !== undefined) lowerFloorTo(bookPosition);
+  if (bookPosition !== undefined) lowerFloorTo(bookPosition, trackIndex);
 }
 
 /** Engine tunables derived from the settings store. */
@@ -945,7 +951,7 @@ type PlayerState = {
     book: Book,
     chapterData?: ChaptersResponse,
     startBookPosition?: number,
-    startTrack?: number,
+    startTrack?: number | FilePlace,
     startSpeed?: number,
     wanted?: () => boolean,
     superseded?: () => boolean,
@@ -963,7 +969,7 @@ type PlayerState = {
   /** Seek to a whole-book place. `track`: the file it is in, when the caller knows it (a
    * chapter's), else the playing one: among files that share a start (lengths unknown,
    * `locate`) it is that file, not the first. */
-  seekBook: (bookPosition: number, track?: number) => Promise<void>;
+  seekBook: (bookPosition: number, track?: number | FilePlace) => Promise<void>;
   /** Seek within the current track (used when the whole-book timeline is unknown). */
   seekInTrack: (positionInTrack: number) => Promise<void>;
   /** Jump to a track by index (multi-file books without a reliable timeline). */
@@ -1062,8 +1068,9 @@ async function persist(opts?: {
     // is treated as a spurious reset and not saved. The server is last-write-wins, so a
     // small-position save with a newer timestamp would otherwise permanently overwrite the
     // user's place.
-    if (position < resumeFloor - SLIP_TOLERANCE) return;
-    if (position > resumeFloor) resumeFloor = position; // advance the high-water mark
+    if (position < resumeFloor.position - SLIP_TOLERANCE) return;
+    if (position >= resumeFloor.position)
+      resumeFloor = { position, trackIndex: snapshot.trackIndex };
   }
   const end = endAt(nowPlaying, snapshot.trackIndex, snapshot.position);
   const key = contentKeyOf(nowPlaying);
@@ -1405,27 +1412,6 @@ const sameBook = (a: ContentRef, b: ContentRef) => contentKeyOf(a) === contentKe
 const resolvedKeyOf = (b: ContentRef) =>
   contentKey(resolveConnectionId(b.connectionId), b.libraryId, b.path);
 
-/** The audio file (its rel path) of the track at `index`, from its id (`trackIdOf`). */
-function fileOf(np: NowPlaying, index: number): string | undefined {
-  const id = np.queue.tracks[index]?.id;
-  const prefix = `${np.libraryId}:`;
-  return id?.startsWith(prefix) ? id.slice(prefix.length) : undefined;
-}
-
-/** A saved place by its file (`file`: its rel path, `pos` seconds into it) in the order
- * `queue` plays now, never past the file's end; null when the queue has no such file. */
-function filePlaceIn(
-  queue: Pick<BookQueue, 'tracks' | 'offsets' | 'total'>,
-  libraryId: number,
-  file: string,
-  pos: number,
-): { index: number; positionInTrack: number } | null {
-  const index = trackIndexById(queue, trackIdOf(libraryId, file));
-  if (index < 0) return null;
-  const length = (queue.offsets[index + 1] ?? queue.total) - queue.offsets[index];
-  return { index, positionInTrack: length > 0 ? Math.min(pos, length) : pos };
-}
-
 /** A place in the loaded book as a span end, or null when it is not one: an engine that
  * reports NaN (a stream with no length yet) never puts one in a span or an event. */
 function endAt(np: NowPlaying, trackIndex: number, positionInTrack: number): SpanEnd | null {
@@ -1445,7 +1431,7 @@ function engineEnd(): SpanEnd | null {
   if (!np || loadingBook || heldBySwap(np, snapshot.trackIndex)) return null;
   if (quietAdopted === contentKeyOf(np)) return null;
   const end = endAt(np, snapshot.trackIndex, snapshot.position);
-  if (!end || end.pos < resumeFloor - SLIP_TOLERANCE) return null;
+  if (!end || end.pos < resumeFloor.position - SLIP_TOLERANCE) return null;
   return end;
 }
 
@@ -2543,8 +2529,17 @@ function reloadPlace(np: NowPlaying): { index: number; positionInTrack: number }
   if (ask?.np === np && !ask.landed)
     return { index: ask.trackIndex, positionInTrack: ask.position };
   const player = usePlayer.getState();
-  const bookPos = Math.max(resumeFloor, selectBookPosition(player));
-  return locate(np.queue.offsets, bookPos, player.snapshot.trackIndex);
+  const live = selectBookPosition(player);
+  const atFloor = live < resumeFloor.position;
+  const index = atFloor ? resumeFloor.trackIndex : player.snapshot.trackIndex;
+  const position = atFloor ? resumeFloor.position : live;
+  const { offsets } = np.queue;
+  const start = offsets[index];
+  if (start !== undefined && (start === offsets[index - 1] || start === offsets[index + 1])) {
+    // An unknown-length file can play beyond the next distinct book offset.
+    return { index, positionInTrack: Math.max(0, position - start) };
+  }
+  return locate(offsets, position, index);
 }
 
 /** Would a reload of `np` put its engine past its own measure of the file (`pastMeasure`), where
@@ -3015,7 +3010,7 @@ function tabPlaceOf(
  * counts it (`localMoves`): a check out meanwhile stands back.
  */
 function adoptTabPlace(np: NowPlaying, place: TabPlace) {
-  resumeFloor = place.pos;
+  resumeFloor = { position: place.pos, trackIndex: place.index };
   localMoves++;
   nextStart = place.finished ? 'restart' : 'resume';
   unfinishDue = place.finished && usesListeningSync(np.connectionId);
@@ -3885,6 +3880,20 @@ async function createService(): Promise<PlaybackService> {
         );
         snapshot = fault;
       } else {
+        // Unknown file lengths give consecutive tracks the same book offset. A natural
+        // advance starts a new file at zero even after minutes of listening in the last.
+        if (
+          !askedPlace &&
+          snapshot.trackIndex > prev.trackIndex &&
+          snapshot.trackIndex > resumeFloor.trackIndex &&
+          np.queue.offsets[snapshot.trackIndex] !== undefined &&
+          np.queue.offsets[snapshot.trackIndex] === np.queue.offsets[prev.trackIndex]
+        ) {
+          lowerFloorTo(
+            toBookPosition(np.queue.offsets, snapshot.trackIndex, snapshot.position),
+            snapshot.trackIndex,
+          );
+        }
         const duration = fileDurationOf(np.queue, snapshot.trackIndex, snapshot.duration);
         if (duration !== snapshot.duration) snapshot = { ...snapshot, duration };
       }
@@ -4062,7 +4071,10 @@ async function createService(): Promise<PlaybackService> {
     if (np && !checkpoint && reportsUnheard()) {
       showPlace(np, trackIndex, positionInTrack, loadedFaulted());
     }
-    userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined);
+    userMoved(
+      np ? toBookPosition(np.queue.offsets, trackIndex, positionInTrack) : undefined,
+      trackIndex,
+    );
     // The engine has moved already: the span ends where it was last seen (paused, where it
     // was is not known, so no move is taken for one that moves nowhere).
     if (np) moveListeningSpan(endAt(np, trackIndex, positionInTrack), { from: span?.to ?? null });
@@ -4266,8 +4278,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       const svc = await ensureService();
 
       let startAt = startBookPosition ?? 0;
-      /** The resumed save's own file and the seconds in it (fe#188), when the queue has it. */
-      let startFile: { index: number; positionInTrack: number } | null = null;
+      // An explicit chapter or a resumed save can name its file in any queue order.
+      let startFile = typeof startTrack === 'object' ? startTrack : undefined;
       // Why the first span begins: an explicit place is a deliberate move (0: starting again).
       let start: ListeningStart =
         startBookPosition === undefined && startTrack === undefined
@@ -4317,7 +4329,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
           } else if (r.file) {
             // This device's own place by its file: the same file in the order the queue
             // plays now, even when the place was saved on another order (fe#188).
-            startFile = filePlaceIn(queue, libraryId, r.file.path, r.file.pos);
+            startFile = r.file;
           }
           // Resumed from the server's row (this device's own records read as version 0):
           // its version is the one this device has seen. Stored before the book plays: a
@@ -4381,15 +4393,20 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       if (!current() || replaced()) return;
       if (markedFinished()) return await callOff(svc, request);
       const { index, positionInTrack } =
-        startTrack !== undefined
+        typeof startTrack === 'number'
           ? {
               index: Math.max(0, Math.min(startTrack, queue.tracks.length - 1)),
               positionInTrack: 0,
             }
-          : (startFile ?? locate(queue.offsets, startAt));
+          : locateBookPlace(queue, libraryId, startAt, startFile);
+      if (typeof startTrack === 'object')
+        start = index === 0 && positionInTrack === 0 ? 'restart' : 'jump';
       // The position we actually resumed from (covers resume, bookmark jump and startTrack);
       // the save guard won't let progress regress below it without a deliberate seek.
-      resumeFloor = toBookPosition(queue.offsets, index, positionInTrack);
+      resumeFloor = {
+        position: toBookPosition(queue.offsets, index, positionInTrack),
+        trackIndex: index,
+      };
       // A different book's place is not known until its load lands (`loadingBook`).
       const key = contentKey(connectionId, libraryId, book.rel_path);
       const prev = get();
@@ -4636,9 +4653,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         : null;
     // A book another tab finished starts again from its start, which in another order is
     // not where its first file is (the floor stays 0: `adoptTabPlace`).
-    const local =
-      onto && place?.finished ? { ...onto, index: 0, positionInTrack: 0, shift: 0 } : onto;
-    const moved = local && commitLocalSwap(np, local);
+    const local = onto && place?.finished ? { ...onto, index: 0, positionInTrack: 0 } : onto;
+    const moved = local && commitLocalSwap(np, local, true);
     if (moved) {
       loaded = moved;
       at = local;
@@ -4665,9 +4681,12 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         ? Math.max(0, Math.min(bookPosition, np.queue.total))
         : Math.max(0, bookPosition);
     const svc = await ensureService();
-    const target = locate(np.queue.offsets, clamped, track ?? get().snapshot.trackIndex);
+    const target =
+      typeof track === 'object'
+        ? locateBookPlace(np.queue, np.libraryId, clamped, track)
+        : locate(np.queue.offsets, clamped, track ?? get().snapshot.trackIndex);
     moveListeningSpan(endAt(np, target.index, target.positionInTrack));
-    userMoved(clamped); // a deliberate user seek may legitimately move backward
+    userMoved(toBookPosition(np.queue.offsets, target.index, target.positionInTrack), target.index);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in
     // the target's by its index, never sought within whatever file it is in. So is one in
     // error: a failed item may never settle a seek (iOS), while a rebuild settles at once.
@@ -4688,7 +4707,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const np = get().nowPlaying;
     const { trackIndex } = get().snapshot;
     if (np) moveListeningSpan(endAt(np, trackIndex, pos));
-    userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined);
+    userMoved(np ? toBookPosition(np.queue.offsets, trackIndex, pos) : undefined, trackIndex);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): put in it.
     // So is one in error, rebuilt (`seekBook`).
     const unheard = reportsUnheard();
@@ -4704,7 +4723,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     const i = Math.max(0, Math.min(index, np.queue.tracks.length - 1));
     const svc = await ensureService();
     moveListeningSpan(endAt(np, i, 0));
-    userMoved(toBookPosition(np.queue.offsets, i, 0));
+    userMoved(toBookPosition(np.queue.offsets, i, 0), i);
     await listenerMove(np, i, 0, () => svc.skipToTrack(i, 0));
     void persist();
   },
@@ -5082,11 +5101,31 @@ function localSwapOf(
  * must not bring it back, nor move another book's floor. The book as committed, or null
  * when it is no longer the store's.
  */
-function commitLocalSwap(nowPlaying: NowPlaying, swap: LocalSwap): NowPlaying | null {
+function commitLocalSwap(
+  nowPlaying: NowPlaying,
+  swap: LocalSwap,
+  reloading = false,
+): NowPlaying | null {
   if (swapHold?.nowPlaying === nowPlaying) swapHold = null;
   const { nowPlaying: now, snapshot: at } = usePlayer.getState();
   if (now !== nowPlaying) return null;
-  resumeFloor = Math.max(0, resumeFloor + swap.shift);
+  if (reloading) {
+    // Retry already chose a guarded place. Its file and seconds are known in the new order.
+    resumeFloor = {
+      position: toBookPosition(swap.queue.offsets, swap.index, swap.positionInTrack),
+      trackIndex: swap.index,
+    };
+  } else {
+    const position = Math.max(0, resumeFloor.position + swap.shift);
+    const index = resumeFloor.trackIndex;
+    const file = trackIndexById(swap.queue, nowPlaying.queue.tracks[index]?.id);
+    const followsFile =
+      file >= 0 && swap.queue.offsets[file] - nowPlaying.queue.offsets[index] === swap.shift;
+    resumeFloor = {
+      position,
+      trackIndex: followsFile ? file : locate(swap.queue.offsets, position, swap.index).index,
+    };
+  }
   const committed = { ...nowPlaying, cover: swap.cover ?? nowPlaying.cover, queue: swap.queue };
   // A faulted engine is still one on the download's queue (`engineFault`): the swap put it at
   // the place the store shows, and a press must still reload it there, never just resume it.
@@ -5487,7 +5526,7 @@ async function adoptNow(
   switchBook({ connectionId, libraryId, book, chapterData });
   clearPlaybackIntent();
   deviceId = id;
-  resumeFloor = toBookPosition(queue.offsets, trackIndex, position);
+  resumeFloor = { position: toBookPosition(queue.offsets, trackIndex, position), trackIndex };
   // The engine's place was never checked against the server (no resume lookup here), and it
   // can be old: a book the car started with no JS starts at the place its snapshot was built
   // with, and another device may have played on since. So the adopted book counts as picked
@@ -5696,7 +5735,7 @@ export function landingOf(
       // That index can be another file, shorter than the place in the engine's.
       const length = queue.tracks[index]?.duration ?? 0;
       const positionInTrack = length > 0 ? Math.min(inFile, length) : inFile;
-      const known = queue.offsets[index] !== undefined && queue.total > 0;
+      const known = queue.offsets[index] !== undefined;
       return known
         ? shortOfEnd(toBookPosition(queue.offsets, index, positionInTrack))
         : { index, positionInTrack, beyond: false };
@@ -5872,12 +5911,8 @@ export const selectBookPosition = (s: PlayerState): number =>
 export const selectCurrentChapter = (s: PlayerState): Chapter | null => {
   const np = s.nowPlaying;
   if (!np) return null;
-  // The playing file is read only for tied chapters: this runs on every position tick.
-  return chapterAt(
-    np.queue.chapters,
-    selectBookPosition(s),
-    (filePath) => filePath === fileOf(np, s.snapshot.trackIndex),
-  );
+  const playing = fileOf(np, s.snapshot.trackIndex);
+  return chapterAt(np.queue.chapters, selectBookPosition(s), (filePath) => filePath === playing);
 };
 
 /** Memo for `selectBookKey`, keyed on the `nowPlaying` OBJECT. */

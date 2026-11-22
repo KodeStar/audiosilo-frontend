@@ -124,13 +124,20 @@ object ChapterNav {
   const val AT_START: Double = 0.01
 
   /** The index of the chapter at `position` (the first before every chapter); null with none. */
-  fun index(chapters: List<Chapter>, position: Double): Int? {
+  fun index(chapters: List<Chapter>, position: Double, file: String? = null): Int? {
     if (chapters.isEmpty()) return null
-    var current = 0
+    var current: Int? = null
+    var own: Int? = null
     for ((i, ch) in chapters.withIndex()) {
-      if (position + AT_START >= ch.bookOffset) current = i else break
+      if (!(ch.bookOffset <= position + AT_START)) continue
+      val best = current?.let { chapters[it] }
+      if (best == null || ch.bookOffset > best.bookOffset ||
+          (ch.bookOffset == best.bookOffset && ch.fileIndex >= 0 && (best.fileIndex < 0 || ch.fileIndex < best.fileIndex))) {
+        current = i
+      }
+      if (ch.filePath == file && (own == null || ch.bookOffset > chapters[own].bookOffset)) own = i
     }
-    return current
+    return own ?: current ?: 0
   }
 
   /**
@@ -164,16 +171,15 @@ data class NowPlayingTimes(
      * The chapter at `position` and the times within it (`ChapterNav.title` names one without a
      * title), else the whole book.
      */
-    fun of(chapters: List<Chapter>, position: Double, total: Double, bookTitle: String): NowPlayingTimes {
+    fun of(chapters: List<Chapter>, position: Double, total: Double, bookTitle: String, file: String? = null): NowPlayingTimes {
       val i =
-        ChapterNav.index(chapters, position)
+        ChapterNav.index(chapters, position, file)
           ?: return NowPlayingTimes(null, bookTitle, max(0.0, position), max(0.0, total))
       val ch = chapters[i]
       // A chapter runs to the next one's start; the last to its own end, else the book's.
       val end =
-        if (i + 1 < chapters.size) {
-          chapters[i + 1].bookOffset
-        } else if (chapterEndPosition(ch) > ch.bookOffset) {
+        chapters.asSequence().drop(i + 1).firstOrNull { it.bookOffset > ch.bookOffset }?.bookOffset ?:
+        if (chapterEndPosition(ch) > ch.bookOffset) {
           chapterEndPosition(ch)
         } else {
           total

@@ -182,6 +182,37 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
     XCTAssertEqual(synthesizeChapters("big.mp3", 5400).count, 3)
   }
 
+  func testSharedTimelineTies() throws {
+    struct Vector: Decodable {
+      let name: String
+      let durations: [Double]
+      let markers: [[Int]]
+      let missingPathAt: Int?
+      let position, seconds: Double
+      let track, chapter, playingFile, playingChapter: Int
+    }
+    let url = try XCTUnwrap(Bundle.module.url(forResource: "timeline-ties", withExtension: "json"))
+    for v in try JSONDecoder().decode([Vector].self, from: Data(contentsOf: url)) {
+      let files = v.durations.enumerated().map { file("p\($0.offset)", seq: $0.offset, duration: $0.element) }
+      let chapters = v.markers.enumerated().map { i, marker in
+        ch(index: i, fileIndex: i == v.missingPathAt ? marker[0] : 0,
+           filePath: i == v.missingPathAt ? "" : "p\(marker[0])", start: Double(marker[1]))
+      }
+      let t = Timeline(book: makeBook(files: files.reversed(), chapters: chapters))
+      let at = t.locate(v.position)
+      XCTAssertEqual(at.index, v.track, v.name)
+      XCTAssertEqual(at.positionInTrack, v.seconds, v.name)
+      XCTAssertEqual(ChapterNav.index(t.chapters, v.position), v.chapter, v.name)
+      let marker = t.chapters[v.playingChapter]
+      let tapped = t.resumePlace(position: marker.bookOffset, file: marker.filePath, filePos: marker.start)
+      XCTAssertEqual(tapped.index, v.playingFile, v.name)
+      XCTAssertEqual(tapped.positionInTrack, marker.start, v.name)
+      XCTAssertEqual(NowPlayingTimes.of(chapters: t.chapters, position: v.position, total: t.total,
+                                        bookTitle: "Book", file: "p\(v.playingFile)").chapterIndex,
+                     v.playingChapter, v.name)
+    }
+  }
+
   func testLocateAndToBookPositionRoundTrip() {
     let offsets: [Double] = [0, 60, 160]
     XCTAssertTrue(locateIn(offsets, 0) == (0, 0))

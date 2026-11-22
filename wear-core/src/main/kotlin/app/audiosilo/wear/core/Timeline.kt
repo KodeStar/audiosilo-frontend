@@ -58,12 +58,15 @@ private fun distinctFilesFromChapters(chapters: List<Chapter>): List<Pair<String
  * server's `book_offset`, which some books send as 0 for every chapter).
  */
 fun chapterBookOffset(files: List<FileSpec>, ch: Chapter): Double {
-  val byPath = files.indexOfFirst { it.path == ch.filePath }
-  val inRange = ch.fileIndex >= 0 && ch.fileIndex < files.size
-  val upto = if (byPath >= 0) byPath else if (inRange) ch.fileIndex else 0
+  val upto = fileIndexOf(files, ch)
   var acc = 0.0
   for (i in 0 until min(upto, files.size)) if (files[i].duration > 0) acc += files[i].duration
   return acc + ch.start
+}
+
+private fun fileIndexOf(files: List<FileSpec>, ch: Chapter): Int {
+  val byPath = files.indexOfFirst { it.path == ch.filePath }
+  return if (byPath >= 0) byPath else if (ch.fileIndex in files.indices) ch.fileIndex else -1
 }
 
 /**
@@ -115,7 +118,8 @@ fun wallClockSeconds(contentSeconds: Double, rate: Double): Double =
 fun locateIn(offsets: List<Double>, position: Double): Located {
   var index = 0
   for ((i, o) in offsets.withIndex()) {
-    if (position >= o) index = i else break
+    if (!(position >= o)) break
+    if (o != offsets[index]) index = i
   }
   val start = offsets.getOrNull(index) ?: 0.0
   return Located(index, max(0.0, position - start))
@@ -187,7 +191,11 @@ data class Timeline(
         offsets.add(acc)
         if (s.duration > 0) acc += s.duration
       }
-      val laid = raw.map { it.copy(bookOffset = chapterBookOffset(specs, it)) }
+      val laid = raw.map { ch ->
+        val index = fileIndexOf(specs, ch)
+        ch.copy(fileIndex = index, filePath = specs.getOrNull(index)?.path ?: ch.filePath,
+                bookOffset = toBookPosition(offsets, index, ch.start))
+      }
       val furthest = laid.fold(0.0) { m, c -> max(m, chapterEndPosition(c)) }
       val total = maxOf(if (book.duration > 0) book.duration else 0.0, acc, furthest)
       val estimated = bookFileList(book, chapters).isEmpty() && raw.isNotEmpty()

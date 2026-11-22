@@ -17,7 +17,7 @@ import { formatClock } from '@/lib/format';
 import { percentHeard } from '@/lib/progress-view';
 import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
-import { selectBookPosition, usePlayer } from '@/playback/store';
+import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -127,6 +127,8 @@ const Segment = memo(function Segment({
 export type BookTimelineProps = {
   /** Chapter starts, whole-book seconds, ascending (none: the whole book is one). */
   starts: readonly number[];
+  /** The current row when the caller knows its file. */
+  current?: number;
   /** The book's length, seconds. Nothing renders when it is unknown (<= 0). */
   total: number;
   /** The listener's place, whole-book seconds. */
@@ -160,6 +162,7 @@ export type BookTimelineProps = {
  */
 export function BookTimeline({
   starts,
+  current,
   total,
   position,
   titles,
@@ -180,7 +183,7 @@ export function BookTimeline({
   // The structure follows the chapters and the width only; the playhead picks the current
   // run and how much of it is heard.
   const runs = useMemo(() => timelineRuns(starts, total, width), [starts, total, width]);
-  const chapter = chapterIndexAt(starts, at);
+  const chapter = current ?? chapterIndexAt(starts, at);
   const pins = useMemo(
     () => ({
       bookmarks: bookmarkPins(bookmarks ?? [], total),
@@ -192,7 +195,7 @@ export function BookTimeline({
 
   const nameAt = (seconds: number) => {
     if (starts.length === 0) return '';
-    const index = chapterIndexAt(starts, seconds);
+    const index = seconds === at ? chapter : chapterIndexAt(starts, seconds);
     return chapterLabel({ title: titles?.[index] ?? '', index }, t);
   };
   // A tap within a pin's head lands on its place.
@@ -336,11 +339,13 @@ export function PlayerBookTimeline({
     }),
     [chapters, t],
   );
+  const current = usePlayer((s) => selectCurrentChapter(s)?.index);
   const position = usePlayer((s) => timelinePosition(selectBookPosition(s), total, starts));
   if (!queue || total <= 0) return null;
   return (
     <BookTimeline
       starts={starts}
+      current={current}
       total={total}
       position={position}
       titles={titles}

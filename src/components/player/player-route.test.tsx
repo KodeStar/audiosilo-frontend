@@ -72,7 +72,7 @@ jest.mock('@/playback/store', () => {
   return {
     usePlayer: create(() => ({
       nowPlaying: null,
-      seekBook: (position: number) => mockSeekBook(position),
+      seekBook: (...args: unknown[]) => mockSeekBook(...args),
       goToTrack: (index: number) => mockGoToTrack(index),
       playBook: (...a: unknown[]) => mockPlayBook(...a),
     })),
@@ -99,7 +99,7 @@ const setNowPlaying = (nowPlaying: Loaded) =>
   });
 
 /** The route's params: this book, plus the jump. */
-const routeTo = (jump: { position?: string; track?: string }) => {
+const routeTo = (jump: { position?: string; track?: string; file?: string; filePos?: string }) => {
   mockParams = { connection: 'c', libraryId: '1', path: 'Author/Book', ...jump };
 };
 
@@ -168,6 +168,18 @@ describe('the player route', () => {
     routeTo({ position: '900' });
     await r.rerender(<PlayerScreen />);
     expect(mockSeekBook.mock.calls).toEqual([[600], [900]]);
+  });
+
+  it('carries a chapter file and its in-file seconds through a cold start and a later jump', async () => {
+    routeTo({ position: '87', file: 'p/2', filePos: '17.5' });
+    const r = await render(<PlayerScreen />);
+    expect(mockPlayBook.mock.calls).toEqual([
+      ['c', 1, mockBook, mockChapters, 87, { path: 'p/2', pos: 17.5 }],
+    ]);
+    await act(async () => setNowPlaying(THIS_BOOK));
+    routeTo({ position: '87', file: 'p/1', filePos: '17.5' });
+    await r.rerender(<PlayerScreen />);
+    expect(mockSeekBook.mock.calls).toEqual([[87, { path: 'p/1', pos: 17.5 }]]);
   });
 
   it('goes to its track once in the same way', async () => {

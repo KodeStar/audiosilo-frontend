@@ -40,6 +40,7 @@ jest.mock('@/playback/store', () => {
   return {
     usePlayer: create(() => ({})),
     selectBookPosition: (s: MockPlayer) => s.bookPosition,
+    selectCurrentChapter: () => null,
   };
 });
 
@@ -87,6 +88,14 @@ describe('BookTimeline', () => {
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
     expect(screen.getAllByTestId('timeline-segment-ahead')).toHaveLength(1);
+  });
+
+  it('names the first tied marker, or the row of the known playing file', async () => {
+    const props = { starts: [0, 60, 60, 180], total: 300, position: 70, titles: TITLES, ...H };
+    await render(<BookTimeline {...props} />);
+    expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Stormblessed, /);
+    await screen.rerender(<BookTimeline {...props} current={2} />);
+    expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Bridge Four, /);
   });
 
   it('places each segment by its time, where the playhead, taps and pins map it', async () => {

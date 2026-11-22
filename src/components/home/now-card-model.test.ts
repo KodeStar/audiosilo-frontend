@@ -65,6 +65,7 @@ describe('chapterIndexAt', () => {
     expect(chapterIndexAt([0, 100, 300], 5000)).toBe(2);
     expect(chapterIndexAt([50, 100], 10)).toBe(0);
     expect(chapterIndexAt([], 10)).toBe(0);
+    expect(chapterIndexAt([0, 10, 10, 40], 15)).toBe(1);
   });
 });
 

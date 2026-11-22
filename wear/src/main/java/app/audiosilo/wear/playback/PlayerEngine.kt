@@ -28,6 +28,7 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.audiosilo.wear.core.BookRef
+import app.audiosilo.wear.core.Chapter
 import app.audiosilo.wear.core.ChapterNav
 import app.audiosilo.wear.core.Halt
 import app.audiosilo.wear.core.ListeningStart
@@ -388,10 +389,10 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
    * `acknowledge`: an offer's Jump, run between the span the move ends and its own
    * (`SpanRecorder.move`); at once when nothing moves.
    */
-  fun seek(target: Double, reason: ListeningStart? = null, acknowledge: () -> Unit = {}) {
+  fun seek(target: Double, reason: ListeningStart? = null, chapter: Chapter? = null, acknowledge: () -> Unit = {}) {
     val b = book ?: return acknowledge()
     val to = Skips.target(target, 0.0, b.timeline.total)
-    val place = b.timeline.locate(to)
+    val place = b.timeline.resumePlace(to, chapter?.filePath, chapter?.start)
     val end = b.timeline.spanEnd(place.index, place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     val from = spanEnd()
@@ -625,7 +626,10 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   /** Tell the screens what is so now (a state equal to the last one is not sent again). */
   private fun publish() {
     val b = book
-    val times = b?.let { NowPlayingTimes.of(it.timeline.chapters, position, it.timeline.total, it.title) }
+    val times = b?.let { loaded ->
+      val file = where()?.let { loaded.timeline.files.getOrNull(it.index)?.path }
+      NowPlayingTimes.of(loaded.timeline.chapters, position, loaded.timeline.total, loaded.title, file)
+    }
     _state.value = PlayerState(b, playing, position, rate, sleep, times, speakerPrompt, problem)
   }
 

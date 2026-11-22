@@ -65,6 +65,7 @@ import { onForeground } from '@/lib/when-active';
 import {
   type BookQueue,
   buildBookQueue,
+  fileOf,
   toBookPosition,
   trackIdOf,
   trackIndexById,
@@ -118,6 +119,7 @@ import {
   kidsCarBooks,
   parseCarItemId,
   playSpec,
+  type PausedCarPlace,
   type CarBook,
   type CarItemContext,
   type CarPlaySpec,
@@ -632,13 +634,21 @@ function livePlaceOf(player: PlayerState): LivePlace | null {
 }
 
 /** Where the loaded book was paused (its content key, place and speed). */
-type PausedPlace = { key: string; place: { position: number; rate: number } };
+type PausedPlace = { key: string; place: PausedCarPlace };
 
 /** The live place of a loaded book that is paused and settled (no load of the store's under
  * way), else null: only then is the live place the one the pause saves. */
 function pausedPlaceOf(player: PlayerState, live: LivePlace | null): PausedPlace | null {
   if (!live || player.loadingBook || player.snapshot.state !== 'paused') return null;
-  return { key: contentKeyOf(live.ref), place: { position: live.position, rate: live.rate } };
+  const path = player.nowPlaying && fileOf(player.nowPlaying, player.snapshot.trackIndex);
+  return {
+    key: contentKeyOf(live.ref),
+    place: {
+      position: live.position,
+      rate: live.rate,
+      ...(path ? { file: { path, pos: player.snapshot.position } } : {}),
+    },
+  };
 }
 
 /**
@@ -1533,7 +1543,9 @@ function pausedMove(s: PlayerState, prev: PlayerState): boolean {
     !!s.nowPlaying &&
     s.snapshot.state === 'paused' &&
     prev.snapshot.state === 'paused' &&
-    (Math.abs(selectBookPosition(s) - selectBookPosition(prev)) >= 1 || s.rate !== prev.rate)
+    (s.snapshot.trackIndex !== prev.snapshot.trackIndex ||
+      Math.abs(selectBookPosition(s) - selectBookPosition(prev)) >= 1 ||
+      s.rate !== prev.rate)
   );
 }
 

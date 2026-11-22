@@ -4,6 +4,7 @@ import { create } from 'zustand';
 import { quietly } from '@/lib/quietly';
 import { ticker } from '@/lib/ticker';
 
+import { type BookQueue, sameTrackOrder } from './book-queue';
 import { selectBookKey, selectBookPosition, showsFaultPlace, usePlayer } from './store';
 
 /**
@@ -201,6 +202,7 @@ export function undoJump(): number | null {
  */
 export function startJumpUndo(): () => void {
   let bookKey: string | null = null;
+  let queue: BookQueue | undefined;
   /** The last settled sample, with when it was taken. */
   let baseline: (JumpSample & { at: number; rate: number }) | null = null;
   /** The snapshot current when the book changed: the old engine state, never sampled. */
@@ -233,6 +235,21 @@ export function startJumpUndo(): () => void {
 
   const onState = (s: ReturnType<typeof usePlayer.getState>) => {
     const key = selectBookKey(s);
+    const next = s.nowPlaying?.queue;
+    if (
+      key === bookKey &&
+      queue &&
+      next &&
+      next !== queue &&
+      (!sameTrackOrder(queue.tracks, next.tracks) ||
+        queue.offsets.some((offset, i) => offset !== next.offsets[i]))
+    ) {
+      // Retry can put the same file at different book seconds. Sample afresh in that order.
+      baseline = null;
+      undoLanding = null;
+      if (useJumpUndo.getState().jump) clearJumpUndo();
+    }
+    queue = next;
     if (key !== bookKey) {
       bookKey = key;
       baseline = null;

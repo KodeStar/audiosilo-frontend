@@ -1,0 +1,96 @@
+[
+  {
+    "name": "book start with unknown lengths",
+    "missingPathAt": 1,
+    "durations": [0, 0],
+    "markers": [
+      [0, 0],
+      [1, 0]
+    ],
+    "position": 0,
+    "track": 0,
+    "seconds": 0,
+    "chapter": 0,
+    "playingFile": 1,
+    "playingChapter": 1
+  },
+  {
+    "name": "inside a three-file tie after a measured file",
+    "durations": [60, 0, 0, 40],
+    "markers": [
+      [0, 0],
+      [3, 0],
+      [2, 0],
+      [1, 0]
+    ],
+    "position": 72,
+    "track": 1,
+    "seconds": 12,
+    "chapter": 3,
+    "playingFile": 2,
+    "playingChapter": 2
+  },
+  {
+    "name": "nonadjacent equal starts at the boundary",
+    "durations": [60, 0, 40],
+    "markers": [
+      [0, 0],
+      [1, 0],
+      [1, 15],
+      [2, 0]
+    ],
+    "position": 60,
+    "track": 1,
+    "seconds": 0,
+    "chapter": 1,
+    "playingFile": 2,
+    "playingChapter": 3
+  },
+  {
+    "name": "overlapping chapter in a known playing file",
+    "durations": [60, 0, 40],
+    "markers": [
+      [0, 0],
+      [1, 0],
+      [1, 15],
+      [2, 0]
+    ],
+    "position": 80,
+    "track": 1,
+    "seconds": 20,
+    "chapter": 2,
+    "playingFile": 2,
+    "playingChapter": 3
+  },
+  {
+    "name": "duplicate markers in one file",
+    "durations": [100],
+    "markers": [
+      [0, 0],
+      [0, 20],
+      [0, 20],
+      [0, 50]
+    ],
+    "position": 25,
+    "track": 0,
+    "seconds": 25,
+    "chapter": 1,
+    "playingFile": 0,
+    "playingChapter": 1
+  },
+  {
+    "name": "first distinct start after a tie",
+    "durations": [0, 60, 40],
+    "markers": [
+      [0, 0],
+      [1, 0],
+      [2, 0]
+    ],
+    "position": 60,
+    "track": 2,
+    "seconds": 0,
+    "chapter": 2,
+    "playingFile": 2,
+    "playingChapter": 2
+  }
+]

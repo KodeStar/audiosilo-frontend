@@ -163,8 +163,8 @@ describe('chapterList', () => {
     });
     expect(list.kind).toBe('chapters');
     expect(list.rows.map((r) => [r.title, r.start, r.length, r.jump])).toEqual([
-      ['Prelude', 0, 600, { position: 0 }],
-      ['', 610, 900, { position: 610 }],
+      ['Prelude', 0, 600, { position: 0, file: { path: 'A/B/book.m4b', pos: 0 } }],
+      ['', 610, 900, { position: 610, file: { path: 'A/B/book.m4b', pos: 600 } }],
     ]);
   });
 
@@ -184,9 +184,11 @@ describe('chapterList', () => {
       ],
       chapterStarts: [0, 0],
     });
-    expect(unknown.rows.map((r) => r.jump)).toEqual([{ track: 0 }, { track: 1 }]);
-    // Known files before the first unknown one keep their whole-book starts, and so does
-    // a chapter inside a file (its start is no file's start).
+    expect(unknown.rows.map((r) => r.jump)).toEqual([
+      { position: 0, file: { path: 'A/B/01.mp3', pos: 0 } },
+      { position: 0, file: { path: 'A/B/02.mp3', pos: 0 } },
+    ]);
+    // Inside either tied file the chapter names its file and its own seconds.
     const mixed = chapterList({
       ...base,
       chapters: [
@@ -203,10 +205,10 @@ describe('chapterList', () => {
       chapterStarts: [0, 100, 130, 100],
     });
     expect(mixed.rows.map((r) => r.jump)).toEqual([
-      { position: 0 },
-      { track: 1 },
-      { position: 130 },
-      { track: 2 },
+      { position: 0, file: { path: 'A/B/01.mp3', pos: 0 } },
+      { position: 100, file: { path: 'A/B/02.mp3', pos: 0 } },
+      { position: 130, file: { path: 'A/B/02.mp3', pos: 30 } },
+      { position: 100, file: { path: 'A/B/03.mp3', pos: 0 } },
     ]);
   });
 

@@ -1,6 +1,8 @@
 // Ported from watch-core/Tests/WatchCoreTests/TimelineTests.swift (itself book-queue.test.ts).
 package app.audiosilo.wear.core
 
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -258,6 +260,31 @@ class SynthesizeAndTimelineMathTest {
     assertEquals(emptyList<Chapter>(), synthesizeChapters("big.mp3", 2000.0, 1800.0))
     assertEquals(emptyList<Chapter>(), synthesizeChapters("big.mp3", 0.0, 1800.0))
     assertEquals(3, synthesizeChapters("big.mp3", 5400.0).size)
+  }
+
+  @Serializable
+  private data class Vector(val name: String, val durations: List<Double>, val markers: List<List<Int>>,
+                            val position: Double, val seconds: Double, val track: Int, val chapter: Int,
+                            val playingFile: Int, val playingChapter: Int, val missingPathAt: Int? = null)
+
+  @Test
+  fun sharedTimelineTies() {
+    val json = requireNotNull(javaClass.getResource("/timeline-ties.json")).readText()
+    for (v in Json.decodeFromString<List<Vector>>(json)) {
+      val files = v.durations.mapIndexed { i, duration -> file("p$i", i, duration) }
+      val chapters = v.markers.mapIndexed { i, (f, start) ->
+        ch(index = i, fileIndex = if (i == v.missingPathAt) f else 0,
+           filePath = if (i == v.missingPathAt) "" else "p$f", start = start.toDouble())
+      }
+      val t = Timeline.of(makeBook(files = files.reversed(), chapters = chapters))
+      assertEquals(v.name, Located(v.track, v.seconds), t.locate(v.position))
+      assertEquals(v.name, v.chapter, ChapterNav.index(t.chapters, v.position))
+      val marker = t.chapters[v.playingChapter]
+      assertEquals(v.name, Located(v.playingFile, marker.start),
+                   t.resumePlace(marker.bookOffset, marker.filePath, marker.start))
+      assertEquals(v.name, v.playingChapter,
+                   NowPlayingTimes.of(t.chapters, v.position, t.total, "Book", "p${v.playingFile}").chapterIndex)
+    }
   }
 
   @Test

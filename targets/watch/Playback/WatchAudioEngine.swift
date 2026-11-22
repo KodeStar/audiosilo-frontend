@@ -440,10 +440,10 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   /// Move to `target` (whole-book seconds). `reason` nil: a jump, or moved back when behind.
-  func seek(to target: Double, reason: ListeningStart? = nil) {
+  func seek(to target: Double, reason: ListeningStart? = nil, chapter: Chapter? = nil) {
     guard let b = book else { return }
     let to = Skips.target(position: target, by: 0, total: b.timeline.total)
-    let place = b.timeline.locate(to)
+    let place = b.timeline.resumePlace(position: to, file: chapter?.filePath, filePos: chapter?.start)
     let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     let from = spanEnd()
@@ -669,8 +669,9 @@ final class WatchAudioEngine: NSObject, ObservableObject {
 
   private func refreshTimes(force: Bool) {
     guard let b = book else { return }
+    let file = where_().flatMap { b.timeline.files.indices.contains($0.index) ? b.timeline.files[$0.index].path : nil }
     let t = NowPlayingTimes.of(chapters: b.timeline.chapters, position: position, total: b.timeline.total,
-                               bookTitle: b.title)
+                               bookTitle: b.title, file: file)
     let chapterChanged = t.chapterIndex != times?.chapterIndex
     if t != times { times = t }
     guard force || chapterChanged else { return }

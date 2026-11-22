@@ -76,7 +76,8 @@ import { usePageTitle } from '@/lib/use-page-title';
 import { cn } from '@/lib/utils';
 import { useNeedsWebTranscode } from '@/playback/transcode-capability';
 import { serverRowOf } from '@/playback/progress-sync';
-import { selectIsTransportLive, usePlayer } from '@/playback/store';
+import { bookFileSpecs } from '@/playback/book-queue';
+import { selectCurrentChapter, selectIsTransportLive, usePlayer } from '@/playback/store';
 import { useBookTimeSaved } from '@/playback/time-saved';
 import { useLibraryName } from '@/stores/library-names';
 import { useSeriesOrderings } from '@/stores/series-orderings';
@@ -368,7 +369,13 @@ function BookPage() {
   }, [metaMatched, orderingPicks]);
 
   const chapters = useMemo(() => chapterData?.chapters ?? [], [chapterData]);
-  const files = useMemo(() => chapterData?.files ?? [], [chapterData]);
+  const files = useMemo(
+    () =>
+      book
+        ? bookFileSpecs(book, chapterData).map((f) => ({ rel_path: f.path, duration: f.duration }))
+        : [],
+    [book, chapterData],
+  );
   // The whole-book offset of every chapter, recomputed from the cumulative file durations
   // (the server's `book_offset` is unreliable): the spoiler gate and the rows.
   const chapterStarts = useMemo(() => chapterStartsOf(chapters, files), [chapters, files]);
@@ -388,7 +395,17 @@ function BookPage() {
   const started = loaded || status === 'progress' || (listeningPosition ?? 0) > 0;
   const position = finished ? total : (resumePosition ?? 0);
   // The row the listener is in (none marked before the start or once finished).
-  const current = started && !finished ? rowAt(list.rows, position) : -1;
+  const liveChapter = usePlayer((s) =>
+    loaded && !s.loadingBook && list.kind === 'chapters' ? selectCurrentChapter(s) : null,
+  );
+  const liveRow = liveChapter
+    ? list.rows.findIndex(
+        (row) =>
+          row.jump.file?.path === liveChapter.file_path && row.jump.file.pos === liveChapter.start,
+      )
+    : -1;
+  const current =
+    !started || finished ? -1 : liveRow >= 0 ? liveRow : rowAt(list.rows, position, progress?.file);
   // On the same place as the hero's: the saved one as Resume plays it.
   const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
 

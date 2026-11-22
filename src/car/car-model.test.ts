@@ -388,6 +388,39 @@ describe('playSpec', () => {
     ]);
   });
 
+  it('resumes a whole-book place in the first tied file, or in its saved or paused file', () => {
+    const chapters = twoFiles.chapters!;
+    const tied = {
+      ...twoFiles,
+      chapters: {
+        ...chapters,
+        files: chapters.files.map((f) => ({ ...f, duration: 0 })).reverse(),
+      },
+    };
+    const lookup = { kind: 'progress' as const, progress: makeProgress({ position: 20 }) };
+    const file = { path: 'A/2.mp3', pos: 15 };
+    expect(playSpec(bookRef, tied, lookup, 1, 1800)).toMatchObject({
+      startIndex: 0,
+      positionInTrack: 20,
+    });
+    expect(playSpec(bookRef, tied, { ...lookup, file }, 1, 1800)).toMatchObject({
+      startIndex: 1,
+      positionInTrack: 15,
+    });
+    expect(playSpec(bookRef, tied, lookup, 1, 1800, { position: 20, rate: 1, file })).toMatchObject(
+      { startIndex: 1, positionInTrack: 15 },
+    );
+    expect(
+      playSpec(
+        bookRef,
+        tied,
+        { ...lookup, file, progress: { ...lookup.progress, finished: true } },
+        1,
+        1800,
+      ),
+    ).toMatchObject({ startIndex: 0, positionInTrack: 0 });
+  });
+
   it('starts a finished book again at 0 (playBook’s rule)', () => {
     const spec = playSpec(
       bookRef,

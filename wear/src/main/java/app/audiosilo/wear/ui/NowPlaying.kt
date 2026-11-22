@@ -128,7 +128,7 @@ fun ChaptersScreen(model: AppModel, done: () -> Unit) {
     itemsIndexed(chapters) { i, ch ->
       Button(
         onClick = {
-          model.engine.seek(ch.bookOffset)
+          model.engine.seek(ch.bookOffset, chapter = ch)
           done()
         },
         modifier = Modifier.fillMaxWidth(),

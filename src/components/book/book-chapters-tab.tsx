@@ -144,6 +144,7 @@ export function BookChaptersTab({
     <View className="gap-4">
       {total > 0 ? (
         <WholeBook
+          current={currentRow >= 0 ? currentRow : undefined}
           starts={starts}
           titles={labels}
           total={total}
@@ -204,6 +205,7 @@ function rowLabel(row: ListRow, kind: ChapterList['kind'], t: TFunction): string
  * drag seeks it; any other book draws its saved place, and a tap starts it there.
  */
 function WholeBook({
+  current,
   starts,
   titles,
   total,
@@ -214,6 +216,7 @@ function WholeBook({
   episode,
   onJump,
 }: {
+  current?: number;
   starts: number[];
   titles: string[];
   total: number;
@@ -269,6 +272,7 @@ function WholeBook({
       </View>
       <View>
         <BookTimeline
+          current={current}
           starts={starts}
           total={total}
           position={position}

@@ -98,13 +98,21 @@ enum ChapterNav {
   static let AT_START: Double = 0.01
 
   /// The index of the chapter at `position` (the first before every chapter); nil with none.
-  static func index(_ chapters: [Chapter], _ position: Double) -> Int? {
+  static func index(_ chapters: [Chapter], _ position: Double, file: String? = nil) -> Int? {
     guard !chapters.isEmpty else { return nil }
-    var current = 0
-    for (i, ch) in chapters.enumerated() {
-      if position + AT_START >= ch.bookOffset { current = i } else { break }
+    var current: Int?
+    var own: Int?
+    for (i, ch) in chapters.enumerated() where ch.bookOffset <= position + AT_START {
+      if let at = current {
+        let best = chapters[at]
+        if ch.bookOffset > best.bookOffset ||
+          (ch.bookOffset == best.bookOffset && ch.fileIndex >= 0 && (best.fileIndex < 0 || ch.fileIndex < best.fileIndex)) {
+          current = i
+        }
+      } else { current = i }
+      if ch.filePath == file && (own.map { ch.bookOffset > chapters[$0].bookOffset } ?? true) { own = i }
     }
-    return current
+    return own ?? current ?? 0
   }
 
   /// Previous chapter: this one's start when more than 3 s in, else the one before's (0 before
@@ -136,15 +144,15 @@ struct NowPlayingTimes: Equatable {
 
   /// The chapter at `position` and the times within it (`ChapterNav.title` names one without a
   /// title), else the whole book.
-  static func of(chapters: [Chapter], position: Double, total: Double, bookTitle: String) -> NowPlayingTimes {
-    guard let i = ChapterNav.index(chapters, position) else {
+  static func of(chapters: [Chapter], position: Double, total: Double, bookTitle: String, file: String? = nil) -> NowPlayingTimes {
+    guard let i = ChapterNav.index(chapters, position, file: file) else {
       return NowPlayingTimes(chapterIndex: nil, title: bookTitle, elapsed: max(0, position), duration: max(0, total))
     }
     let ch = chapters[i]
     // A chapter runs to the next one's start; the last to its own end, else the book's.
     let end: Double
-    if i + 1 < chapters.count {
-      end = chapters[i + 1].bookOffset
+    if let next = chapters.dropFirst(i + 1).first(where: { $0.bookOffset > ch.bookOffset }) {
+      end = next.bookOffset
     } else {
       end = chapterEndPosition(ch) > ch.bookOffset ? chapterEndPosition(ch) : total
     }

@@ -1380,6 +1380,24 @@ describe('adoptLoaded', () => {
       stopTelling();
     });
 
+    it('lands a missing file on the first tied track, including when no duration is known', () => {
+      const queue = { tracks: [{ id: '2:a' }, { id: '2:b' }], offsets: [0, 0], total: 0 };
+      const at = { trackIndex: 1, position: 20 };
+      expect(landingOf(queue as never, ['2:x', '2:y'], at, new Map())).toEqual({
+        index: 0,
+        positionInTrack: 20,
+        beyond: false,
+      });
+      expect(landingOf(queue as never, ['2:x', '2:y'], at, new Map([['2:x', 30]]))).toMatchObject({
+        index: 0,
+        positionInTrack: 50,
+      });
+      expect(landingOf(queue as never, ['2:x', '2:b'], at, new Map())).toMatchObject({
+        index: 1,
+        positionInTrack: 20,
+      });
+    });
+
     it("keeps the engine's in-file place within the landing file's length (fe#185)", () => {
       const queue = {
         tracks: [{ duration: 100 }, { duration: 60 }],
