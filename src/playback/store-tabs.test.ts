@@ -1500,6 +1500,53 @@ describe.each([
         },
       );
 
+      // On Cast a remote move at the place is taken as the late landing only while the
+      // call could still land. Past `ASK_SETTLE_MAX_MS` it is the listener's own move: the
+      // span from 900 starts as a jump, and the listening at A's place before it is kept.
+      it.each([{ late: false }, { late: true }])(
+        'on Cast, a move to the place after the call is long out is the listener’s (late $late)',
+        async ({ late }) => {
+          await playedPast(a, b);
+          b.engine.at(900);
+          await b.player().pause();
+          await until(() => listens().length === 2, "B's span on the server");
+          const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+          const seek = slowSeek(); // never accepted
+          try {
+            await a.player().toggle();
+            seek.restore();
+            expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+            a.engine.svc.isCasting.mockReturnValue(true);
+            await sleep(10);
+            const now = Date.now;
+            const clock = jest
+              .spyOn(Date, 'now')
+              .mockImplementation(() => now() + (late ? 15_000 : 0));
+            try {
+              a.engine.svc.onRemoteMove.mock.lastCall![0](0, 900);
+              a.engine.at(900);
+              await sleep(10);
+              a.engine.at(910);
+              await a.player().pause();
+            } finally {
+              clock.mockRestore();
+            }
+            await until(() => listens().some((e) => e.to_pos === 910), "A's span to 910");
+            const starts = heard().map(([from, , start]) => [from, start]);
+            if (late) {
+              expect(starts).toContainEqual([30, 'resume']);
+              expect(starts).toContainEqual([900, 'jump']);
+            } else {
+              expect(starts).not.toContainEqual([30, 'resume']);
+              expect(heard()).toContainEqual([900, 910, 'resume']);
+            }
+          } finally {
+            seek.restore();
+            warned.mockRestore();
+          }
+        },
+      );
+
       it('far behind: the play that follows still saves its place', async () => {
         mockMirror.on = true;
         await a.start(5, 'c1', long);

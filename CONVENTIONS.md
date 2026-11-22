@@ -3215,7 +3215,9 @@ media GETs only.
     One that lands after that is taken then (`landTabPlaceLate`: the floor at the place, the
     listening begun where the engine was dropped and begun again there). The landing report
     reopens the span before that report's save tick can cut it. A Cast status can confirm
-    the same landing before the receiver publishes its position. This applies unless the listener
+    the same landing before the receiver publishes its position, while the call could still
+    land (`ASK_SETTLE_MAX_MS` from the ask): a Cast move there later is the listener's own. This
+    applies unless the listener
     moved or another book started meanwhile: left alone, a landing far behind the floor put
     back refused every save, and one further on ran the open span over audio nobody heard. A
     book switch drops a move still out (`switchBook` clears

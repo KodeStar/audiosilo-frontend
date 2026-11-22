@@ -3075,9 +3075,15 @@ const SAME_PLACE_S = 2;
  * whole-book place (`pos`), and whether it finished the book there (then the start). */
 type TabPlace = { index: number; positionInTrack: number; pos: number; finished: boolean };
 
-/** A timed-out seek may report its target before its call settles, or after it on Cast. */
-let lateTabSeek: { np: NowPlaying; place: TabPlace; confirmed: boolean; lastAt: number } | null =
-  null;
+/** A timed-out seek may report its target before its call settles, or after it on Cast.
+ * `askedAt`: when the move was asked (`EngineAsk.at`). */
+let lateTabSeek: {
+  np: NowPlaying;
+  place: TabPlace;
+  confirmed: boolean;
+  lastAt: number;
+  askedAt: number;
+} | null = null;
 
 /**
  * The place to take before this tab plays again, or null to stay: where the newest save of
@@ -3216,7 +3222,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       if (play && playPos !== undefined) play.pos = playPos;
       // Given up on, not refused: the seek may still land (a refused one never does).
       if (seek) {
-        const late = { np, place, confirmed: false, lastAt: Date.now() };
+        const late = { np, place, confirmed: false, lastAt: Date.now(), askedAt: ask.at };
         lateTabSeek = late;
         void seek.then(
           () => {
@@ -4253,11 +4259,14 @@ async function createService(): Promise<PlaybackService> {
     }
     // A Cast status can tell the timed-out seek as a remote move before publishing its
     // snapshot. The report takes the shared place, with no move event of the listener's.
+    // Unless its call is still out past `ASK_SETTLE_MAX_MS` (as a seek of the listener's,
+    // `observeSeek`): a move there since is the listener's own.
     if (
       np &&
       lateTabSeek &&
       !catchingUp &&
       svc.isCasting?.() &&
+      (lateTabSeek.confirmed || Date.now() - lateTabSeek.askedAt < ASK_SETTLE_MAX_MS) &&
       atLateTabPlace(np, trackIndex, positionInTrack)
     ) {
       lateTabSeek.confirmed = true;
