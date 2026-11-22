@@ -1582,7 +1582,7 @@ export function heldListens(
       (r.status === 'not_applied' && r.reason === 'resume_behind');
     if (!heldHere) continue;
     const key = contentKey(connectionId, e.library_id, e.path);
-    if (e.start === 'stay' || !held.has(key)) held.set(key, e.start === 'stay' ? 'stay' : 'listen');
+    if (held.get(key) !== 'stay') held.set(key, e.start === 'stay' ? 'stay' : 'listen');
   }
   return held;
 }

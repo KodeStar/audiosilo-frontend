@@ -1143,7 +1143,8 @@ export function ackVersion(
   );
 }
 
-/** At most this many answered offers are kept per book (the newest). */
+/** At most this many answered offers, and as many timed-out ones, are kept per book (the
+ * newest). */
 const MAX_ANSWERED = 20;
 
 /** Answer an offer of another place (Jump, Stay, the book page's "Play from there"): the
@@ -1162,15 +1163,15 @@ export function answerOffer(
     path,
     (s) => {
       const acked = Math.max(s.ack_version ?? row.version, row.version);
-      return { ...s, ack_version: acked, answered: withAnswered(s.answered, key) };
+      return { ...s, ack_version: acked, answered: withKey(s.answered, key) };
     },
     row,
   );
 }
 
-/** `answered` with `key` noted (the newest `MAX_ANSWERED` kept). */
-function withAnswered(answered: string[] | undefined, key: string): string[] {
-  return answered?.includes(key) ? answered : [...(answered ?? []), key].slice(-MAX_ANSWERED);
+/** `keys` with `key` noted (the newest `MAX_ANSWERED` kept). */
+function withKey(keys: string[] | undefined, key: string): string[] {
+  return keys?.includes(key) ? keys : [...(keys ?? []), key].slice(-MAX_ANSWERED);
 }
 
 /** Remember a timed-out offer without acknowledging it. The held-place check may show it
@@ -1189,7 +1190,7 @@ export function ignoreOffer(
     (s) =>
       s.answered?.includes(key) || s.ignored?.includes(key)
         ? s
-        : { ...s, ignored: withAnswered(s.ignored, key) },
+        : { ...s, ignored: withKey(s.ignored, key) },
     row,
   );
 }

@@ -163,6 +163,14 @@ export type PlaceOffer = {
   key: string;
 };
 
+/** The offer keys a mirror record has settled: answered (Jump, Stay) or timed out
+ * (`ignored`). Neither is offered again (`offerOf`'s `answered`). */
+export function settledOffers(
+  record: Pick<ProgressSave, 'answered' | 'ignored'> | null | undefined,
+): string[] {
+  return [...(record?.answered ?? []), ...(record?.ignored ?? [])];
+}
+
 export function offerOf(
   row: Progress | null | undefined,
   deviceId: string,
@@ -238,7 +246,7 @@ export async function offerLoadedPlace(
     deviceId,
     held ? undefined : mirror?.ack_version,
     selectBookPosition(player),
-    [...(mirror?.answered ?? []), ...ignored],
+    settledOffers({ answered: mirror?.answered, ignored }),
   );
   if (!offer) return false;
   const repeat = changed && offer.key === keptKey;
@@ -579,7 +587,7 @@ function answeredSince(
   if (!row) return false;
   const key = placeKey(row);
   if (shownOffers.has(`${bookKey}|${key}`)) return true;
-  if (current?.answered?.includes(key) || current?.ignored?.includes(key)) return true;
+  if (settledOffers(current).includes(key)) return true;
   return row.version > 0 && (current?.ack_version ?? 0) >= row.version;
 }
 

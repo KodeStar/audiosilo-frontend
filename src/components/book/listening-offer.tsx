@@ -6,7 +6,7 @@ import { useCapability } from '@/api/hooks';
 import type { Chapter, Progress } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
-import { describePlace, offerOf, type PlaceOffer } from '@/playback/place-reconcile';
+import { describePlace, offerOf, type PlaceOffer, settledOffers } from '@/playback/place-reconcile';
 import { answerOffer, getDeviceId, type ProgressSave, readMirror } from '@/playback/progress-sync';
 import { answerAfterSpan } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -41,10 +41,7 @@ export function useListeningOffer(
   }, [connectionId, libraryId, path, version, row?.other_place?.updated_at]);
   if (!mine || !row) return null;
   const from = here ?? mine.mirror?.position ?? row.position;
-  return offerOf(row, mine.deviceId, mine.mirror?.ack_version, from, [
-    ...(mine.mirror?.answered ?? []),
-    ...(mine.mirror?.ignored ?? []),
-  ]);
+  return offerOf(row, mine.deviceId, mine.mirror?.ack_version, from, settledOffers(mine.mirror));
 }
 
 /**
