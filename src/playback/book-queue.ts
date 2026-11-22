@@ -120,9 +120,10 @@ function bookFileList(book: Book, chapterData?: ChaptersResponse) {
  * Whole-book start offset (seconds) of a chapter: the summed duration of the
  * files that precede it plus its in-file `start`. Located by `file_path` (with a
  * `file_index` fallback) so a non-sequential `file_index` can't misplace a
- * chapter. Shared by the playback queue and the book screen's chapter list so
- * both agree on the timeline (the server's `book_offset` is unreliable for some
- * on-demand-indexed books - it comes back 0 for every chapter).
+ * chapter. The screens' chapter starts (`chapterStartsOf`); the playback queue reads the
+ * same sum from its offsets (`buildBookQueue`), so both agree on the timeline (the
+ * server's `book_offset` is unreliable for some on-demand-indexed books - it comes back
+ * 0 for every chapter).
  */
 export function chapterBookOffset(
   files: { path: string; duration: number }[],
