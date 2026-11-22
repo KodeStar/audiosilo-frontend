@@ -396,6 +396,33 @@ function proxySetsText(c: Connection, sets: ProxySets): string {
   return JSON.stringify(proxyOriginChoices(c).map((o) => sets[o] ?? null));
 }
 
+/**
+ * Ask a connection's failed `/server` again once its client moved to another address (the
+ * address runner's home / away pick): that failure (another host at home, an answer from
+ * the address it left, no answer) says nothing of the new address, and nothing else asks
+ * it again (`serverInfoQuery` keeps a failure from every screen mounting, and reachability
+ * takes another host's answer as none). In the provider's effect, after every screen's
+ * own, so the read goes out through the new client.
+ */
+function useReadServerAgainOnMove(clients: ReadonlyMap<string, ApiClient>) {
+  const urls = useRef(new Map<string, string>());
+  useEffect(() => {
+    const seen = urls.current;
+    for (const [cid, client] of clients) {
+      const before = seen.get(cid);
+      seen.set(cid, client.baseUrl);
+      if (before === undefined || before === client.baseUrl) continue;
+      const key = serverInfoKey(cid);
+      if (queryClient.getQueryState(key)?.status !== 'error') continue;
+      forgetUnobservedServerFailure(cid);
+      void queryClient.invalidateQueries({ queryKey: key, exact: true });
+    }
+    for (const id of seen.keys()) {
+      if (!clients.has(id)) seen.delete(id);
+    }
+  }, [clients]);
+}
+
 export function ApiProvider({ children }: { children: ReactNode }) {
   const connections = useSession((s) => s.connections);
   // Every origin's proxy headers (fe#295): an edit rebuilds the clients on that origin.
@@ -422,6 +449,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     setReachabilityClients(registry.clients);
   }, [registry]);
   useReadAgainOnSignIn(connections, proxySets);
+  useReadServerAgainOnMove(clients);
 
   return (
     <QueryClientProvider client={queryClient}>

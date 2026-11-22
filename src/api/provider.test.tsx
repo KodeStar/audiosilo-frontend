@@ -648,6 +648,66 @@ describe('a failed /server nobody watches, on the foreground refresh', () => {
   });
 });
 
+// Another host at the home address fails the read; nothing else asks it again once the
+// address runner moves the connection away.
+describe('a failed /server on an address the connection left', () => {
+  beforeEach(() => resetProfilesForTests());
+
+  it('is asked again through the client on the address it moved to', async () => {
+    const cid = 'srv.95';
+    const home = 'http://192.168.1.20:8080';
+    const away = 'https://away.example';
+    useSession.setState({
+      connections: [
+        {
+          id: cid,
+          serverId: 'srv',
+          name: 'H',
+          serverUrl: away,
+          addresses: { home, away },
+          token: 't',
+        },
+      ],
+    } as never);
+    setAddressPick(cid, home);
+    const saved = globalThis.fetch;
+    const request = jest.fn(async (url: string) => ({
+      ok: true,
+      status: 200,
+      text: async () =>
+        JSON.stringify(
+          url.startsWith(home)
+            ? { server_id: 'other', capabilities: {} }
+            : { server_id: 'srv', capabilities: {} },
+        ),
+    }));
+    globalThis.fetch = request as unknown as typeof fetch;
+    function Info() {
+      const info = useServerInfo(cid);
+      return <Text>{info.data ? 'read' : info.isError ? 'failed' : 'waiting'}</Text>;
+    }
+    try {
+      await expect(
+        queryClient.fetchQuery({ ...serverInfoQuery(cid, resolveClient(cid)), retry: false }),
+      ).rejects.toThrow();
+      await render(
+        <ApiProvider>
+          <Info />
+        </ApiProvider>,
+      );
+      expect(screen.getByText('failed')).toBeTruthy();
+      await act(async () => setAddressPick(cid, away));
+      await waitFor(() => expect(screen.getByText('read')).toBeTruthy());
+      expect(String(request.mock.calls.at(-1)?.[0])).toContain(away);
+      expect(useSession.getState().connections[0].needsReconnect).toBeUndefined();
+    } finally {
+      globalThis.fetch = saved;
+      await act(async () => setAddressPick(cid, null));
+      queryClient.removeQueries({ queryKey: qk.server(cid) });
+    }
+  });
+});
+
 // frontend#124: a refused token stays refused, so a 401 is never asked again.
 describe('the default query retry', () => {
   it('is the default for every query', () => {
