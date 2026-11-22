@@ -1696,6 +1696,10 @@ function settleSeek() {
   if (seekReported && seekCalls.size === 0) pendingSeek = null;
 }
 
+/** The newest seek whose engine call resolved (`EngineAsk.seq`): an older call still out
+ * was superseded by it, and is never this book's place again (`engineTakes`). */
+let seekLandedSeq = 0;
+
 /** Observe the current target before this report can close its span or save its place. */
 function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: PlaybackSnapshot) {
   if (!pendingSeek || pendingSeek.np !== np) return;
@@ -1731,8 +1735,8 @@ function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: Pl
   }
   seekReported = there && (changed || seekReported);
   settleSeek();
-  if (pendingSeek?.landedAt != null && now - pendingSeek.landedAt >= ASK_SETTLE_MAX_MS)
-    pendingSeek = null;
+  // Landed this long ago: the seek is over, and so is any older call still out.
+  if (pendingSeek?.landedAt != null && now - pendingSeek.landedAt >= ASK_SETTLE_MAX_MS) dropSeeks();
 }
 
 function pendingSeekEnd(np: NowPlaying): SpanEnd | null {
@@ -2726,6 +2730,7 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
   try {
     const taken = await move;
     ask.landedAt = Date.now();
+    if (seekCalls.has(ask)) seekLandedSeq = Math.max(seekLandedSeq, ask.seq);
     // Taken, replaced or not: the engine left the place it faulted at, so no later ask of the
     // book brings the fault back when refused. Not an ask from before the fault was called
     // off (its move landed before the place the engine faulted at).
@@ -2735,8 +2740,10 @@ async function engineTakes<T>(ask: EngineAsk, move: Promise<T>): Promise<T> {
     if (pendingSeek === ask) {
       pendingSeek = null;
       seekReported = false;
+      // The newest earlier seek still out is the place again, unless a later one has landed
+      // since: the engine is at that one's target, and the older call was superseded.
       for (const prior of seekCalls) {
-        if (prior !== ask && prior.np === ask.np) pendingSeek = prior;
+        if (prior !== ask && prior.np === ask.np && prior.seq > seekLandedSeq) pendingSeek = prior;
       }
     }
     // Refused while no ask came since (standing, or given up on): the engine is where it

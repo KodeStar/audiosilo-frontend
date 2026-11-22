@@ -1248,6 +1248,20 @@ describe('with listening_sync', () => {
     );
   });
 
+  it('a refused seek never brings back an older call a later landed seek superseded', async () => {
+    await start();
+    pushSnapshot(snap('paused', 0, 0));
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+    void usePlayer.getState().seekBook(10);
+    await settle();
+    await usePlayer.getState().seekBook(30);
+    pushSnapshot(snap('paused', 0, 30));
+    (mockSvc.seekTo as jest.Mock).mockRejectedValueOnce(new Error('refused'));
+    await expect(usePlayer.getState().seekBook(40)).rejects.toThrow('refused');
+    await usePlayer.getState().stop();
+    expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 30 });
+  });
+
   it('a paused seek still waiting after ten seconds keeps its target across stale reports', async () => {
     await start();
     pushSnapshot(snap('paused', 0, 30));
