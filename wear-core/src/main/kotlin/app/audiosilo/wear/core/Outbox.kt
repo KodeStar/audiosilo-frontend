@@ -106,7 +106,9 @@ class Outbox(
           accepted
         }
       }
-      for ((key, cut) in SentPlace.lastIn(events.drop(queued.size))) {
+      // By id, not by count: a save that finds the stuck outbox readable again joins its events first.
+      val known = queued.mapTo(HashSet()) { it.id }
+      for ((key, cut) in SentPlace.lastIn(events.filter { it.id !in known })) {
         val open = carried
         if (open != null && open.first == key) {
           // The wire event clamps its end to its start. Keep the time actually heard if the clock went back.
