@@ -1,7 +1,8 @@
 // The player the media session holds (W4 decision 10): a ForwardingPlayer over the engine's
 // ExoPlayer that sends every transport command from outside the app (the system's media
 // controls, the ongoing activity, headphone buttons) through PlayerEngine, so each one records its
-// span like a tap in Now Playing: next / previous are chapters (whole-book, across file joins),
+// span like a tap in Now Playing: next / previous are chapters (`ChapterNav.step`: whole-book,
+// across file joins, or in file order among files sharing a start),
 // the skips are 15 s back and 30 s forward, a seek within a file is a move of the book's place.
 package app.audiosilo.wear.playback
 

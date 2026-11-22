@@ -270,7 +270,7 @@ class SynthesizeAndTimelineMathTest {
 
   /** From `at` ([file, seconds in it]) previous and next land at [file, seconds in it], or nowhere. */
   @Serializable
-  private data class Step(val at: List<Double>, val next: List<Double>?, val previous: List<Double>?)
+  private data class Step(val at: List<Double>, val next: List<Double>? = null, val previous: List<Double>? = null)
 
   @Test
   fun sharedTimelineTies() {
