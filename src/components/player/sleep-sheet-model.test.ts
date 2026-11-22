@@ -75,6 +75,36 @@ describe('stopAfterRows', () => {
     expect(stopAfterRows(q, 50, 1, 'b.mp3').map((r) => r.chapter.index)).toEqual([1]);
   });
 
+  it('names no other chapter "This chapter" while one of unknown length plays', () => {
+    // Files 02 and 03 of unknown length: their chapters end where they start, at 60, with
+    // file 04's first chapter.
+    const file = (i: number, path: string, at: number, start: number, end: number) => ({
+      ...chapter(i, at, 0),
+      file_index: Number(path.slice(0, 2)) - 1,
+      file_path: path,
+      start,
+      end,
+    });
+    const tied = [
+      file(0, '01 One.mp3', 0, 0, 30),
+      file(1, '01 One.mp3', 30, 30, 60),
+      file(2, '02 Two.m4a', 60, 0, 0),
+      file(3, '03 Three.m4a', 60, 0, 0),
+      file(4, '04 Four.mp3', 60, 0, 30),
+      file(5, '04 Four.mp3', 90, 30, 60),
+    ];
+    const q = { chapters: tied, total: 120 };
+    // In Three: no end of its own to stop at, and Four A or Four B would stop mid-file.
+    expect(stopAfterRows(q, 60, 1, '03 Three.m4a')).toEqual([]);
+    expect(stopAfterRows(q, 95, 1, '03 Three.m4a')).toEqual([]);
+    // In Four A, whose length is known: as before.
+    const rows = stopAfterRows(q, 70, 1, '04 Four.mp3');
+    expect(rows.map((r) => [r.count, r.chapter.index, r.endPosition])).toEqual([
+      [1, 4, 90],
+      [2, 5, 120],
+    ]);
+  });
+
   it('leaves out a chapter ending past the book (bad metadata)', () => {
     const q = { chapters: [chapter(0, 0, 600), chapter(1, 600, 9000)], total: 1200 };
     expect(stopAfterRows(q, 0, 1).map((r) => r.chapter.index)).toEqual([0]);
