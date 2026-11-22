@@ -398,14 +398,14 @@ function BookPage() {
   const liveChapter = usePlayer((s) =>
     loaded && !s.loadingBook && list.kind === 'chapters' ? selectCurrentChapter(s) : null,
   );
-  const liveRow = liveChapter
-    ? list.rows.findIndex(
-        (row) =>
-          row.jump.file?.path === liveChapter.file_path && row.jump.file.pos === liveChapter.start,
-      )
-    : -1;
   const current =
-    !started || finished ? -1 : liveRow >= 0 ? liveRow : rowAt(list.rows, position, progress?.file);
+    !started || finished
+      ? -1
+      : rowAt(
+          list.rows,
+          position,
+          liveChapter ? { path: liveChapter.file_path, pos: liveChapter.start } : progress?.file,
+        );
   // On the same place as the hero's: the saved one as Resume plays it.
   const timeLeft = useBookTimeLeft(book ? target : null, progress, total);
 

@@ -251,7 +251,8 @@ export function chapterList(input: {
       kind: 'chapters',
       rows: chapters.map((c, i) => {
         const start = chapterStarts[i] ?? c.book_offset;
-        const file = fileIndices.get(c.file_path) ?? c.file_index;
+        const file =
+          fileIndices.get(c.file_path) ?? (c.file_index < files.length ? c.file_index : -1);
         const path = files[file]?.rel_path ?? c.file_path;
         return {
           key: `c${c.index}`,
