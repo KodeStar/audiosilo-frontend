@@ -4261,7 +4261,7 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
   removal first: the event is kept before the span file changes) and the place. In parallel,
   a separate durable writer keeps the latest cut or marker in `noBackupFilesDir/sent-places.json`,
-  so a failed write in either directory leaves the other able to save listening. A POST waits
+  so a failed write in either directory leaves the other able to keep the place. A POST waits
   for each writer's first attempt and can still send when both directories are full. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
   closed by a cut, going to the background, removing the book and sign-out; on the plain 5 s

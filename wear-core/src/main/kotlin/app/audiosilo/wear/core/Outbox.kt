@@ -132,7 +132,10 @@ class Outbox(
     }
   }
 
-  /** Called after the player closes the book's last span and removes its saved place. */
+  /**
+   * Forget the book's place until fresh listening: its download removed (after the player closed
+   * its last span and its saved place went), or a finished server row taken at a play.
+   */
   fun forgetPlace(ref: BookRef) {
     synchronized(lock) {
       val kept = keptLocked(placeAccount ?: return)
