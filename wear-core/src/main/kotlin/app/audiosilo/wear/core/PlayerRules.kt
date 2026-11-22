@@ -242,7 +242,7 @@ object Resume {
     var take: ResumePlan
     if (
       row != null &&
-        (shouldTake(row, local, deviceId, ackVersion, clockSkewMs) || finishWins(row, local, ackVersion, waiting))
+        (shouldTake(row, local, deviceId, ackVersion, clockSkewMs) || finishWins(row, local, ackVersion, waiting, clockSkewMs))
     ) {
       take = ResumePlan(row.position, null, null, ListeningStart.RESUME, unfinish = false, tookRow = true)
       if (row.finished) return restart(tookRow = true)
@@ -276,21 +276,31 @@ object Resume {
       return !row.finished && row.position != local.position && row.version >= (ackVersion ?: 0) && sent.at > local.at
     }
     val updated = ISOTime.parse(row.updatedAt) ?: return false
-    return row.version > (ackVersion ?: 0) && updated > local.at
+    return row.version > (ackVersion ?: 0) && onWatchClock(updated, clockSkewMs) > local.at
   }
 
   /**
    * The phone's `serverFinishWins`: the server's finished row beats a newer place here when the
    * finish is newer than that place, or at a version this watch never acknowledged (another
    * device's finish, which the place here only did not know of). A finish is a state the server
-   * orders on its own, so the book starts again rather than resuming the old place.
+   * orders on its own, so the book starts again rather than resuming the old place. The finish is
+   * compared on the watch's clock, as the phone compares it on its own (`serverTimeOf`).
    */
-  private fun finishWins(row: ProgressRow, local: LocalPlace?, ackVersion: Int?, waiting: Boolean): Boolean {
+  private fun finishWins(
+    row: ProgressRow,
+    local: LocalPlace?,
+    ackVersion: Int?,
+    waiting: Boolean,
+    clockSkewMs: Double,
+  ): Boolean {
     if (local == null || waiting || !row.finished) return false
     val finished = row.finishedAt?.let(ISOTime::parse)
-    if (finished != null && finished > local.at) return true
+    if (finished != null && onWatchClock(finished, clockSkewMs) > local.at) return true
     return row.version > (ackVersion ?: 0)
   }
+
+  /** A server time on the watch's clock (`LocalPlace.fromRow`'s shift). */
+  private fun onWatchClock(serverTime: Instant, clockSkewMs: Double): Instant = serverTime.minusMillis(clockSkewMs.toLong())
 
   /**
    * The speed saved for the book `plan` resumes: the row's when it was taken, else this watch's

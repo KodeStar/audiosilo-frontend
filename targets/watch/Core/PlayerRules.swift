@@ -213,7 +213,7 @@ enum Resume {
   {
     var take: ResumePlan
     if let row, shouldTake(row, local: local, deviceId: deviceId, ackVersion: ackVersion, clockSkewMs: clockSkewMs)
-      || finishWins(row, local: local, ackVersion: ackVersion, waiting: waiting)
+      || finishWins(row, local: local, ackVersion: ackVersion, waiting: waiting, clockSkewMs: clockSkewMs)
     {
       take = ResumePlan(position: row.position, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: true)
       if row.finished { return restart(tookRow: true) }
@@ -250,17 +250,26 @@ enum Resume {
       return !row.finished && row.position != local.position && row.version >= (ackVersion ?? 0) && sent.at > local.at
     }
     guard let updated = ISOTime.parse(row.updatedAt) else { return false }
-    return row.version > (ackVersion ?? 0) && updated > local.at
+    return row.version > (ackVersion ?? 0) && onWatchClock(updated, clockSkewMs) > local.at
   }
 
   /// The phone's `serverFinishWins`: the server's finished row beats a newer place here when the
   /// finish is newer than that place, or at a version this watch never acknowledged (another
   /// device's finish, which the place here only did not know of). A finish is a state the server
-  /// orders on its own, so the book starts again rather than resuming the old place.
-  private static func finishWins(_ row: ProgressRow, local: LocalPlace?, ackVersion: Int?, waiting: Bool) -> Bool {
+  /// orders on its own, so the book starts again rather than resuming the old place. The finish
+  /// is compared on the watch's clock, as the phone compares it on its own (`serverTimeOf`).
+  private static func finishWins(_ row: ProgressRow, local: LocalPlace?, ackVersion: Int?, waiting: Bool,
+                                 clockSkewMs: Double) -> Bool {
     guard let local, !waiting, row.finished else { return false }
-    if let finished = row.finishedAt.flatMap(ISOTime.parse), finished > local.at { return true }
+    if let finished = row.finishedAt.flatMap(ISOTime.parse), onWatchClock(finished, clockSkewMs) > local.at {
+      return true
+    }
     return row.version > (ackVersion ?? 0)
+  }
+
+  /// A server time on the watch's clock (`LocalPlace.fromRow`'s shift).
+  private static func onWatchClock(_ serverTime: Date, _ clockSkewMs: Double) -> Date {
+    serverTime.addingTimeInterval(-clockSkewMs.rounded(.towardZero) / 1000)
   }
 
   /// The speed saved for the book `plan` resumes: the row's when it was taken, else this watch's

@@ -4328,8 +4328,8 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`), `move`'s `acknowledge`,
   `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
-  its file when empty. Both watches use `Resume.plan`'s `clockSkewMs` for their own newer row
-  and recover the last heard cuts with `PlaceStore.recoverCuts`: Wear's `Outbox.recoverListening`
+  its file when empty. Both watches use `Resume.plan`'s `clockSkewMs` for their own newer row,
+  another device's row and a finish's `finished_at` (the phone's `serverTimeOf`), and recover the last heard cuts with `PlaceStore.recoverCuts`: Wear's `Outbox.recoverListening`
   and the Apple Watch's `Outbox.restorePlaces` both read the queue and the account's
   `sent-places.json`. A download removal or an accepted finished server row forgets the book's
   cut. A queued finish covers older hearing even when the watch clock went back. The marker

@@ -267,6 +267,27 @@ final class ResumeTests: XCTestCase {
     XCTAssertEqual(p, ResumePlan(position: 0, file: nil, filePos: nil, start: .restart, unfinish: true, tookRow: true))
   }
 
+  // The phone's "compares a previously acknowledged finish with the local restart on the same
+  // clock": a finish stamped 10 s after the place here by a server 15 s ahead came before it.
+  func testAFinishIsComparedWithThePlaceHereOnTheWatchsClock() {
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    var r = row(position: 1800, finished: true, version: 5, device: "watch", updatedAt: "2026-10-25T08:00:10.000Z")
+    r.finishedAt = "2026-10-25T08:00:10Z"
+    let ahead = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800, clockSkewMs: 15_000)
+    XCTAssertEqual(ahead, ResumePlan(position: 300, file: nil, filePos: nil, start: .jump, unfinish: true, tookRow: false))
+    let level = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800)
+    XCTAssertEqual(level, ResumePlan(position: 0, file: nil, filePos: nil, start: .restart, unfinish: true, tookRow: true))
+  }
+
+  func testAnotherDevicesRowIsComparedWithThePlaceHereOnTheWatchsClock() {
+    let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
+    let r = row(version: 6, updatedAt: "2026-10-25T08:00:10.000Z")
+    let ahead = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800, clockSkewMs: 15_000)
+    XCTAssertEqual(ahead.position, 300)
+    XCTAssertFalse(ahead.tookRow)
+    XCTAssertTrue(Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 5, total: 1800).tookRow)
+  }
+
   func testAFinishAtAVersionNotSeenHereStartsTheBookAgain() {
     let local = LocalPlace(position: 300, file: nil, filePos: nil, at: at)
     var r = row(position: 1800, finished: true, version: 6, updatedAt: "2026-10-25T07:00:00.000Z")
