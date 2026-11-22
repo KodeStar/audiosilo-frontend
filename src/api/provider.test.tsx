@@ -16,6 +16,7 @@ import {
   ApiProvider,
   buildClients,
   ConnectionScope,
+  forgetUnobservedServerFailures,
   queryClient,
   retryQuery,
   useApi,
@@ -613,6 +614,38 @@ describe('a recovered sign-in proxy', () => {
       }
     },
   );
+});
+
+// fe#270: a failed /server is not asked again by every screen mounting, so the app coming
+// back to the foreground drops one nobody watches, or the next screen would never ask.
+describe('a failed /server nobody watches, on the foreground refresh', () => {
+  it('is asked again by the next screen that needs it', async () => {
+    const cid = 'srv.90';
+    useSession.setState({
+      connections: [{ id: cid, serverId: 'srv', serverUrl: 'https://h', token: 't' }],
+    } as never);
+    const serverInfo = jest
+      .fn()
+      .mockRejectedValueOnce(new ApiError(502, 'bad gateway'))
+      .mockResolvedValue({ server_id: 'srv', capabilities: {} });
+    const spec = { ...serverInfoQuery(cid, { serverInfo } as never), retry: false };
+    let stop: (() => void) | undefined;
+    try {
+      await expect(queryClient.fetchQuery(spec)).rejects.toMatchObject({ status: 502 });
+      // A screen mounting now does not ask (fe#270's first item).
+      const quiet = new QueryObserver(queryClient, spec).subscribe(() => {});
+      quiet();
+      expect(serverInfo).toHaveBeenCalledTimes(1);
+      forgetUnobservedServerFailures();
+      await queryClient.invalidateQueries();
+      stop = new QueryObserver(queryClient, spec).subscribe(() => {});
+      await waitFor(() => expect(queryClient.getQueryData(spec.queryKey)).toBeDefined());
+      expect(serverInfo).toHaveBeenCalledTimes(2);
+    } finally {
+      stop?.();
+      queryClient.removeQueries({ queryKey: spec.queryKey });
+    }
+  });
 });
 
 // frontend#124: a refused token stays refused, so a 401 is never asked again.

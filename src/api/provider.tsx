@@ -222,6 +222,13 @@ function forgetUnobservedServerFailure(cid: string) {
   }
 }
 
+/** Every signed-in connection's failed, unobserved /server, before the app's foreground
+ * refresh: invalidating one with no data does not make its next observer ask, as
+ * `serverInfoQuery` keeps a failed read from being asked again on every mount. */
+export function forgetUnobservedServerFailures(): void {
+  for (const c of useSession.getState().connections) forgetUnobservedServerFailure(c.id);
+}
+
 // An authenticated answer can prove the proxy lets this device through again even
 // when its headers and the device's network stayed the same.
 onProxyRefusalsOver((cid) => {
