@@ -505,7 +505,9 @@ export function filePlaceIn(
   const index = trackIndexById(queue, trackIdOf(libraryId, file));
   if (index < 0) return null;
   const length = (queue.offsets[index + 1] ?? queue.total) - queue.offsets[index];
-  return { index, positionInTrack: length > 0 ? Math.min(pos, length) : pos };
+  // A chapter tap carries its raw in-file start, which bad metadata can put below 0.
+  const at = Math.max(0, pos);
+  return { index, positionInTrack: length > 0 ? Math.min(at, length) : at };
 }
 
 /** Prefer the named file in the actual queue. If it is absent, the whole-book seconds

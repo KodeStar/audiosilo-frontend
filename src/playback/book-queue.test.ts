@@ -10,6 +10,7 @@ import {
   chapterEndPosition,
   endsShortOfBook,
   fileDurationOf,
+  filePlaceIn,
   type FileSpec,
   locate,
   nextChapterEnd,
@@ -501,6 +502,21 @@ describe('timeline math', () => {
     expect(rowAt(rows, v.position, { path, pos: v.position - q.offsets[v.playingFile] })).toBe(
       v.playingChapter,
     );
+  });
+
+  it('filePlaceIn never puts a place before its file starts', () => {
+    // A chapter tap carries its raw in-file start, which bad metadata can put below 0.
+    const queue = {
+      tracks: [
+        { id: '2:a', duration: 60 },
+        { id: '2:b', duration: 40 },
+      ],
+      offsets: [0, 60],
+      total: 100,
+    } as Parameters<typeof filePlaceIn>[0];
+    expect(filePlaceIn(queue, 2, 'b', -2)).toEqual({ index: 1, positionInTrack: 0 });
+    expect(filePlaceIn(queue, 2, 'b', 90)).toEqual({ index: 1, positionInTrack: 40 });
+    expect(filePlaceIn(queue, 2, 'missing', 5)).toBeNull();
   });
 
   it('locate / toBookPosition round-trips across tracks', () => {
