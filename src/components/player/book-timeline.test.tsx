@@ -26,7 +26,15 @@ type MockPlayer = {
     queue: {
       total: number;
       offsets: number[];
-      chapters: { index: number; title: string; book_offset: number }[];
+      chapters: {
+        index: number;
+        title: string;
+        book_offset: number;
+        file_index?: number;
+        file_path?: string;
+        start?: number;
+        end?: number;
+      }[];
     };
   } | null;
   bookPosition: number;
@@ -296,6 +304,44 @@ describe('PlayerBookTimeline', () => {
     expect(screen.getByRole('adjustable').props['aria-valuetext']).toMatch(/^Bridge Four, /);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
+  });
+
+  it('names the chapter a zero-length marker tied at its start yields to, on hover', async () => {
+    Platform.OS = 'web';
+    // Intro, then two markers of no length at 30 s and the chapter starting with them.
+    const marks: [string, number, number][] = [
+      ['Intro', 0, 30],
+      ['Marker', 30, 30],
+      ['Marker', 30, 30],
+      ['Chapter One', 30, 120],
+      ['Chapter Two', 120, 180],
+    ];
+    player.setState({
+      nowPlaying: {
+        queue: {
+          total: 180,
+          offsets: [0],
+          chapters: marks.map(([title, start, end], i) => ({
+            index: i,
+            title,
+            book_offset: start,
+            file_index: 0,
+            file_path: 'zero.mp3',
+            start,
+            end,
+          })),
+        },
+      },
+      bookPosition: 10,
+    });
+    await render(<PlayerBookTimeline />);
+    await layout(400);
+    const rect = { getBoundingClientRect: () => ({ left: 0, width: 400 }) };
+    await fireEvent(screen.getByRole('adjustable'), 'pointerMove', {
+      nativeEvent: { clientX: 100 },
+      currentTarget: rect,
+    });
+    expect(screen.getByText('Chapter One · 0:45')).toBeTruthy();
   });
 
   it('steps to the next chapter like the transport', async () => {

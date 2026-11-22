@@ -1,4 +1,4 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -17,6 +17,7 @@ import { formatClock } from '@/lib/format';
 import { percentHeard } from '@/lib/progress-view';
 import { quietly } from '@/lib/quietly';
 import { cn } from '@/lib/utils';
+import { chapterAt } from '@/playback/book-queue';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -129,6 +130,10 @@ export type BookTimelineProps = {
   starts: readonly number[];
   /** The current row when the caller knows its file. */
   current?: number;
+  /** The chapter (index into `starts`) holding a whole-book second, as the caller's rows and
+   * heading tell chapters sharing a start apart (`chapterAt`, `rowAt`), so the hover tip and
+   * the value text name the one they do. Without it, the first of them. */
+  chapterAtSecond?: (seconds: number) => number;
   /** The book's length, seconds. Nothing renders when it is unknown (<= 0). */
   total: number;
   /** The listener's place, whole-book seconds. */
@@ -163,6 +168,7 @@ export type BookTimelineProps = {
 export function BookTimeline({
   starts,
   current,
+  chapterAtSecond,
   total,
   position,
   titles,
@@ -183,7 +189,13 @@ export function BookTimeline({
   // The structure follows the chapters and the width only; the playhead picks the current
   // run and how much of it is heard.
   const runs = useMemo(() => timelineRuns(starts, total, width), [starts, total, width]);
-  const chapter = current ?? chapterIndexAt(starts, at);
+  // The caller's rule reads its own rows, which are the runs' chapters only while there are
+  // starts (none: the whole book is one run).
+  const indexAt = (seconds: number) =>
+    chapterAtSecond && starts.length > 0
+      ? chapterAtSecond(seconds)
+      : chapterIndexAt(starts, seconds);
+  const chapter = current ?? indexAt(at);
   const pins = useMemo(
     () => ({
       bookmarks: bookmarkPins(bookmarks ?? [], total),
@@ -195,7 +207,7 @@ export function BookTimeline({
 
   const nameAt = (seconds: number) => {
     if (starts.length === 0) return '';
-    const index = seconds === at ? chapter : chapterIndexAt(starts, seconds);
+    const index = seconds === at ? chapter : indexAt(seconds);
     return chapterLabel({ title: titles?.[index] ?? '', index }, t);
   };
   // A tap within a pin's head lands on its place.
@@ -340,12 +352,21 @@ export function PlayerBookTimeline({
     [chapters, t],
   );
   const current = usePlayer((s) => selectCurrentChapter(s)?.index);
+  // A hovered or scrubbed second names its chapter as the heading would there.
+  const chapterAtSecond = useCallback(
+    (seconds: number) => {
+      const found = chapterAt(chapters ?? [], seconds);
+      return found ? (chapters ?? []).indexOf(found) : 0;
+    },
+    [chapters],
+  );
   const position = usePlayer((s) => timelinePosition(selectBookPosition(s), total, starts));
   if (!queue || total <= 0) return null;
   return (
     <BookTimeline
       starts={starts}
       current={current}
+      chapterAtSecond={chapterAtSecond}
       total={total}
       position={position}
       titles={titles}

@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
@@ -127,6 +127,8 @@ export function BookChaptersTab({
     () => list.rows.map((r) => rowLabel(r, list.kind, t)),
     [list.rows, list.kind, t],
   );
+  // The timeline's hover names the row a place is in, as the rows mark it.
+  const rowAtSecond = useCallback((seconds: number) => rowAt(list.rows, seconds), [list.rows]);
   // Every row is behind a finished listener.
   const current = finished ? list.rows.length : currentRow;
   // The rows holding a bookmark (one in the book: never past its end).
@@ -146,6 +148,7 @@ export function BookChaptersTab({
         <WholeBook
           // A row index is a timeline run only while every row has a start on it.
           current={currentRow >= 0 && starts.length > 0 ? currentRow : undefined}
+          chapterAtSecond={rowAtSecond}
           starts={starts}
           titles={labels}
           total={total}
@@ -207,6 +210,7 @@ function rowLabel(row: ListRow, kind: ChapterList['kind'], t: TFunction): string
  */
 function WholeBook({
   current,
+  chapterAtSecond,
   starts,
   titles,
   total,
@@ -218,6 +222,7 @@ function WholeBook({
   onJump,
 }: {
   current?: number;
+  chapterAtSecond: (seconds: number) => number;
   starts: number[];
   titles: string[];
   total: number;
@@ -274,6 +279,7 @@ function WholeBook({
       <View>
         <BookTimeline
           current={current}
+          chapterAtSecond={chapterAtSecond}
           starts={starts}
           total={total}
           position={position}

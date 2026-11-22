@@ -3,9 +3,14 @@ import { render, screen } from '@testing-library/react-native';
 // The episode wording only (BRIDGE-12); the tab's rows and timeline are covered through
 // the book page's suite (book-page.test.tsx).
 
-const mockTimeline = jest.fn((_props: { current?: number; starts: number[] }) => null);
+type TimelineProps = {
+  current?: number;
+  starts: number[];
+  chapterAtSecond?: (seconds: number) => number;
+};
+const mockTimeline = jest.fn((_props: TimelineProps) => null);
 jest.mock('@/components/player/book-timeline', () => ({
-  BookTimeline: (p: { current?: number; starts: number[] }) => mockTimeline(p),
+  BookTimeline: (p: TimelineProps) => mockTimeline(p),
 }));
 jest.mock('@/playback/store', () =>
   // `require` because a jest.mock factory is hoisted above every import.
@@ -64,4 +69,30 @@ it('marks no run current when a file of unknown length leaves the timeline one r
   const rows = parts.rows.map((r, i) => ({ ...r, start: i === 0 ? 0 : NaN }));
   await render(<BookChaptersTab {...props({ list: { kind: 'parts', rows }, current: 1 })} />);
   expect(mockTimeline.mock.lastCall?.[0]).toMatchObject({ starts: [], current: undefined });
+});
+
+it("names a hovered place's row as the rows mark it, past a zero-length marker", async () => {
+  // Intro, two markers of no length at 30 s, then the chapter starting with them.
+  const marks: [string, number, number][] = [
+    ['Intro', 0, 30],
+    ['Marker', 30, 0],
+    ['Marker', 30, 0],
+    ['Chapter One', 30, 90],
+    ['Chapter Two', 120, 60],
+  ];
+  const rows = marks.map(([title, start, length], i) => ({
+    key: `c${i}`,
+    index: i,
+    title,
+    start,
+    length,
+    fileIndex: 0,
+    jump: { position: start } as never,
+  }));
+  await render(
+    <BookChaptersTab {...props({ list: { kind: 'chapters', rows }, total: 180, current: 0 })} />,
+  );
+  const timeline = mockTimeline.mock.lastCall?.[0];
+  expect(timeline?.chapterAtSecond?.(45)).toBe(3);
+  expect(timeline?.chapterAtSecond?.(10)).toBe(0);
 });
