@@ -265,7 +265,12 @@ class SynthesizeAndTimelineMathTest {
   @Serializable
   private data class Vector(val name: String, val durations: List<Double>, val markers: List<List<Int>>,
                             val position: Double, val seconds: Double, val track: Int, val chapter: Int,
-                            val playingFile: Int, val playingChapter: Int, val missingPathAt: Int? = null)
+                            val playingFile: Int, val playingChapter: Int, val missingPathAt: Int? = null,
+                            val steps: List<Step> = emptyList())
+
+  /** From `at` ([file, seconds in it]) previous and next land at [file, seconds in it], or nowhere. */
+  @Serializable
+  private data class Step(val at: List<Double>, val next: List<Double>?, val previous: List<Double>?)
 
   @Test
   fun sharedTimelineTies() {
@@ -287,7 +292,38 @@ class SynthesizeAndTimelineMathTest {
                    t.resumePlace(marker.bookOffset, marker.filePath, marker.start))
       assertEquals(v.name, v.playingChapter,
                    NowPlayingTimes.of(t.chapters, v.position, t.total, "Book", "p${v.playingFile}").chapterIndex)
+      for (step in v.steps) {
+        val at = Located(step.at[0].toInt(), step.at[1])
+        for ((dir, want) in listOf(1 to step.next, -1 to step.previous)) {
+          val landed = ChapterNav.step(t, dir, t.bookPosition(at.index, at.positionInTrack), at)?.let {
+            val place = t.resumePlace(it.position, it.file, it.filePos, prefer = at.index)
+            listOf(place.index.toDouble(), place.positionInTrack)
+          }
+          assertEquals("${v.name} $dir from ${step.at}", want, landed)
+        }
+      }
     }
+  }
+
+  @Test
+  fun chapterStepsNameTheFileAmongTiedFilesOnly() {
+    // a's length is unknown, so b shares its start; c has no chapter of its own.
+    val tied = Timeline.of(makeBook(
+      files = listOf(file("a", 0, 0.0), file("b", 1, 200.0), file("c", 2, 40.0)),
+      chapters = listOf(ch(filePath = "a"), ch(filePath = "a", start = 100.0), ch(filePath = "b"),
+                        ch(filePath = "b", start = 120.0))))
+    // A chapter begun in an earlier file restarts, in its own file.
+    assertEquals(ChapterStop(120.0, "b", 120.0), ChapterNav.step(tied, -1, 201.0, Located(2, 1.0)))
+    assertNull(ChapterNav.step(tied, 1, 201.0, Located(2, 1.0)))
+    // The book's start is the first file's, not the playing one's at the same seconds.
+    assertEquals(ChapterStop(0.0, "a", 0.0), ChapterNav.step(tied, -1, 1.0, Located(0, 1.0)))
+    // Every length known: whole-book seconds, no file named.
+    val known = Timeline.of(makeBook(files = listOf(file("a", 0, 100.0), file("b", 1, 100.0)),
+                                     chapters = listOf(ch(filePath = "a"), ch(filePath = "b"))))
+    assertEquals(ChapterStop(100.0), ChapterNav.step(known, 1, 10.0, Located(0, 10.0)))
+    assertEquals(ChapterStop(0.0), ChapterNav.step(known, -1, 101.0, Located(1, 1.0)))
+    val noChapters = Timeline.of(makeBook(files = listOf(file("a", 0, 0.0), file("b", 1, 0.0))))
+    assertNull(ChapterNav.step(noChapters, 1, 0.0, Located(0, 0.0)))
   }
 
   @Test

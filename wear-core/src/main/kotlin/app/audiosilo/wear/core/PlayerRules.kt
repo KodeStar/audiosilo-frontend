@@ -171,7 +171,37 @@ object ChapterNav {
   /** Next chapter's start: the first more than `NEXT_SLACK` ahead, null at the last one. */
   fun next(chapters: List<Chapter>, position: Double): Double? =
     chapters.firstOrNull { it.bookOffset > position + NEXT_SLACK }?.bookOffset
+
+  /**
+   * Previous (-1) or next (+1) from the playing place (`at`: the file and seconds into it), null
+   * with no chapters or past the last. By whole-book seconds (`previous`, `next`) unless files
+   * share a start (a file of unknown length: its seconds run past the next file's start, so they
+   * do not order the chapters); then in file order, as the phone's `stepInFileOrder`: next is the
+   * first chapter `NEXT_SLACK` ahead, previous restarts the current chapter (one begun in an
+   * earlier file always) and within its first 3 s goes to the one before, else the book's start.
+   */
+  fun step(t: Timeline, dir: Int, position: Double, at: Located): ChapterStop? {
+    val o = t.offsets
+    if (t.chapters.isEmpty()) return null
+    if (at.index !in o.indices || (1 until o.size).none { o[it] == o[it - 1] }) {
+      return (if (dir < 0) previous(t.chapters, position) else next(t.chapters, position))?.let { ChapterStop(it) }
+    }
+    val stops = t.chapters.filter { it.fileIndex in o.indices }.sortedWith(compareBy({ it.fileIndex }, { it.start }))
+    fun after(c: Chapter, index: Int, pos: Double) = c.fileIndex > index || (c.fileIndex == index && c.start > pos)
+    fun stop(c: Chapter) = ChapterStop(c.bookOffset, c.filePath, c.start)
+    if (dir > 0) return stops.firstOrNull { after(it, at.index, at.positionInTrack + NEXT_SLACK) }?.let(::stop)
+    val bookStart = ChapterStop(0.0, t.files[0].path, 0.0)
+    val current = stops.lastOrNull { !after(it, at.index, at.positionInTrack + AT_START) } ?: return bookStart
+    if (current.fileIndex < at.index || at.positionInTrack - current.start > RESTART_THRESHOLD) return stop(current)
+    return stops.lastOrNull { after(current, it.fileIndex, it.start + AT_START) }?.let(::stop) ?: bookStart
+  }
 }
+
+/**
+ * Where a chapter move lands: whole-book seconds and, among files sharing a start, the file and
+ * seconds into it (null: the place goes by the whole-book seconds).
+ */
+data class ChapterStop(val position: Double, val file: String? = null, val filePos: Double? = null)
 
 /** What Now Playing shows: the chapter's title and times within it (the whole book's without chapters). */
 data class NowPlayingTimes(

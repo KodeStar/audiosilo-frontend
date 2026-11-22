@@ -28,8 +28,8 @@ import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import app.audiosilo.wear.core.BookRef
-import app.audiosilo.wear.core.Chapter
 import app.audiosilo.wear.core.ChapterNav
+import app.audiosilo.wear.core.ChapterStop
 import app.audiosilo.wear.core.Halt
 import app.audiosilo.wear.core.ListeningStart
 import app.audiosilo.wear.core.LocalPlace
@@ -387,13 +387,16 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   /**
    * Move to `target` (whole-book seconds). `reason` null: a jump, or moved back when behind.
    * `acknowledge`: an offer's Jump, run between the span the move ends and its own
-   * (`SpanRecorder.move`); at once when nothing moves. `track`: the file the place is in, when the
-   * caller names one (Media3's item index), else the playing one among files sharing its start.
+   * (`SpanRecorder.move`); at once when nothing moves. `file`, `filePos`: the file the place is in
+   * and the seconds into it, when the caller names one (a chapter's). `track`: the file the place
+   * is in, when the caller names one (Media3's item index), else the playing one among files
+   * sharing its start.
    */
   fun seek(
     target: Double,
     reason: ListeningStart? = null,
-    chapter: Chapter? = null,
+    file: String? = null,
+    filePos: Double? = null,
     track: Int? = null,
     acknowledge: () -> Unit = {},
   ) {
@@ -404,8 +407,8 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
     val place =
       b.timeline.resumePlace(
         to,
-        chapter?.filePath ?: named?.first,
-        chapter?.start ?: named?.second,
+        file ?: named?.first,
+        filePos ?: named?.second,
         track ?: where()?.index,
       )
     val end = b.timeline.spanEnd(place.index, place.positionInTrack)
@@ -437,15 +440,18 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
 
   fun previousChapter() {
     val b = book ?: return
-    val to = ChapterNav.previous(b.timeline.chapters, position) ?: return skip(-Skips.BACK)
-    seek(to)
+    val to = chapterStep(b, -1) ?: return skip(-Skips.BACK)
+    seek(to.position, file = to.file, filePos = to.filePos)
   }
 
   fun nextChapter() {
     val b = book ?: return
-    val to = ChapterNav.next(b.timeline.chapters, position) ?: return
-    seek(to)
+    val to = chapterStep(b, 1) ?: return
+    seek(to.position, file = to.file, filePos = to.filePos)
   }
+
+  private fun chapterStep(b: LoadedBook, dir: Int): ChapterStop? =
+    ChapterNav.step(b.timeline, dir, position, where() ?: b.timeline.locate(position))
 
   fun setRate(r: Double) {
     val next = PlaybackSpeed.clamp(r)

@@ -142,6 +142,42 @@ enum ChapterNav {
   static func next(_ chapters: [Chapter], _ position: Double) -> Double? {
     chapters.first { $0.bookOffset > position + NEXT_SLACK }?.bookOffset
   }
+
+  /// Previous (-1) or next (+1) from the playing place (`at`: the file and seconds into it), nil
+  /// with no chapters or past the last. By whole-book seconds (`previous`, `next`) unless files
+  /// share a start (a file of unknown length: its seconds run past the next file's start, so
+  /// they do not order the chapters); then in file order, as the phone's `stepInFileOrder`: next
+  /// is the first chapter `NEXT_SLACK` ahead, previous restarts the current chapter (one begun in
+  /// an earlier file always) and within its first 3 s goes to the one before, else the book's start.
+  static func step(_ t: Timeline, _ dir: Int, position: Double,
+                   at: (index: Int, positionInTrack: Double)) -> ChapterStop? {
+    let o = t.offsets
+    guard !t.chapters.isEmpty else { return nil }
+    guard o.indices.contains(at.index), o.indices.dropFirst().contains(where: { o[$0] == o[$0 - 1] }) else {
+      return (dir < 0 ? previous(t.chapters, position) : next(t.chapters, position)).map { ChapterStop(position: $0) }
+    }
+    let stops = t.chapters.filter { o.indices.contains($0.fileIndex) }
+      .sorted { ($0.fileIndex, $0.start) < ($1.fileIndex, $1.start) }
+    func after(_ c: Chapter, _ index: Int, _ pos: Double) -> Bool {
+      c.fileIndex > index || (c.fileIndex == index && c.start > pos)
+    }
+    func stop(_ c: Chapter) -> ChapterStop { ChapterStop(position: c.bookOffset, file: c.filePath, filePos: c.start) }
+    if dir > 0 { return stops.first { after($0, at.index, at.positionInTrack + NEXT_SLACK) }.map(stop) }
+    let bookStart = ChapterStop(position: 0, file: t.files[0].path, filePos: 0)
+    guard let current = stops.last(where: { !after($0, at.index, at.positionInTrack + AT_START) }) else {
+      return bookStart
+    }
+    if current.fileIndex < at.index || at.positionInTrack - current.start > RESTART_THRESHOLD { return stop(current) }
+    return stops.last { after(current, $0.fileIndex, $0.start + AT_START) }.map(stop) ?? bookStart
+  }
+}
+
+/// Where a chapter move lands: whole-book seconds and, among files sharing a start, the file and
+/// seconds into it (nil: the place goes by the whole-book seconds).
+struct ChapterStop: Equatable {
+  var position: Double
+  var file: String?
+  var filePos: Double?
 }
 
 /// What Now Playing shows: the chapter's title and times within it (the whole book's without chapters).

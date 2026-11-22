@@ -440,13 +440,13 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   /// Move to `target` (whole-book seconds). `reason` nil: a jump, or moved back when behind.
-  func seek(to target: Double, reason: ListeningStart? = nil, chapter: Chapter? = nil) {
+  /// `file`, `filePos`: the file the place is in and the seconds into it, when the caller names one.
+  func seek(to target: Double, reason: ListeningStart? = nil, file: String? = nil, filePos: Double? = nil) {
     guard let b = book else { return }
     let to = Skips.target(position: target, by: 0, total: b.timeline.total)
     // Among files sharing the place's start (lengths unknown) a skip or scrub stays in the
     // playing one; a chapter names its own.
-    let place = b.timeline.resumePlace(position: to, file: chapter?.filePath, filePos: chapter?.start,
-                                       prefer: where_()?.index)
+    let place = b.timeline.resumePlace(position: to, file: file, filePos: filePos, prefer: where_()?.index)
     let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     let from = spanEnd()
@@ -480,13 +480,18 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   }
 
   func previousChapter() {
-    guard let b = book, let to = ChapterNav.previous(b.timeline.chapters, position) else { return skip(-Skips.BACK) }
-    seek(to: to)
+    guard let to = chapterStep(-1) else { return skip(-Skips.BACK) }
+    seek(to: to.position, file: to.file, filePos: to.filePos)
   }
 
   func nextChapter() {
-    guard let b = book, let to = ChapterNav.next(b.timeline.chapters, position) else { return }
-    seek(to: to)
+    guard let to = chapterStep(1) else { return }
+    seek(to: to.position, file: to.file, filePos: to.filePos)
+  }
+
+  private func chapterStep(_ dir: Int) -> ChapterStop? {
+    guard let b = book else { return nil }
+    return ChapterNav.step(b.timeline, dir, position: position, at: where_() ?? b.timeline.locate(position))
   }
 
   func setRate(_ r: Double) {

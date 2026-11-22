@@ -190,6 +190,12 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
       let missingPathAt: Int?
       let position, seconds: Double
       let track, chapter, playingFile, playingChapter: Int
+      let steps: [Step]?
+    }
+    /// From `at` ([file, seconds in it]) previous and next land at [file, seconds in it], or nowhere.
+    struct Step: Decodable {
+      let at: [Double]
+      let next, previous: [Double]?
     }
     let url = try XCTUnwrap(Bundle.module.url(forResource: "timeline-ties", withExtension: "json"))
     for v in try JSONDecoder().decode([Vector].self, from: Data(contentsOf: url)) {
@@ -212,6 +218,17 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
       XCTAssertEqual(NowPlayingTimes.of(chapters: t.chapters, position: v.position, total: t.total,
                                         bookTitle: "Book", file: "p\(v.playingFile)").chapterIndex,
                      v.playingChapter, v.name)
+      for step in v.steps ?? [] {
+        let at = (index: Int(step.at[0]), positionInTrack: step.at[1])
+        for (dir, want) in [(1, step.next), (-1, step.previous)] {
+          let landed = ChapterNav.step(t, dir, position: t.bookPosition(index: at.index, positionInTrack: at.positionInTrack),
+                                       at: at).map { stop -> [Double] in
+            let place = t.resumePlace(position: stop.position, file: stop.file, filePos: stop.filePos, prefer: at.index)
+            return [Double(place.index), place.positionInTrack]
+          }
+          XCTAssertEqual(landed, want, "\(v.name) \(dir) from \(step.at)")
+        }
+      }
     }
   }
 
@@ -233,6 +250,27 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
     XCTAssertTrue(t.locate(80, prefer: 0) == (1, 20))
     XCTAssertTrue(t.resumePlace(position: 80, file: nil, filePos: nil, prefer: 2) == (2, 20))
     XCTAssertTrue(t.resumePlace(position: 80, file: "b", filePos: 5, prefer: 2) == (1, 5))
+  }
+
+  func testChapterStepsNameTheFileAmongTiedFilesOnly() {
+    // a's length is unknown, so b shares its start; c has no chapter of its own.
+    let tied = Timeline(book: makeBook(
+      files: [file("a", seq: 0, duration: 0), file("b", seq: 1, duration: 200), file("c", seq: 2, duration: 40)],
+      chapters: [ch(filePath: "a"), ch(filePath: "a", start: 100), ch(filePath: "b"), ch(filePath: "b", start: 120)]))
+    // A chapter begun in an earlier file restarts, in its own file.
+    XCTAssertEqual(ChapterNav.step(tied, -1, position: 201, at: (2, 1)),
+                   ChapterStop(position: 120, file: "b", filePos: 120))
+    XCTAssertNil(ChapterNav.step(tied, 1, position: 201, at: (2, 1)))
+    // The book's start is the first file's, not the playing one's at the same seconds.
+    XCTAssertEqual(ChapterNav.step(tied, -1, position: 1, at: (0, 1)), ChapterStop(position: 0, file: "a", filePos: 0))
+    // Every length known: whole-book seconds, no file named.
+    let known = Timeline(book: makeBook(files: [file("a", seq: 0, duration: 100), file("b", seq: 1, duration: 100)],
+                                        chapters: [ch(filePath: "a"), ch(filePath: "b")]))
+    XCTAssertEqual(ChapterNav.step(known, 1, position: 10, at: (0, 10)), ChapterStop(position: 100))
+    XCTAssertEqual(ChapterNav.step(known, -1, position: 101, at: (1, 1)), ChapterStop(position: 0))
+    XCTAssertNil(ChapterNav.step(Timeline(book: makeBook(files: [file("a", seq: 0, duration: 0),
+                                                                file("b", seq: 1, duration: 0)])),
+                                 1, position: 0, at: (0, 0)))
   }
 
   func testTheChapterIndexClampsBelowTheFirst() {

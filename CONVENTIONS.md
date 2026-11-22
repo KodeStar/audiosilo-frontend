@@ -2536,7 +2536,10 @@ media GETs only.
   there). A tap, a file-backed resume and a playing file use their own file and seconds;
   a seek with no file named stays in the playing file among files sharing its start (the
   watch ports too, `locate(position, prefer:)`). Unknown lengths can put another file's
-  markers between equal starts. The phone and the watch Core tests read the same cases in
+  markers between equal starts. So in a book whose files share a start, previous and next
+  step in file order from the playing file's place (`stepInFileOrder` in `transport.ts`,
+  `ChapterNav.step` on both watches) and seek to a file place; with every length known they
+  keep whole-book seconds. The phone and the watch Core tests read the same cases in
   `watch-core/Tests/WatchCoreTests/Fixtures/timeline-ties.json` (fe#348).
   The save floor stays in whole-book seconds. When playback advances to a later file with
   the same offset, the floor can move back to that file's start. A same-book queue swap

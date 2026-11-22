@@ -101,7 +101,7 @@ struct ChaptersView: View {
         let current = engine.times?.chapterIndex
         ForEach(Array(book.timeline.chapters.enumerated()), id: \.offset) { i, ch in
           Button {
-            engine.seek(to: ch.bookOffset, chapter: ch)
+            engine.seek(to: ch.bookOffset, file: ch.filePath, filePos: ch.start)
             dismiss()
           } label: {
             HStack {

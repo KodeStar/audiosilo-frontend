@@ -18,8 +18,10 @@ import {
   shortOfFileEnd,
   synthesizeChapters,
   toBookPosition,
+  trackIdOf,
 } from '@/playback/book-queue';
 import { chapterList, rowAt } from '@/components/book/book-page-model';
+import { stepSegment } from '@/components/player/transport';
 import vectors from '../../watch-core/Tests/WatchCoreTests/Fixtures/timeline-ties.json';
 import { toNativeTrack } from '@/playback/types';
 
@@ -502,6 +504,37 @@ describe('timeline math', () => {
     expect(rowAt(rows, v.position, { path, pos: v.position - q.offsets[v.playingFile] })).toBe(
       v.playingChapter,
     );
+    // Previous and next from a place in a file, as [file, seconds in it] where they land.
+    for (const { at, next, previous } of v.steps ?? []) {
+      for (const [dir, want] of [
+        [1, next],
+        [-1, previous],
+      ] as const) {
+        const [track, position] = at;
+        let landed: number[] | null = null;
+        stepSegment(
+          {
+            nowPlaying: { queue: q },
+            snapshot: { trackIndex: track, position },
+            seekBook: (bookPosition, file) => {
+              const to = file
+                ? {
+                    index: q.tracks.findIndex((t) => t.id === trackIdOf(2, file.path)),
+                    positionInTrack: file.pos,
+                  }
+                : locate(q.offsets, bookPosition, track);
+              landed = [to.index, to.positionInTrack];
+            },
+            seekInTrack: () => undefined,
+            goToTrack: (index) => {
+              landed = [index, 0];
+            },
+          },
+          dir,
+        );
+        expect([v.name, dir, at, landed]).toEqual([v.name, dir, at, want]);
+      }
+    }
   });
 
   it('filePlaceIn never puts a place before its file starts', () => {

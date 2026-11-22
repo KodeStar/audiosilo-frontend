@@ -206,6 +206,38 @@ describe('stepSegment', () => {
     expect(s.seekBook).not.toHaveBeenCalled();
   });
 
+  it('steps back in file order among files sharing a start', () => {
+    const startOfB = make(tied, 1, 1); // b's first chapter: back to a's last, not b@0 again
+    stepSegment(startOfB, -1);
+    expect(startOfB.seekBook).toHaveBeenCalledWith(100, { path: 'a', pos: 100 });
+    const inB = make(tied, 1, 110); // b@0's chapter, not a@100's seconds within b
+    stepSegment(inB, -1);
+    expect(inB.seekBook).toHaveBeenCalledWith(0, { path: 'b', pos: 0 });
+    const startOfC = make(tied, 2, 1); // back to b's last chapter, not a@100 (book 61)
+    stepSegment(startOfC, -1);
+    expect(startOfC.seekBook).toHaveBeenCalledWith(120, { path: 'b', pos: 120 });
+    const startOfA = make(tied, 0, 2); // the book's start is the first file's, not b's
+    stepSegment(startOfA, -1);
+    expect(startOfA.goToTrack).toHaveBeenCalledWith(0);
+    expect(startOfA.seekBook).not.toHaveBeenCalled();
+  });
+
+  it('restarts a chapter begun in an earlier tied file', () => {
+    const s = make({ ...tied, chapters: tied.chapters.slice(0, 4) }, 2, 1); // c has no chapter
+    stepSegment(s, -1);
+    expect(s.seekBook).toHaveBeenCalledWith(120, { path: 'b', pos: 120 });
+  });
+
+  it('steps back per file among files sharing a start when the book has no chapters', () => {
+    const shared = { total: 400, offsets: [0, 0, 60], chapters: [] };
+    const restart = make(shared, 1, 10);
+    stepSegment(restart, -1);
+    expect(restart.goToTrack).toHaveBeenCalledWith(1);
+    const back = make(shared, 1, 2);
+    stepSegment(back, -1);
+    expect(back.goToTrack).toHaveBeenCalledWith(0);
+  });
+
   it('steps per file without a timeline; previous restarts the file after 3 s', () => {
     const perFile = { total: 0, chapters: [], offsets: [] };
     const next = make(perFile, 2, 1);
