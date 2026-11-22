@@ -181,17 +181,6 @@ extension LocalPlace {
                  speed: row.playbackSpeed)
     }
   }
-
-  /// Each book's last heard cut in outbox order, including a deliberate move while paused.
-  static func lastHeard(in events: [ListeningEvent]) -> [String: LocalPlace] {
-    var places: [String: LocalPlace] = [:]
-    for event in events {
-      guard case .listen(let cut) = event, cut.heardPlace, let at = event.time else { continue }
-      places[event.ref.key] = LocalPlace(position: cut.toPos, file: cut.toFile, filePos: cut.toFilePos,
-                                         at: at, speed: cut.playbackSpeed ?? 1)
-    }
-    return places
-  }
 }
 
 extension SpanEvent {

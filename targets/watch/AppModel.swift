@@ -402,9 +402,10 @@ final class AppModel: ObservableObject {
                            total: timeline.total, waiting: outbox.events.contains { $0.ref == record.ref },
                            clockSkewMs: skew)
     if plan.tookRow, let row {
-      // This watch's own cut, which the place here missed, becomes its place (as on Wear OS): a play
-      // that never saves one must not leave the stale place for an offline relaunch to resume.
-      if row.deviceId == me, !row.finished, let sent = LocalPlace.fromRow(row, clockSkewMs: skew) {
+      if row.finished {
+        outbox.forgetPlace(record.ref)
+      } else if row.deviceId == me, let sent = LocalPlace.fromRow(row, clockSkewMs: skew) {
+        // A play that never saves another place still leaves this watch's own cut for an offline relaunch.
         places.set(record.ref, sent)
       }
       acks.ackResume(row)

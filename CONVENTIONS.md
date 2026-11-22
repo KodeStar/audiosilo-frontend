@@ -3956,8 +3956,10 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   is taken when its position differs, its version is at least the acknowledged version, and its
   update time, corrected for server clock skew, is later than the local place; taken, it becomes
   the watch's place (`LocalPlace.fromRow`), so a play that saves none still leaves it. The outbox keeps
-  each book's last heard cut in `sync-state.json` as it queues spans, before either uploader sends
-  them. On relaunch it recovers the signed-in account's cuts and the last heard cut per book in
+  each book's last heard cut in `sent-places.json`, written atomically as it queues spans, before
+  either uploader sends them. Removing a download or finishing a book drops its cut. While older
+  listening still waits, a marker keeps it from restoring that cut. Signing out removes the file.
+  On relaunch the outbox recovers the signed-in account's cuts and the last heard cut per book in
   queue order. A newer local place still wins. Another device's place is
   offered (Jump / Stay) under `offerOf` and the throttles, only from a live answer, also for a
   loaded book when the app comes to the foreground with it not playing and when it plays again
