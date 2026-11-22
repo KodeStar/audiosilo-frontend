@@ -317,7 +317,11 @@ function reportedOtherBook(svc: PlaybackService): OtherQueue | null {
   const own = selectBookKey(state);
   if (own === null) return null;
   if (!named) {
-    return (namedQueue === own || pausedAsk?.np === state.nowPlaying || unnamedCheck !== null) &&
+    // An outside play of the paused book is held only while the car sync can identify the
+    // queue: with none listening (a binary without the car functions) nothing would ever
+    // release the hold, and the book would stand paused while the engine plays it.
+    const asked = pausedAsk?.np === state.nowPlaying && otherBookListener !== null;
+    return (namedQueue === own || asked || unnamedCheck !== null) &&
       Platform.OS === 'android' &&
       !state.loadingBook &&
       !svc.isCasting?.()

@@ -721,8 +721,12 @@ describe('with listening_sync', () => {
       duration: 1400,
     });
 
+    /** The car sync's listener, as a binary with the car functions always has one. */
+    let offCarSync = () => {};
+
     beforeEach(() => {
       Platform.OS = 'android';
+      offCarSync = onOtherBookReported(() => {});
       const entry = downloadedEntry();
       const third = { rel_path: `${folder}/3.mp3`, seq: 2, duration: 300, format: 'mp3', size: 1 };
       entry.manifest = {
@@ -734,6 +738,7 @@ describe('with listening_sync', () => {
       useDownloads.setState({ entries: { [`c1:2:${folder}`]: entry } });
     });
     afterEach(() => {
+      offCarSync();
       Platform.OS = os;
     });
 
@@ -819,6 +824,21 @@ describe('with listening_sync', () => {
       expect(mockAppended).toContainEqual(
         expect.objectContaining({ path: own.path, from_pos: 42, to_pos: 42 }),
       );
+    });
+
+    it('takes an unnamed outside play of the paused book while no car sync listens', async () => {
+      offCarSync();
+      await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, 188.003);
+      engineBook = null;
+      pushSnapshot(phoneTick('playing', 188.003));
+      pushSnapshot(phoneTick('paused', 188.003));
+      await settle();
+      // A headset play on a binary without the car functions: nothing could identify it.
+      playAsked();
+      pushSnapshot(phoneTick('playing', 189));
+      await settle();
+      expect(pendingBookConfirmation()).toBeNull();
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 189 });
     });
 
     it('counts an unnamed seek once the engine confirms the paused book owns it', async () => {

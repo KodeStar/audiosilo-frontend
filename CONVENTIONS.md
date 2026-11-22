@@ -2161,6 +2161,7 @@ media GETs only.
   replaces while that load holds the store), telling the car sync instead (`onOtherBookReported`, which adopts it on
   Android). On Android, a report that loses the queue's book name can be the first event
   of a car start. The store holds it while the car sync identifies the queue (Car below).
+  Any other report that names none (iOS, the web, a Cast receiver) is taken as before.
   **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
   Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
@@ -3370,8 +3371,11 @@ media GETs only.
   store does not follow. Its place is kept (`pausedAsk`) until a playing report names the
   store's book, the car sync confirms it, or the store takes the engine for its own play,
   load or adoption. On Android, losing the name from the store's queue, or receiving an
-  unnamed report during that outside play, holds the car's file, place and moves from the
-  first report. The car sync also checks a file change or remote seek on an unnamed queue.
+  unnamed report during that outside play while the car sync listens, holds the car's file,
+  place and moves from the first report. The car sync also checks a file change, a play
+  started outside the app or a remote seek on an unnamed queue. With no car sync listening
+  (a binary without the car functions) nothing could identify the queue, and the report is
+  taken as before.
   The previous book's listening ends at its own place. When the engine identifies the
   store's book, the pending check takes the file and position from that same read. An
   unnamed seek can count once a read begun after it confirms the book. A named seek on
