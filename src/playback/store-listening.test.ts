@@ -1232,6 +1232,22 @@ describe('with listening_sync', () => {
     expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 40 });
   });
 
+  it('a switch to another book while a seek is still landing saves its target', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 10));
+    (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+    void usePlayer.getState().seekBook(40);
+    await settle();
+    mockWriteMirror.mockClear();
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    expect(mockWriteMirror).toHaveBeenCalledWith(
+      expect.objectContaining({ path: folder, position: 40 }),
+    );
+  });
+
   it('a paused seek still waiting after ten seconds keeps its target across stale reports', async () => {
     await start();
     pushSnapshot(snap('paused', 0, 30));

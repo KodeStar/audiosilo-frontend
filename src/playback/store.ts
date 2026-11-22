@@ -1005,7 +1005,9 @@ type PlayerState = {
  * position/slip guards (they exist to protect an in-progress place, not a deliberate
  * completion) and records the whole-book duration so the book reads as 100% done.
  * `local`: only this device's own record of the place, with no request (`placeLoop`).
- * `leaving`: the book unloads after this save (a stop, a Mark as finished).
+ * `leaving`: the last save before the book unloads (a stop, a Mark as finished, a switch to
+ * another book) or the app is suspended (a Cast checkpoint): a seek still landing saves its
+ * target.
  * Resolves the whole-book place saved (this device's record of it, and its server's save
  * when one goes), else undefined: none saved, or the server held it back or refused it. */
 async function persist(opts?: {
@@ -4207,9 +4209,10 @@ async function createService(): Promise<PlaybackService> {
     // And so is a move of another book the engine holds (`heldForAnother`).
     if (loadingBook || heldForAnother() || (np && heldBySwap(np, trackIndex))) return;
     // As iOS suspends, save the receiver's snapshot without choosing a place or
-    // interrupting a seek. A faulted engine or a held run into a later file has no place.
+    // interrupting a seek (a seek still landing saves its target: no save may come after
+    // this one). A faulted engine or a held run into a later file has no place.
     if (checkpoint) {
-      if (!reportsUnheard() && !askedPlace?.held) void persist();
+      if (!reportsUnheard() && !askedPlace?.held) void persist({ leaving: true });
       return;
     }
     // A Cast status can tell the timed-out seek as a remote move before publishing its
@@ -4369,8 +4372,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // save loop (up to a minute unsent, 15 s unsaved here), and once this book is
       // `nowPlaying` nothing saves it again. Here, not in `switchBook`: the engine still
       // holds the previous book (an adoption's engine already plays another, so its snapshot
-      // is not that book's).
-      void persist();
+      // is not that book's). Its last save: a seek still landing saves its target, as a stop
+      // does (`switchBook` drops the seek).
+      void persist({ leaving: true });
       const request = { connectionId, libraryId, book, chapterData };
       switchBook(request);
       // Called off (a car play its native side gave up on) with another start made since
