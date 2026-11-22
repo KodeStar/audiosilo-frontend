@@ -166,7 +166,15 @@ describe('serverLine', () => {
   it('says the default server needs signing in again before anything else', () => {
     const flagged = { ...a, needsReconnect: 'auth' as const };
     expect(serverLine([flagged, b], 'a', { a: false })).toEqual({ kind: 'reconnect' });
+    expect(serverLine([flagged, b], 'a', {}, false)).toEqual({ kind: 'reconnect' });
     expect(serverLine([flagged, b], 'b', {}).kind).toBe('server');
+  });
+
+  it('uses the device signal before each server has been checked', () => {
+    expect(serverLine([a, b], 'a', { b: false }, false)).toEqual({
+      kind: 'offline',
+      name: 'Hearthside',
+    });
   });
 
   it('is empty with no connection', () => {

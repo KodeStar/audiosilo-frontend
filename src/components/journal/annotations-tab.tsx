@@ -110,6 +110,7 @@ export function AnnotationsTab({
     );
   }, [merged.rows, label, deferred]);
   const status = overallStatus(sources);
+  const retryable = sources.filter((s) => s.status === 'error' && !s.refusal);
   const unread = unreadSources(sources, useDeviceOnline());
   const filtered = merged.rows.length > 0 && rows.length === 0;
   const empty =
@@ -121,7 +122,7 @@ export function AnnotationsTab({
         hint={t(`journal.${kind}.unsupported.hint`)}
         action={{ label: t('journal.openLibrary'), onPress: () => press('(library)') }}
       />
-    ) : unread === 'offline' ? (
+    ) : status === 'error' && retryable.length === 0 ? undefined : unread === 'offline' ? (
       // Before the skeleton: a list held for the network stays loading (`unreadSources`).
       <OfflineState variant="card" hint={t('common.offlineList')} />
     ) : status === 'loading' ? (
@@ -131,7 +132,7 @@ export function AnnotationsTab({
         variant="card"
         icon="circle-exclamation"
         title={t(`journal.${kind}.error`)}
-        action={{ label: t('common.retry'), onPress: () => sources.forEach((s) => s.refetch()) }}
+        action={{ label: t('common.retry'), onPress: () => retryable.forEach((s) => s.refetch()) }}
       />
     ) : filtered ? (
       <EmptyState variant="card" icon="search" title={t(`journal.${kind}.noMatch`)} />

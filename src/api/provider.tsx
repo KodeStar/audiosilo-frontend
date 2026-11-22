@@ -8,12 +8,7 @@ import {
 import { createContext, useContext, useEffect, useMemo, useRef, type ReactNode } from 'react';
 import { Platform } from 'react-native';
 
-import {
-  connectionIdFromKey,
-  isServerInfoKey,
-  serverInfoKey,
-  serverResetCid,
-} from '@/lib/auth-failure';
+import { connectionIdFromKey, isServerInfoKey, serverInfoKey } from '@/lib/auth-failure';
 import {
   connectionSetFor,
   type ProxyHeaders,
@@ -34,9 +29,14 @@ import {
 } from '@/stores/session';
 
 import { pickedUrl, useAddressRoute } from './address-route';
-import { type ApiClient, isNotInLibraryError, isSignedOutError } from './client';
+import { type ApiClient, isNotInLibraryError, isProxyRefusal, isSignedOutError } from './client';
 import { connectionClient, readKnownCapabilitiesFrom } from './connection-clients';
-import { moveProxyRefusal, noteNewToken, noteProxyAnswer } from './proxy-refusal';
+import {
+  moveProxyRefusal,
+  noteNewToken,
+  noteProxyAnswer,
+  onProxyRefusalsOver,
+} from './proxy-refusal';
 import {
   anyOffline,
   noteFailure,
@@ -53,24 +53,15 @@ import type { ServerInfo } from './types';
 // Dead-token detection (a 401 on an authenticated request ⇒ re-pair) rides on the
 // ApiClient itself: each per-connection client is built with an `onAuthError` callback
 // that flags ITS connection, so EVERY request path - queries, mutations, and the
-// framework-free progress-sync save loop - inherits detection at one choke point (see
-// `client.ts` and `connection-clients.resolveClient`). The query cache keeps only the two
-// jobs a per-call callback can't do: CLEARING a flag when an authenticated query succeeds,
-// and detecting a SERVER RESET from a public `/server` response (a differing `server_id`).
+// framework-free progress-sync save loop - inherits detection at one choke point. A
+// connection client also verifies the address and identity of its /server answers.
 
 /** A successful AUTHENTICATED query for a connection proves its token is alive - clear any
- * flag. The public `/server` query is skipped: it carries no auth, so its success proves
- * nothing about the token (and we use it to DETECT a server reset, below). */
-function noteQuerySuccess(data: unknown, key: readonly unknown[]) {
+ * flag. The public `/server` query is skipped because its success proves nothing about the token. */
+function noteQuerySuccess(key: readonly unknown[]) {
   noteQueryReached(key);
-  if (isServerInfoKey(key)) {
-    // Public /server success proves nothing about the token - never clears the flag;
-    // it only DETECTS a server reset (a differing server_id ⇒ re-pair required).
-    const { connections, markNeedsReconnect } = useSession.getState();
-    const cid = serverResetCid(key, data, connections);
-    if (cid) markNeedsReconnect(cid, 'server-reset');
-    return;
-  }
+  // The connection client already checked this public answer's address and identity.
+  if (isServerInfoKey(key)) return;
   // Hot path: fires on EVERY successful fetch, so bail before allocating when nothing
   // is flagged (the overwhelmingly common case) - clearNeedsReconnect would just no-op.
   const { connections, clearNeedsReconnect } = useSession.getState();
@@ -144,11 +135,11 @@ export const queryClient = new QueryClient({
   queryCache: new QueryCache({
     // Dead-token flagging lives on the ApiClient callback (one choke point for every
     // request path). The cache keeps what a per-call callback can't do: clearing a flag,
-    // detecting a server reset, and telling reachability what a query learnt.
+    // and telling reachability what a query learnt.
     // A query that reads only this device (`meta.local`: the calendar link's copy) says
     // nothing about the server: it neither clears a reconnect flag nor marks it reached.
-    onSuccess: (data, query) => {
-      if (query.meta?.local !== true) noteQuerySuccess(data, query.queryKey);
+    onSuccess: (_data, query) => {
+      if (query.meta?.local !== true) noteQuerySuccess(query.queryKey);
     },
     onError: (error, query) => noteQueryError(error, query.queryKey),
   }),
@@ -216,6 +207,37 @@ useSession.subscribe((state, prev) => {
   }
 });
 
+/** A failed /server with no observers cannot refetch when connectivity or credentials
+ * change. Drop that failure so the next gate mounting gets its first read. */
+function forgetUnobservedServerFailure(cid: string) {
+  const key = serverInfoKey(cid);
+  const q = queryClient.getQueryCache().find({ queryKey: key, exact: true });
+  if (!q || q.getObserversCount() > 0 || q.state.status !== 'error') return;
+  if (q.state.data === undefined) {
+    queryClient.removeQueries({ queryKey: key, exact: true });
+  } else {
+    // Keep the last answer at its original age. The invalidation that follows allows
+    // the next observer to refresh it on the recovered connection.
+    queryClient.setQueryData(key, q.state.data, { updatedAt: q.state.dataUpdatedAt });
+  }
+}
+
+/** Every signed-in connection's failed, unobserved /server, before the app's foreground
+ * refresh: invalidating one with no data does not make its next observer ask, as
+ * `serverInfoQuery` keeps a failed read from being asked again on every mount. */
+export function forgetUnobservedServerFailures(): void {
+  for (const c of useSession.getState().connections) forgetUnobservedServerFailure(c.id);
+}
+
+// An authenticated answer can prove the proxy lets this device through again even
+// when its headers and the device's network stayed the same.
+onProxyRefusalsOver((cid) => {
+  const key = serverInfoKey(cid);
+  if (!isProxyRefusal(queryClient.getQueryState(key)?.error)) return;
+  forgetUnobservedServerFailure(cid);
+  void queryClient.invalidateQueries({ queryKey: key, exact: true });
+});
+
 /** A book's read-along map that is in (`qk.readalong`, `qk.readalongLocal`): keyed by its
  * `generated_at`, so the copy held is that very map after any reconnect, and reading up to
  * 16 MiB again would change nothing. One that failed is read again like any query. */
@@ -231,6 +253,7 @@ function isHeldReadalongMap(q: Query): boolean {
 // predicate scopes the refetch to the recovered server. A read-along map held is kept, and
 // so is the `/server` answer that brought the server back (`reconnectedBy`).
 onReconnect((connectionId) => {
+  forgetUnobservedServerFailure(connectionId);
   void queryClient.invalidateQueries({
     predicate: (q) =>
       q.queryKey.includes(connectionId) && !isHeldReadalongMap(q) && q.queryKey !== reconnectedBy,
@@ -328,6 +351,18 @@ export function readAgainOnSignIn(query: Pick<Query, 'queryKey' | 'state'>, cid:
   return query.state.status === 'error' || READ_AGAIN_ON_SIGN_IN.has(String(query.queryKey[0]));
 }
 
+async function refreshWithNewCredentials(cid: string) {
+  // Invalidation joins an initial request with no data, even with cancelRefetch.
+  // Cancel that request first so its late refusal cannot become the new sign-in's.
+  await queryClient.cancelQueries({
+    queryKey: serverInfoKey(cid),
+    exact: true,
+    predicate: (q) => q.state.data === undefined && q.state.fetchStatus !== 'idle',
+  });
+  forgetUnobservedServerFailure(cid);
+  await queryClient.invalidateQueries({ predicate: (q) => readAgainOnSignIn(q, cid) });
+}
+
 /**
  * Read a connection's answers again once it has a new token (signed in again: the
  * Household page's "Sign in again", the connect flow's reconnect) or new proxy headers
@@ -348,7 +383,7 @@ function useReadAgainOnSignIn(connections: readonly Connection[], sets: ProxySet
       if (before === undefined || (before.token === c.token && before.proxy === proxy)) {
         continue;
       }
-      void queryClient.invalidateQueries({ predicate: (q) => readAgainOnSignIn(q, c.id) });
+      void refreshWithNewCredentials(c.id);
     }
     for (const id of seen.keys()) {
       if (!connections.some((c) => c.id === id)) seen.delete(id);
@@ -359,6 +394,33 @@ function useReadAgainOnSignIn(connections: readonly Connection[], sets: ProxySet
 /** The proxy headers kept for each of a connection's addresses, as one comparable text. */
 function proxySetsText(c: Connection, sets: ProxySets): string {
   return JSON.stringify(proxyOriginChoices(c).map((o) => sets[o] ?? null));
+}
+
+/**
+ * Ask a connection's failed `/server` again once its client moved to another address (the
+ * address runner's home / away pick): that failure (another host at home, an answer from
+ * the address it left, no answer) says nothing of the new address, and nothing else asks
+ * it again (`serverInfoQuery` keeps a failure from every screen mounting, and reachability
+ * takes another host's answer as none). In the provider's effect, after every screen's
+ * own, so the read goes out through the new client.
+ */
+function useReadServerAgainOnMove(clients: ReadonlyMap<string, ApiClient>) {
+  const urls = useRef(new Map<string, string>());
+  useEffect(() => {
+    const seen = urls.current;
+    for (const [cid, client] of clients) {
+      const before = seen.get(cid);
+      seen.set(cid, client.baseUrl);
+      if (before === undefined || before === client.baseUrl) continue;
+      const key = serverInfoKey(cid);
+      if (queryClient.getQueryState(key)?.status !== 'error') continue;
+      forgetUnobservedServerFailure(cid);
+      void queryClient.invalidateQueries({ queryKey: key, exact: true });
+    }
+    for (const id of seen.keys()) {
+      if (!clients.has(id)) seen.delete(id);
+    }
+  }, [clients]);
 }
 
 export function ApiProvider({ children }: { children: ReactNode }) {
@@ -387,6 +449,7 @@ export function ApiProvider({ children }: { children: ReactNode }) {
     setReachabilityClients(registry.clients);
   }, [registry]);
   useReadAgainOnSignIn(connections, proxySets);
+  useReadServerAgainOnMove(clients);
 
   return (
     <QueryClientProvider client={queryClient}>

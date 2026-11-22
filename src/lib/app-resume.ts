@@ -3,7 +3,7 @@ import { useEffect } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 
 import { networkChecked } from '@/api/address-route';
-import { queryClient } from '@/api/provider';
+import { forgetUnobservedServerFailures, queryClient } from '@/api/provider';
 
 import { consumeTaskRemoved } from './task-removed';
 
@@ -34,9 +34,11 @@ export function handleForeground(deps: ForegroundDeps): void {
 /** The foreground refresh: every active query again, once the address runner has
  * checked the network (`networkChecked`): a device that joined another network while
  * suspended must drop a home address checked on the previous one before the token goes
- * out again. */
+ * out again. A `/server` that failed with no screen watching it is asked again by the next
+ * screen that needs it (`forgetUnobservedServerFailures`). */
 export async function refreshAfterResume(): Promise<void> {
   await networkChecked();
+  forgetUnobservedServerFailures();
   await queryClient.invalidateQueries();
 }
 

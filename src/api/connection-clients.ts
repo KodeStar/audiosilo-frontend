@@ -1,3 +1,6 @@
+import { reportedServerId, serverInfoKey, serverResetCid } from '@/lib/auth-failure';
+import { sameUrl } from '@/lib/server-address';
+import { isRecord } from '@/lib/storage-keys';
 import { resolveConnectionId } from '@/lib/connection-id';
 import { connectionSetFor, type ProxyHeaders, sameProxyHeaders } from '@/lib/proxy-headers';
 import { type Connection, sessionHydrateFailed, useSession } from '@/stores/session';
@@ -6,7 +9,7 @@ import { effectiveUrl } from './address-route';
 import { ApiClient } from './client';
 import { noteProxyAnswer, useProxyRefusals } from './proxy-refusal';
 import { noteAnswer } from './reachability';
-import type { Capabilities } from './types';
+import type { Capabilities, ServerInfo } from './types';
 
 /**
  * The seam that lets framework-free modules (progress-sync, the downloads store)
@@ -77,7 +80,10 @@ export function connectionClient(
     },
     // Under the connection's id now, as the 401 above: a client built before the identity
     // migration moved it names the old one, which no reachability reader asks for.
-    (at) => noteAnswer(connectionOf(conn.id)?.id ?? conn.id, at),
+    (at) => {
+      const now = connectionOf(conn.id);
+      if (now && sameUrl(at, effectiveUrl(now))) noteAnswer(now.id, at);
+    },
     proxy,
     // Under its id now, as above; a connection no longer signed in has nothing to say. Only
     // while the connection still sends these headers there: a request sent with a set since
@@ -97,7 +103,27 @@ export function connectionClient(
     },
     // Under its id now, as above. What the cache holds, never a request.
     () => knownCapabilities(connectionOf(conn.id)?.id ?? conn.id)?.unauthorized_mark,
+    (info) => acceptsServerAnswer(conn.id, url, info),
   );
+}
+
+/**
+ * Check the address that actually answered before taking its /server flags. The
+ * connection may have switched addresses during the request. Only its current paired
+ * or away address can prove a reset, as for a reconnect. Another host can hold its
+ * home address on the network the device just joined.
+ */
+export function acceptsServerAnswer(cid: string, address: string, info: ServerInfo): boolean {
+  const conn = connectionOf(cid);
+  if (!conn || !sameUrl(address, effectiveUrl(conn)) || !reportedServerId(info)) return false;
+  if (!serverResetCid(serverInfoKey(conn.id), info, [conn])) return isRecord(info.capabilities);
+  if (
+    sameUrl(address, conn.serverUrl) ||
+    (conn.addresses?.away && sameUrl(address, conn.addresses.away))
+  ) {
+    useSession.getState().markNeedsReconnect(conn.id, 'server-reset');
+  }
+  return false;
 }
 
 /** The proxy headers a request of the connection `connectionId` to `url` carries now

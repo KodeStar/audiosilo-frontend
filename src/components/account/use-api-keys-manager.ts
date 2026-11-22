@@ -4,6 +4,7 @@ import { ApiError, apiErrorKind } from '@/api/client';
 import { useApiKeys, useCreateApiKey, useRevokeApiKey } from '@/api/hooks';
 import type { ApiKey, ApiKeyCreated } from '@/api/types';
 import i18n from '@/i18n';
+import { useUnreadQuery } from '@/lib/offline-state';
 
 /**
  * Owns the API-keys section's UI state (name input, the one-time secret reveal, and
@@ -11,11 +12,11 @@ import i18n from '@/i18n';
  * account screen owns the reveal dialog and the revoke confirmation while the section
  * just reads/drives this state.
  *
- * `enabled` gates the list query on the server's `api_keys` capability and the
- * non-demo rule, so an older server (or a demo account) is never queried.
+ * `enabled` allows the list for this account. The query checks the server's capability.
  */
 export function useApiKeysManager(connectionId: string, enabled: boolean) {
   const list = useApiKeys(enabled, connectionId);
+  const unread = useUnreadQuery(list);
   const createMut = useCreateApiKey(connectionId);
   const revokeMut = useRevokeApiKey(connectionId);
 
@@ -74,8 +75,9 @@ export function useApiKeysManager(connectionId: string, enabled: boolean) {
 
   return {
     keys: list.data ?? [],
-    isLoading: list.isLoading,
-    isError: list.isError,
+    isLoading: list.isPending,
+    unread,
+    error: list.error,
     label,
     setLabel,
     canCreate: label.trim().length > 0 && !createMut.isPending,

@@ -1,6 +1,6 @@
 import { PortalHost } from '@rn-primitives/portal';
 import { render } from '@testing-library/react-native';
-import type { ReactElement } from 'react';
+import type { PropsWithChildren, ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { RootInsetsProvider } from '@/components/ui/overlay';
@@ -32,12 +32,14 @@ export function mountWithPortal(ui: ReactElement) {
     default: { measure: jest.Mock<ReturnType<Measure>, Parameters<Measure>> };
   }>('@react-native/jest-preset/jest/MockNativeMethods');
   nativeMethods.measure.mockImplementation((cb) => cb(0, 0, 160, 40, 16, 120));
-  return render(
-    <SafeAreaProvider initialMetrics={METRICS}>
-      <RootInsetsProvider>
-        {ui}
-        <PortalHost />
-      </RootInsetsProvider>
-    </SafeAreaProvider>,
-  );
+  return render(ui, {
+    wrapper: ({ children }: PropsWithChildren) => (
+      <SafeAreaProvider initialMetrics={METRICS}>
+        <RootInsetsProvider>
+          {children}
+          <PortalHost />
+        </RootInsetsProvider>
+      </SafeAreaProvider>
+    ),
+  });
 }

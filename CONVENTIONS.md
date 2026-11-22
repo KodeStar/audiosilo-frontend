@@ -110,7 +110,7 @@ can never log anyone out (`{ authReset, cacheReset }`):
   the cache version silently, without wiping its downloads.
 - **Startup cache (web)** (`src/api/startup-cache.ts`, `STARTUP_CACHE_KEY`): the last answers
   of the queries the first screens paint from (`isStartupQuery`: `/server`, the libraries, the
-  whole-library list's first page, Home's shelves and cards) are kept in localStorage and put
+  whole-library list's first page, Home's shelves and cards, Account's signed-in devices) are kept in localStorage and put
   back into the query cache, invalidated, before anything renders, so a reload paints at once;
   each is asked again by its first observer, also a `refetchOnMount: false` one (a tile's saved
   progress), and one whose server refuses the token (401) is cleared, not shown. Only the
@@ -308,14 +308,13 @@ reload and the download hot-swap load from, and in the engine's (`PlaybackServic
 web engine's next file and transcoded seek; native has none and keeps the items it loaded until
 its next load). `client.ts` never imports the session store (no cycle).
 **Onboarding** flows (connect / sign-in / demo) build bare clients with NO callback, so a
-wrong-password 401 on `/auth/login` can't false-flag a reconnect. The React Query
-`QueryCache` keeps only the two success-side jobs a per-request error callback can't do:
-**clearing** the flag when an authenticated query succeeds (the connection id resolved from
-the query key by membership against the live ids, `connectionIdFromKey`, since keys are
-connection-scoped but not at a fixed index), and detecting a **server reset** by
-piggybacking on the existing `useServerInfo()` fetch - a successful public `/server`
-response whose `server_id` differs from the connection's (`serverIdOf`) flags `server-reset`
-(that public success is skipped for flag-clearing, since it proves nothing about the token).
+wrong-password 401 on `/auth/login` can't false-flag a reconnect. The React Query cache clears the flag when
+an authenticated query succeeds (the connection id resolved by `connectionIdFromKey`).
+A connection client's public `/server` request first checks the address and identity
+that answered (`acceptsServerAnswer`). An answer from a previous address is ignored. A
+different `server_id` on the current paired or away address flags `server-reset`. At an
+address known only as home, another host may hold it on the new network, so the answer
+is discarded without flagging a reset. Public successes never clear a reconnect flag.
 
 The flag is a per-connection `Connection.needsReconnect?: 'auth' | 'server-reset'` in
 `src/stores/session.ts` (`markNeedsReconnect`/`clearNeedsReconnect`) - **in-memory only**
@@ -729,7 +728,9 @@ of the server. **The current device's row never offers a sign-out** (`canRevoke`
 renders an API-keys section (`src/components/account/api-keys-section.tsx` +
 `use-api-keys-manager.ts`, one-time secret via `api-key-created-modal.tsx`) for
 user-minted, non-expiring bearer tokens (dashboards, cron). It is **capability-gated**
-(server `api_keys`) and **demo-hidden**. State is connection-scoped: hooks
+(server `api_keys`) and hidden for demo and kid accounts. When the flag is unread offline,
+the section shows its offline state. Create and Revoke require a confirmed flag.
+State is connection-scoped: hooks
 (`useApiKeys`/`useCreateApiKey`/`useRevokeApiKey`) key on `qk.apiKeys(cid)`;
 `client.{createApiKey,listApiKeys,revokeApiKey}` hit `/auth/tokens`. The secret is
 returned once by `createApiKey` and shown in the copy-once modal (`ApiKeyCreated`);
@@ -2870,8 +2871,8 @@ media GETs only.
     (`cachedCapability`; an offline cold launch knows it from the kept answer seeded at launch,
     *The kept `/server` answer*, fe#211: the outbox keeps no copy of its own), else unknown,
     which records events (a 404 that a fresh `/server` confirms turns them into PUTs, and that
-    answer is kept: `keepServerAnswer`, unless it names another `server_id`, a reset server: then
-    nothing rolls back); never after a rollback this session, until a send the server takes. A
+    answer is kept: `keepServerAnswer`, only for the connection's current address and own
+    server identity); never after a rollback this session, until a send the server takes. A
     send the server took while the cached flag says off sets it on the held answer
     (`keepServerFlag`, kept too) and has the cache ask `/server` again (fe#270). False: the
     PUT save loop and `POST /history`, unchanged. On the sync path `persist` only writes the
@@ -4303,8 +4304,11 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
   its file when empty. Both watches use `Resume.plan`'s `clockSkewMs` for their own newer row
   and recover the last heard cuts with `PlaceStore.recoverCuts`: Wear's `Outbox.recoverListening`
-  from the queue and a separate fallback file (`sentPlacesFile`, `accountId`), the Apple Watch's
-  `Outbox.restorePlaces` from the queue and `sent-places.json`. Also Wear-only are `SpanRecorder.forgetAccount` and
+  and the Apple Watch's `Outbox.restorePlaces` both read the queue and the account's
+  `sent-places.json`. A download removal or an accepted finished server row forgets the book's
+  cut. A queued finish covers older hearing even when the watch clock went back. The marker
+  stays until the queue on disk no longer holds that hearing. A fresh heard cut replaces it.
+  The original events still sync. Also Wear-only are `SpanRecorder.forgetAccount` and
   `AccountRules.awaitSignOut` in place of the Apple Watch's `signOut` gate. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json`, `places.json` and `sent-places.json`, whose loss
@@ -4312,7 +4316,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `session.bin`, is synced too: its emptied form is the sign-out marker); the rest (caches, sync
   status, acks) is rebuilt from the server or the phone, so it skips the sync. The rate while playing (asked on the main looper, written off it): a plain 5 s tick syncs the open
   span only; the 15 s cut syncs the outbox, then the next span over the closed one (no keep, no
-  removal first: the event is kept before the span file changes) and the place. **The place rule**:
+  removal first: the event is kept before the span file changes) and the place. In parallel,
+  a separate durable writer keeps the latest cut or marker in `noBackupFilesDir/sent-places.json`,
+  so a failed write in either directory leaves the other able to keep the place. A POST waits
+  for each writer's first attempt and can still send when both directories are full. **The place rule**:
   `places.json` is synced on a pause, seek, stop, rate change, the end, a call's hold, a span
   closed by a cut, going to the background, removing the book and sign-out; on the plain 5 s
   tick it changes in memory only (`PlaceStore.set(save = false)`), because the open span synced
@@ -5705,8 +5712,14 @@ under their empty state).
   and once told the story stays told while they are asked again, so it never restarts at its
   first card). A capability-gated read whose flag is unknown because its `/server` read is
   held (or failed) with nothing kept takes that read's state (`useCapabilityQuery`:
-  `isPaused`, or its error, and `refetch` asks `/server` again), so these screens need no
-  `/server` check of their own (fe#270). A section that keeps a list checks `isError` with
+  `isPaused`, or `ServerReadError`, whose cause belongs to the gate. A gated resource's own
+  404 therefore still means gone. An access refusal shows sign-in or the proxy's notice
+  (`refusedServer`: a 403 on the public `/server` is always something in front of the
+  server; the proxy's notice gives way to sign-in once the connection needs it).
+  Refetch asks `/server` again with the caller's options. Mounting a second gate after a
+  failure keeps the failure until an explicit retry or a refresh (fe#270); the foreground
+  refresh drops a failed `/server` nobody watches (`forgetUnobservedServerFailures`), so the
+  next screen asks. A section that keeps a list checks `isError` with
   `!data` too: a failed re-read keeps what it holds. Favourites (its page and the Folders
   row), Home's See all and Home's Recently added, with no row to show, ask
   `useUnreadAll({ rows, offline, error: unreadError })` of their fan-out (`offline`: a
@@ -5722,9 +5735,10 @@ under their empty state).
   server: with one of several failing while another answered, the error names it and
   Retry asks only the failed. The
   top bar's server line says plain "Offline" where downloads are unsupported
-  (`shell.offlinePlain`), Up next shows `OfflineState` for a held queue and no "Nothing
-  queued" subline for a queue it has not read, and the library picker names the server it
-  waits for (`library.picker.waiting`). The Journal's tabs ask
+  (`shell.profile.offline`). Up next offers Reconnect first when the queue's server needs
+  sign-in, including while its read waits offline with a kept list. An unread queue has no
+  "Nothing queued" subline. The library picker names the server it waits for
+  (`library.picker.waiting`) while signed in. The Journal's tabs ask
   `unreadSources` (a source held for the network is `waiting`, and so is one whose `/server`
   flag is). A page whose failure is `LoadFailedNote` (book, episode, folder) hands it the hint
   (`offline`), so the sign-in state still comes first. A new screen with a skeleton does the
@@ -5743,9 +5757,8 @@ under their empty state).
   launch that cannot reach it. Kept on every answer a request gets (`watchServerAnswers`, a
   query-cache subscription: a `setQueryData` seed is `manual` and is never written back; an
   answer that says what the kept one says is not rewritten) and on one read outside the cache
-  (`keepServerAnswer`, which runs the cache's server-reset check first: an answer naming
-  another `server_id` flags the connection `server-reset` and is not kept; `keepServerFlag`
-  sets one flag a request proved); seeded into `qk.server(cid)` at launch (`restoreServerSnapshots`, awaited
+  (`keepServerAnswer` rechecks the request's address and the answering identity before
+  confirming an outbox rollback; `keepServerFlag` sets one flag a request proved); seeded into `qk.server(cid)` at launch (`restoreServerSnapshots`, awaited
   in `bootstrapPlayback` before any screen; dated `savedAt` so the first observer still asks
   again, `gcTime: Infinity`, never over an answer the cache already holds that is no older);
   forgotten with its connection. Every gate (`useCapability`, `cachedCapability`,
@@ -5753,6 +5766,9 @@ under their empty state).
   another copy of a flag beside it; a flag nobody has read stays unknown and its reader decides
   what unknown means (listening sync: on).
 - **Banners**: `OfflineBanner` takes the page's connection as a prop (each phone header its own
-  route's `?connection=`, the wide `WideTop` the focused page's) and selects only which servers are
-  down; the words are `offlineBannerText` (CONNECT-15): no network on the device says offline, else
-  the one server down by name (only the listening person's servers), else "some servers offline".
+  route's `?connection=`, the wide `WideTop` the focused page's). Like the top bar and its
+  profile menu, it uses `serverStatus` with the device's network signal. A server that
+  needs sign-in gets the reconnect banner. For the other servers, going offline on the
+  device shows the offline message immediately, including before a reachability check.
+  With a network, the banner names the one server down (only the listening person's
+  servers), or says "Some servers offline" when several are down.

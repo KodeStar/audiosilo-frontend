@@ -35,6 +35,7 @@ export function serverLine(
   connections: readonly Pick<Connection, 'id' | 'name' | 'needsReconnect'>[],
   defaultId: string | null,
   online: Record<string, boolean>,
+  deviceOnline = true,
 ):
   | { kind: 'offline'; name: string }
   | { kind: 'reconnect' }
@@ -43,7 +44,7 @@ export function serverLine(
   | { kind: 'none' } {
   const def = connections.find((c) => c.id === defaultId) ?? connections[0];
   if (!def) return { kind: 'none' };
-  const status = serverStatus(def, online);
+  const status = serverStatus(def, online, deviceOnline);
   if (status === 'offline') return { kind: 'offline', name: def.name };
   if (status === 'reconnect') return { kind: 'reconnect' };
   const down = firstOffline(connections, online);
@@ -64,7 +65,7 @@ export function serverLineLabel(
   switch (line.kind) {
     case 'offline':
       if (deviceOnline) return t('shell.notAnswering', { name: line.name });
-      return downloads ? t('shell.offline') : t('shell.offlinePlain');
+      return downloads ? t('shell.offline') : t('shell.profile.offline');
     case 'reconnect':
       return t('shell.profile.reconnect');
     case 'down':
@@ -84,7 +85,7 @@ function ServerLine() {
   const online = useReachability((s) => s.online);
   const deviceOnline = useDeviceOnline();
   const downloads = useDownloads((s) => s.supported);
-  const line = serverLine(connections, defaultId, online);
+  const line = serverLine(connections, defaultId, online, deviceOnline);
   if (line.kind === 'none') return null;
   const label = serverLineLabel(line, deviceOnline, t, downloads);
   return (

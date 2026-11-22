@@ -162,6 +162,7 @@ function client(
   serverInfo: () => Promise<unknown> = async () => ({ capabilities: {} }),
 ) {
   const c = {
+    baseUrl: 'https://server',
     syncListening: jest.fn(sync),
     saveProgress: jest.fn(async () => ({})),
     getProgress: jest.fn(async (): Promise<unknown> => null),
@@ -888,6 +889,7 @@ describe('flushOutbox', () => {
       ['bad'],
       ['also-good'],
     ]);
+    expect(jest.mocked(reachability.noteSuccess).mock.calls).toEqual([['c1'], ['c1']]);
     expect(await outboxEvents('c1')).toEqual([]);
     const state = await syncStateOf('c1');
     expect(state.failed?.map((f) => [f.event.id, f.reason])).toEqual([['bad', 'invalid']]);
@@ -1507,7 +1509,7 @@ describe('flushOutbox', () => {
     // From now on this connection saves by PUT, and the answer that said so is the
     // connection's `/server` (in the cache and kept for the next launch).
     expect(usesListeningSync('c1')).toBe(false);
-    expect(keepServerAnswer).toHaveBeenCalledWith('c1', { capabilities: {} });
+    expect(keepServerAnswer).toHaveBeenCalledWith('c1', { capabilities: {} }, 'https://server');
   });
 
   it("a rolled-back Mark as finished (no listen) is PUT at the book's end with its length", async () => {
@@ -1903,7 +1905,7 @@ describe("a connection's listening_sync across launches", () => {
       async () => info,
     );
     await flushOutbox('c1');
-    expect(keepServerAnswer).toHaveBeenCalledWith('c1', info);
+    expect(keepServerAnswer).toHaveBeenCalledWith('c1', info, 'https://server');
   });
 
   it('a 404 from a server that was reset rolls nothing back (fe#270)', async () => {

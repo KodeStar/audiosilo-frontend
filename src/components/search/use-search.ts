@@ -1,6 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 
 import { isSearchKey, type MergedBook, useSearchAll } from '@/api/hooks';
+import type { RefusedServer } from '@/api/server-read-error';
 
 import {
   type CharacterMatches,
@@ -21,6 +22,7 @@ export type GroupState = {
 };
 
 export type SearchResults = {
+  refusals: RefusedServer[];
   books: MergedBook[];
   booksState: GroupState;
   series: SeriesHit[];
@@ -84,6 +86,7 @@ export function useSearch(
   };
 
   return {
+    refusals: people.refusals,
     books: q ? search.books : [],
     booksState,
     ...named,

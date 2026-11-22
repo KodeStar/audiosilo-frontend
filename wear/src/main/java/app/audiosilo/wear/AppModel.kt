@@ -88,6 +88,13 @@ import kotlinx.coroutines.yield
 /** Another device's place offered for the loaded book (Jump / Stay). */
 data class OfferPrompt(val ref: BookRef, val offer: PlaceOffer, val row: ProgressRow)
 
+/** Stopping can append a final cut and save its place. Both copies must be forgotten afterwards. */
+internal fun forgetDownloadedPlace(ref: BookRef, places: PlaceStore, outbox: Outbox, stopIfPlaying: () -> Unit) {
+  stopIfPlaying()
+  places.remove(ref)
+  outbox.forgetPlace(ref)
+}
+
 class AppModel private constructor(private val context: Context) {
   sealed interface SetupStatus {
     /** Nothing received yet: "Open AudioSilo on your phone". */
@@ -143,7 +150,7 @@ class AppModel private constructor(private val context: Context) {
   private val durable = DurableWriter()
   val acks = AckStore(files.acks, durable)
   val outbox =
-    Outbox(files.root, acks, deviceId, writer = durable, sentPlacesFile = files.sentPlaces, accountId = { account.value?.accountId })
+    Outbox(files.root, acks, deviceId, writer = durable, sentPlacesFile = files.sentPlaces)
   private val held = HeldBooks(files.heldBooks)
   val places = PlaceStore(files.places, durable)
 
@@ -524,7 +531,9 @@ class AppModel private constructor(private val context: Context) {
         clockSkewMs = skew,
       )
     if (plan.tookRow && row != null) {
-      if (row.deviceId == deviceId && !row.finished) {
+      if (row.finished) {
+        outbox.forgetPlace(record.ref)
+      } else if (row.deviceId == deviceId) {
         LocalPlace.fromRow(row, skew)?.let { places.set(record.ref, it) }
       }
       acks.ackResume(row)
@@ -634,7 +643,8 @@ class AppModel private constructor(private val context: Context) {
   fun removeBook(ref: BookRef) {
     downloads.record(ref) ?: return
     // Removing the playing book stops it and closes its span first (decision 3).
-    willRemove(ref)
+    forgetDownloadedPlace(ref, places, outbox) { if (engine.loadedBook == ref) engine.stop() }
+    if (_offerPrompt.value?.ref == ref) _offerPrompt.value = null
     BookWorker.cancel(context, ref)
     // The record, then its files, under the index's lock: a run still going never makes the
     // folder again after (`DownloadIndex.whileKept`, fe#285).
@@ -645,19 +655,13 @@ class AppModel private constructor(private val context: Context) {
   }
 
   /**
-   * Remove every book (the account was left). No `willRemove` per book: `forgetAccount` has stopped
+   * Remove every book (the account was left). No per-book cleanup: `forgetAccount` has stopped
    * the player and clears the places and the offer, so a durable write per book would only lengthen
    * the sign-out's drain on the main thread.
    */
   private fun removeAllBooks() {
     BookWorker.cancelAll(context)
     downloads.removeAll { files.books.deleteRecursively() }
-  }
-
-  private fun willRemove(ref: BookRef) {
-    if (engine.loadedBook == ref) engine.stop()
-    places.remove(ref)
-    if (_offerPrompt.value?.ref == ref) _offerPrompt.value = null
   }
 
   // Messages from the phone
@@ -850,6 +854,7 @@ class AppModel private constructor(private val context: Context) {
       return
     }
     _account.value = a
+    outbox.recoverListening(a.accountId, places, spans)
     router.start(if (AddressPicker.isOwn(exchanged.base, a.serverUrl, a.addresses)) exchanged.base else null)
     _phase.value = Phase.Ready
     _pendingReplace.value = null

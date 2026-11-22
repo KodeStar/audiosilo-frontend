@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCapability, useFavourites, useQueue, useToggleFavourite } from '@/api/hooks';
+import { useCapability, useFavourites, useQueue } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
 import {
   type BookAction,
@@ -12,6 +12,7 @@ import {
 } from '@/components/library/books/book-actions';
 import { AddToCollectionDialog } from '@/components/library/collections/collection-dialogs';
 import { DownloadControl } from '@/components/library/download-control';
+import { useFavouriteAction } from '@/components/library/use-favourite-action';
 import { findQueued, useQueueActions } from '@/components/library/use-queue-actions';
 import { Button } from '@/components/ui/button';
 import {
@@ -261,7 +262,7 @@ function FavouriteButton({
 }) {
   const { t } = useTranslation();
   const { data: favourites } = useFavourites();
-  const toggle = useToggleFavourite(connectionId);
+  const toggle = useFavouriteAction(connectionId);
   const on = !!favourites?.some((f) => f.library_id === libraryId && f.path === path);
   return (
     <Button
@@ -272,7 +273,7 @@ function FavouriteButton({
       // The label says what a press does ("Remove from favourites"); a selected state on top
       // read it twice ("Remove from favourites, selected").
       accessibilityLabel={on ? t('library.favourite.remove') : t('library.favourite.add')}
-      onPress={() => toggle.mutate({ libraryId, path, on: !on })}
+      onPress={() => toggle({ libraryId, path, on: !on })}
     />
   );
 }

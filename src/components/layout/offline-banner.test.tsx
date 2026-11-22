@@ -41,11 +41,22 @@ describe('OfflineBanner', () => {
     expect(screen.getByText("Hearthside isn't answering")).toBeTruthy();
   });
 
-  it('says the device is offline when it has no network', async () => {
+  it.each(['a', undefined])('says offline before any probe on a page scoped to %s', async (id) => {
     mockDeviceOnline = false;
-    useReachability.setState({ online: { a: false } });
-    await render(<OfflineBanner connectionId="a" />);
+    await render(<OfflineBanner connectionId={id} />);
     expect(screen.getByText(OFFLINE)).toBeTruthy();
+  });
+
+  it('leaves a signed-out server to the reconnect banner', async () => {
+    useSession.setState({
+      connections: [{ id: 'a', name: 'Hearthside', needsReconnect: 'auth' }],
+    } as never);
+    useReachability.setState({ online: { a: false } });
+    const view = await render(<OfflineBanner connectionId="a" />);
+    expect(view.toJSON()).toBeNull();
+    mockDeviceOnline = false;
+    await view.rerender(<OfflineBanner />);
+    expect(view.toJSON()).toBeNull();
   });
 
   it('names the one server down on an aggregated page, never "some servers"', async () => {

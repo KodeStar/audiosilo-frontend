@@ -23,6 +23,8 @@ const mockList = jest.fn(async (): Promise<Favourite[]> => []);
 const mockRemove = jest.fn(async (_lib: number, path: string) => {
   calls.push(`remove ${path}`);
 });
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({ toast: (options: unknown) => mockToast(options) }));
 jest.mock('@/api/provider', () =>
   // `require` because a jest.mock factory is hoisted above every import.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -38,6 +40,7 @@ jest.mock('@/api/provider', () =>
 
 /* eslint-disable import/first */
 import { qk, type ToggleFavouriteVars, useFavourites, useToggleFavourite } from '@/api/hooks';
+import { useFavouriteAction } from '@/components/library/use-favourite-action';
 /* eslint-enable import/first */
 
 let qc: QueryClient;
@@ -47,6 +50,7 @@ function wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   calls.length = 0;
+  mockToast.mockClear();
   listAtAdd = undefined;
   // Infinite gcTime on both, so no garbage-collection timer keeps Jest from exiting.
   qc = new QueryClient({
@@ -119,6 +123,31 @@ describe('useToggleFavourite', () => {
   // A write that fails (in the app it is sent with no network too, and fails at once)
   // takes its heart back.
   describe('a toggle that fails', () => {
+    it.each([true, false])(
+      'tells the listener the change failed after its button unmounts (add: %s)',
+      async (on) => {
+        const book = { library_id: 1, path: 'A' } as Favourite;
+        const before = on ? [] : [book];
+        const key = qk.favourites('c');
+        qc.setQueryData(key, before);
+        let rejectWrite!: (e: Error) => void;
+        (on ? mockAdd : mockRemove).mockImplementationOnce(
+          () => new Promise<void>((_, reject) => (rejectWrite = reject)),
+        );
+        const button = await renderHook(() => useFavouriteAction('c'), { wrapper });
+        await act(async () => button.result.current({ libraryId: 1, path: 'A', on }));
+        expect(qc.getQueryData<Favourite[]>(key)?.map((f) => f.path)).toEqual(on ? ['A'] : []);
+        expect(mockToast).not.toHaveBeenCalled();
+        await button.unmount();
+        await act(async () => rejectWrite(new TypeError('Network request failed')));
+        expect(qc.getQueryData(key)).toEqual(before);
+        expect(mockToast).toHaveBeenCalledTimes(1);
+        expect(mockToast).toHaveBeenCalledWith({
+          title: "Couldn't update your favourites. Try again.",
+        });
+      },
+    );
+
     const fail = async (vars: ToggleFavouriteVars) => {
       mockAdd.mockRejectedValueOnce(new TypeError('Network request failed'));
       const { result } = await renderHook(() => useToggleFavourite(), { wrapper });

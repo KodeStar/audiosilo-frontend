@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { ApiError } from '@/api/client';
 import type { BookMeta, Capabilities, Progress } from '@/api/types';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
@@ -196,6 +197,20 @@ describe('useCharacterSources', () => {
 });
 
 describe('unreadable search capabilities', () => {
+  it('carries one refused parent through to Search without retryable group errors', async () => {
+    mockB.serverInfo.mockRejectedValueOnce(new ApiError(403, 'proxy', undefined, undefined, true));
+    const { result } = await mount(() => ({
+      people: usePeopleSources(true),
+      characters: useCharacterSources(true),
+    }));
+    await waitFor(() =>
+      expect(result.current.people.refusals).toEqual([{ connectionId: 'b', proxy: true }]),
+    );
+    await waitFor(() => expect(result.current.people.authors).toHaveLength(1));
+    expect(result.current.people.isError).toBe(false);
+    expect(result.current.characters.isError).toBe(false);
+  });
+
   it.each([true, false])(
     'retries a failed library read (flags also failed: %s)',
     async (flagsFailed) => {

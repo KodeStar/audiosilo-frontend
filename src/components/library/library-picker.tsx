@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
+import { useSignedOutConnection } from '@/components/layout/sign-in-again';
 import {
   Select,
   SelectContent,
@@ -42,13 +43,14 @@ export function LibraryPicker({
 }) {
   const { t } = useTranslation();
   const { groups, library, server, select } = useSelectedLibrary();
+  const signedOut = useSignedOutConnection(server?.connectionId);
   const withLibraries = groups.filter((g) => g.libraries.length > 0);
   // Several servers signed in: the server is always named.
   const named = groups.length > 1;
   // No library shown while its server's list is on its way (or held, or failed): the
   // picker names the server it waits for, not "Choose a library" (fe#271).
   const waiting =
-    named && !library && server
+    named && !library && server && !signedOut
       ? t('library.picker.waiting', { name: server.connectionName })
       : null;
   const total = withLibraries.reduce((n, g) => n + g.libraries.length, 0);

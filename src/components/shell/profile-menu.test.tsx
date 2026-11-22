@@ -27,6 +27,11 @@ jest.mock('@/playback/store', () =>
 );
 
 let mockServed: string | null = null;
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockDeviceOnline,
+}));
 jest.mock('@/lib/base-url', () => ({
   ...jest.requireActual('@/lib/base-url'),
   servedOrigin: () => mockServed,
@@ -46,6 +51,7 @@ const user = (username: string) => ({ username }) as never;
 
 beforeEach(() => {
   mockServed = null;
+  mockDeviceOnline = true;
   jest.clearAllMocks();
   resetProfilesForTests();
   mockScheme = 'light';
@@ -99,6 +105,14 @@ describe('ProfileMenu', () => {
     expect(screen.getByText('Add a server')).toBeTruthy();
     expect(screen.getByText('Account on Hearthside')).toBeTruthy();
     expect(screen.getByText('Dark appearance')).toBeTruthy();
+  });
+
+  it('shows offline before the servers have been probed and keeps the reconnect status', async () => {
+    mockDeviceOnline = false;
+    useReachability.setState({ online: {} });
+    await open();
+    expect(screen.getAllByText('Offline')).toHaveLength(2);
+    expect(screen.getByText('Needs signing in again')).toBeTruthy();
   });
 
   it("opens the You hub's Journal", async () => {

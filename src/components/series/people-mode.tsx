@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import { router } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import type { UseQueryResult } from '@tanstack/react-query';
 
 import { useLibraryBooks, useProgressLookup } from '@/api/hooks';
@@ -87,6 +88,8 @@ export function PeopleMode({
     );
   }
   if (!list.data) {
+    const refused = serverRefusalState(list.error, connectionId);
+    if (refused) return refused;
     return (
       <EmptyShelf
         title={t('people.errorTitle')}

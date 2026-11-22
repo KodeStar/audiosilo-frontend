@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { useCollections, useFavouritesAll } from '@/api/hooks';
 import { OfflineState } from '@/components/layout/offline-state';
 import { TabPageScroll } from '@/components/shell/tab-page-scroll';
@@ -63,20 +64,21 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       contentContainerStyle={{ paddingHorizontal: gutter, paddingTop: 20 }}
     >
-      {unread === 'offline' ? (
-        <View className="pb-6">
-          <OfflineState variant="card" hint={t('common.offlineList')} />
-        </View>
-      ) : error && !data ? (
-        <View className="pb-6">
-          <LoadError
-            compact
-            title={t('library.collections.error')}
-            retryLabel={t('common.retry')}
-            onRetry={() => void refetch()}
-          />
-        </View>
-      ) : null}
+      {serverRefusalState(error, connectionId) ??
+        (unread === 'offline' ? (
+          <View className="pb-6">
+            <OfflineState variant="card" hint={t('common.offlineList')} />
+          </View>
+        ) : error && !data ? (
+          <View className="pb-6">
+            <LoadError
+              compact
+              title={t('library.collections.error')}
+              retryLabel={t('common.retry')}
+              onRetry={() => void refetch()}
+            />
+          </View>
+        ) : null)}
       {width > 0 ? (
         <View className="flex-row flex-wrap" style={{ columnGap: gap, rowGap: gap + 8 }}>
           <CollectionCardFrame

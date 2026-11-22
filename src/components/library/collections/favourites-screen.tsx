@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
-import { useFavouritesAll, useToggleFavourite, type SourcedFavourite } from '@/api/hooks';
+import { useFavouritesAll, type SourcedFavourite } from '@/api/hooks';
 import { OfflineState } from '@/components/layout/offline-state';
 import { LayoutToggle } from '@/components/library/books/books-controls';
 import { useBooksLayout } from '@/components/library/books/books-layout-store';
@@ -9,6 +9,7 @@ import { CoverGrid, CoverGridSkeleton, CoverListRow } from '@/components/library
 import { GlyphTile } from '@/components/library/glyph-tile';
 import { pageGutter } from '@/components/library/cover-layout';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
+import { useFavouriteAction } from '@/components/library/use-favourite-action';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/empty-state';
@@ -139,14 +140,14 @@ export function FavouritesScreen() {
  * nested in it. */
 function UnfavouriteButton({ fav }: { fav: SourcedFavourite }) {
   const { t } = useTranslation();
-  const toggle = useToggleFavourite(fav.connectionId);
+  const toggle = useFavouriteAction(fav.connectionId);
   return (
     <Button
       variant="ghost"
       size="icon"
       icon="heart-solid"
       accessibilityLabel={t('library.favourite.remove')}
-      onPress={() => toggle.mutate({ libraryId: fav.library_id, path: fav.path, on: false })}
+      onPress={() => toggle({ libraryId: fav.library_id, path: fav.path, on: false })}
     />
   );
 }

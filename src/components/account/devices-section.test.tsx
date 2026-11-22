@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Platform } from 'react-native';
 
+import { ServerReadError } from '@/api/server-read-error';
 import { ApiError } from '@/api/client';
 import type { MyDevice } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -44,7 +45,6 @@ const device = (over: Partial<MyDevice>): MyDevice => ({
   client: { app: 'AudioSilo', version: '1.4.2', platform: 'ios' },
   created_at: '2026-10-01T10:00:00Z',
   last_seen: new Date(NOW - 2 * 3600_000).toISOString(),
-  last_ip: '',
   current: false,
   ...over,
 });
@@ -98,6 +98,21 @@ describe('DevicesSection', () => {
         'AudioSilo 1.4.0 · Browser · last seen 2 hours ago',
       ),
     ).toBeTruthy();
+  });
+
+  // The web's startup cache keeps the rows without their address (`last_ip`): a row read
+  // back offline draws as the live one does, and neither shows an address.
+  it('draws a kept row without its address as it draws a live one', async () => {
+    const detail = 'AudioSilo 1.4.0 · Browser · last seen 2 hours ago';
+    mockDevices = loaded([
+      { ...laptop, last_ip: '192.0.2.12' },
+      { ...laptop, id: 13 },
+    ]);
+    await mount();
+    for (const id of [11, 13]) {
+      expect(within(screen.getByTestId(`device-${id}`)).getByText(detail)).toBeTruthy();
+    }
+    expect(screen.queryByText(/192\.0\.2\.12/)).toBeNull();
   });
 
   // Revoking this device's own token would kill it before the sign-out teardown (final
@@ -211,6 +226,108 @@ describe('DevicesSection', () => {
     await mount();
     expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('offers sign-in when /server refuses the gated read (401)', async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          user: { username: 'chris' } as never,
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ServerReadError(new ApiError(401, 'refused')),
+    };
+    await mount();
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // The server answers /server to anyone: a 403 there, even with the server's JSON shape,
+  // is something in front of it, which signing in again can't get past.
+  it('names a 403 on /server as the proxy, never a sign-in', async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          user: { username: 'chris' } as never,
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ServerReadError(new ApiError(403, 'blocked')),
+    };
+    await mount();
+    expect(screen.getByText(/sign-in proxy for Hearthside turned this device away/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+  });
+
+  it("shows a proxy's refusal without a device Retry or a server sign-in", async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          user: { username: 'chris' } as never,
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ServerReadError(new ApiError(403, 'proxy', undefined, undefined, true)),
+    };
+    await mount();
+    expect(screen.getByText(/sign-in proxy for Hearthside turned this device away/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Reconnect' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  // As the shell's banners: a sign-in that has ended is the one thing to ask for.
+  it("asks to sign in again before a proxy's refusal once the sign-in has ended", async () => {
+    useSession.setState({
+      connections: [
+        {
+          id: 'c',
+          name: 'Hearthside',
+          serverUrl: 'https://books.example',
+          token: 't',
+          needsReconnect: 'auth',
+          user: { username: 'chris' } as never,
+        },
+      ],
+    });
+    mockDevices = {
+      ...loaded([]),
+      data: undefined,
+      isError: true,
+      isSuccess: false,
+      error: new ServerReadError(new ApiError(401, 'proxy', undefined, undefined, true)),
+    };
+    await mount();
+    expect(screen.getByRole('button', { name: 'Reconnect' })).toBeTruthy();
+    expect(screen.queryByText(/sign-in proxy for Hearthside turned this device away/)).toBeNull();
   });
 
   // server#285: a read again that fails (after a password change) keeps the list it held.

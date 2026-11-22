@@ -3,8 +3,17 @@
 package app.audiosilo.wear
 
 import app.audiosilo.wear.core.Account
+import app.audiosilo.wear.core.AckStore
 import app.audiosilo.wear.core.BookRef
+import app.audiosilo.wear.core.DownloadIndex
+import app.audiosilo.wear.core.FileSpanStore
 import app.audiosilo.wear.core.JsonFile
+import app.audiosilo.wear.core.ListeningStart
+import app.audiosilo.wear.core.LocalPlace
+import app.audiosilo.wear.core.Outbox
+import app.audiosilo.wear.core.PlaceStore
+import app.audiosilo.wear.core.SpanEvent
+import app.audiosilo.wear.core.SpanRecorder
 import app.audiosilo.wear.storage.DeviceIdentity
 import app.audiosilo.wear.storage.Files
 import app.audiosilo.wear.storage.KeystoreCipher
@@ -179,6 +188,47 @@ class FilesTest {
       assertNull(Files(File(dir, "missing/files"), dir).freeBytes())
     } finally {
       dir.deleteRecursively()
+    }
+  }
+}
+
+class DownloadedPlaceTest {
+  @Test
+  fun removingThenDownloadingAgainRecoversOnlyTheNewListening() {
+    val root = NioFiles.createTempDirectory("wear-download").toFile()
+    try {
+      val files = Files(File(root, "files"), File(root, "no_backup"))
+      val ref = BookRef(1, "Author/Book")
+      val now = Instant.parse("2026-11-22T12:00:00Z")
+      val acks = AckStore(files.acks)
+      fun launch(): Pair<Outbox, PlaceStore> {
+        val outbox = Outbox(files.root, acks, "watch", sentPlacesFile = files.sentPlaces)
+        val places = PlaceStore(files.places)
+        val spans = SpanRecorder(FileSpanStore(files.openSpan, files.openSpanMove), acks, emit = outbox::append)
+        outbox.recoverListening("account", places, spans)
+        return outbox to places
+      }
+      val index = DownloadIndex(files.downloadsIndex)
+      index.enqueue(ref, "Book", null, now)
+      val (outbox, places) = launch()
+      val cut = SpanEvent("last", libraryId = ref.libraryId, path = ref.path, fromPos = 10.0, toPos = 25.0,
+        startedAt = now.minusSeconds(15).toString(), endedAt = now.toString(), start = ListeningStart.RESUME)
+      forgetDownloadedPlace(ref, places, outbox) {
+        outbox.append(listOf(cut))
+        places.set(ref, LocalPlace(cut.toPos, at = now))
+      }
+      index.remove(ref)
+
+      val (again, restored) = launch()
+      assertNull(restored.place(ref))
+      assertEquals(listOf(cut), again.events)
+      assertTrue(index.enqueue(ref, "Book", null, now.plusSeconds(1)))
+      assertNull(restored.place(ref))
+      val replay = cut.copy(id = "replay", fromPos = 0.0, toPos = 8.0, endedAt = now.plusSeconds(9).toString())
+      again.append(listOf(replay))
+      assertEquals(8.0, launch().second.place(ref)!!.position, 0.0)
+    } finally {
+      root.deleteRecursively()
     }
   }
 }

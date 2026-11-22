@@ -888,7 +888,8 @@
     },
     "favourite": {
       "remove": "Retirer des favoris",
-      "add": "Ajouter aux favoris"
+      "add": "Ajouter aux favoris",
+      "failed": "Impossible de mettre à jour tes favoris. Réessaie."
     },
     "download": {
       "unavailable": "Téléchargements indisponibles",
@@ -2003,7 +2004,6 @@
     },
     "home": "Accueil AudioSilo",
     "offline": "Hors ligne · les téléchargements sont lus",
-    "offlinePlain": "Hors ligne",
     "notAnswering": "{{name}} ne répond pas",
     "serverMore_one": "{{name}} + {{count}} autre",
     "serverMore_other": "{{name}} + {{count}} autres",
@@ -2649,6 +2649,7 @@
       "switchLabel": "Partager ce que j’écoute avec la maison sur {{server}}",
       "body": "Votre livre en cours apparaît sur la page d’accueil des autres personnes de {{server}} qui partagent aussi le leur. Désactivé par défaut.",
       "saving": "Enregistrement",
+      "waiting": "En attente de synchronisation",
       "loadFailed": "Impossible de charger ce réglage.",
       "failed": "Impossible de modifier le partage sur {{server}}",
       "failedBody": "Rien n’a changé. Vérifiez la connexion et réessayez.",

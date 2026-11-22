@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlatList, View } from 'react-native';
 
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { ApiError } from '@/api/client';
 import {
   useAddCollectionItem,
@@ -90,9 +91,7 @@ function CollectionContent() {
   usePageTitle(query.data?.collection.name);
   const unread = useUnreadQuery(query);
 
-  // Its own 404 only once the read ran (the flag known): until then an error is the
-  // `/server` read's (`useCapabilityQuery`), which says nothing of this collection.
-  if (!params || supported === false || (supported === true && isGone(query.error))) {
+  if (!params || supported === false || isGone(query.error)) {
     return (
       <Centered>
         <EmptyState
@@ -106,6 +105,8 @@ function CollectionContent() {
     );
   }
   if (!query.data) {
+    const refused = serverRefusalState(query.error, cid);
+    if (refused) return <Centered>{refused}</Centered>;
     // Before the skeleton: a read held for the network stays pending (`useUnreadQuery`).
     if (unread === 'offline') {
       return (
