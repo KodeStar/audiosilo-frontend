@@ -2159,8 +2159,9 @@ media GETs only.
   binary ignores the record field. The store drops a report of a book it does not hold
   (`reportedOtherBook`: one the car or a resumption started, or the one its own load
   replaces while that load holds the store), telling the car sync instead (`onOtherBookReported`, which adopts it on
-  Android). A report that names none (an older binary, a queue loaded without a book, the
-  web, a Cast receiver) is taken as before. **Feature-detect every function added after the first shipped
+  Android). On Android, a report that loses the queue's book name can be the first event
+  of a car start. The store holds it while the car sync identifies the queue (Car below).
+  **Feature-detect every function added after the first shipped
   builds**: the JS bundle can be newer than the installed binary (a store build lags), and an
   Expo function called with more arguments than it declares throws. So `load`'s 5th `book` is
   passed only when the binary also has `getLoadedBook` (`moduleTakesBook` in
@@ -3367,9 +3368,14 @@ media GETs only.
   that place, and a play press reloads there, never the other book's place past it. So does a
   play asked from outside while the store's book stood still (paused, not in error), which the
   store does not follow. Its place is kept (`pausedAsk`) until a playing report names the
-  store's book or the store takes the engine for its own play, load or adoption. If the car
-  reports playing without naming its book first, the store's book still shows paused at
-  its saved place when adoption begins.
+  store's book, the car sync confirms it, or the store takes the engine for its own play,
+  load or adoption. On Android, losing the name from the store's queue, or receiving an
+  unnamed report during that outside play, holds the car's file, place and moves from the
+  first report. The car sync also checks a file change or remote seek on an unnamed queue.
+  The previous book's listening ends at its own place. When the engine identifies the
+  store's book, the pending check takes the file and position from that same read. An
+  unnamed seek can count once a read begun after it confirms the book. A named seek on
+  the store's book takes effect immediately.
   These holds come before a faulted book's stop (`loadedFaulted`), as a named other book's
   report does: a faulted store's book never pauses the other book's play nor reloads over it.
   Whether that unnamed book plays is kept from its held reports (`unnamedPlays`), so
