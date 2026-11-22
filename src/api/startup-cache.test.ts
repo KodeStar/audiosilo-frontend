@@ -203,7 +203,7 @@ describe('snapshot and restore', () => {
     expect(qc.getQueryState(['libraries', C])?.isInvalidated).toBe(false);
   });
 
-  it('ignores a document of another version, an unreadable one and foreign entries', () => {
+  it('restores nothing from a document of another version or an unreadable one, nor foreign entries', () => {
     const restored = () => {
       const qc = newClient();
       restore(qc);

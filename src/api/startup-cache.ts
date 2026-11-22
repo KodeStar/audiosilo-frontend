@@ -27,7 +27,9 @@ import { APP_VERSION } from '@/lib/version';
  * id, so a kept entry of another connection or a signed-out one is never read (and the
  * query cache drops it unread). A sign-out drops the connection's entries (`forget`); a
  * storage reset wipes the document (`SCOPED_STORAGE_KEYS`), and a document of another
- * app version is ignored (the answers' shapes may have changed).
+ * app version (or document version) is removed unread (the answers' shapes may have
+ * changed, and a version 1 document holds device addresses). A device row is kept without
+ * its address (`DEVICE_FIELD_KEPT`).
  *
  * Native keeps none of it: its query cache lives as long as the app, a cold start is not
  * the browser's reload, and AsyncStorage can't be read before the first render.
@@ -118,18 +120,24 @@ function isInfinite(data: unknown): data is InfiniteData<unknown, unknown> {
   return isRecord(data) && Array.isArray(data.pages) && Array.isArray(data.pageParams);
 }
 
-/** The fields a device row draws offline (the Devices list): never its address, nor any
- * network or location field a server adds. */
-const DEVICE_FIELDS = [
-  'id',
-  'kind',
-  'name',
-  'client',
-  'created_at',
-  'last_seen',
-  'current',
-  'member_sign_ins',
-] as const satisfies readonly (keyof MyDevice)[];
+/** Which fields of a device row are kept: those the Devices list draws offline, never its
+ * address. Every field of `MyDevice` is named, so one it gains is kept or left out on
+ * purpose (the build fails until it is); a field a server adds that the type doesn't
+ * name is never kept. */
+const DEVICE_FIELD_KEPT = {
+  id: true,
+  kind: true,
+  name: true,
+  client: true,
+  created_at: true,
+  last_seen: true,
+  last_ip: false,
+  current: true,
+  member_sign_ins: true,
+} as const satisfies Record<keyof MyDevice, boolean>;
+const DEVICE_FIELDS = Object.entries(DEVICE_FIELD_KEPT)
+  .filter(([, kept]) => kept)
+  .map(([f]) => f);
 
 /** `rec` with only `fields`, those it has. */
 function pickFields(
