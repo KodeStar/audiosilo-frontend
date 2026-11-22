@@ -18,7 +18,6 @@ import {
   shortOfFileEnd,
   synthesizeChapters,
   toBookPosition,
-  trackIdOf,
 } from '@/playback/book-queue';
 import { chapterList, rowAt } from '@/components/book/book-page-model';
 import { stepSegment } from '@/components/player/transport';
@@ -517,12 +516,9 @@ describe('timeline math', () => {
             nowPlaying: { queue: q },
             snapshot: { trackIndex: track, position },
             seekBook: (bookPosition, file) => {
-              const to = file
-                ? {
-                    index: q.tracks.findIndex((t) => t.id === trackIdOf(2, file.path)),
-                    positionInTrack: file.pos,
-                  }
-                : locate(q.offsets, bookPosition, track);
+              const to =
+                (file && filePlaceIn(q, 2, file.path, file.pos)) ??
+                locate(q.offsets, bookPosition, track);
               landed = [to.index, to.positionInTrack];
             },
             seekInTrack: () => undefined,

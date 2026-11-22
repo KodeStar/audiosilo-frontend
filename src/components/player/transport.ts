@@ -129,18 +129,16 @@ type FileStep = { bookPosition: number; file?: FilePlace; track?: number };
  * seconds into it, from the playing file's place: next is the first chapter `NEXT_SLACK`
  * ahead; previous restarts the current chapter (one begun in an earlier file always) and,
  * within its first 3 seconds, goes to the one before, else to the book's start. With no
- * chapters it steps per file. `undefined` past the last one; `null` when no files share a
- * start (whole-book seconds order them). The watches' `ChapterNav.step` port it, pinned by
- * the shared `timeline-ties.json` steps.
+ * chapters it steps per file. `undefined` past the last one. The watches' `ChapterNav.step`
+ * port it, pinned by the shared `timeline-ties.json` steps.
  */
 function stepInFileOrder(
   queue: { chapters: readonly StepChapter[]; offsets: readonly number[] },
   trackIndex: number,
   position: number,
   dir: 1 | -1,
-): FileStep | undefined | null {
+): FileStep | undefined {
   const { offsets } = queue;
-  if (trackIndex >= offsets.length || !offsets.some((o, i) => o === offsets[i - 1])) return null;
   if (queue.chapters.length === 0) {
     const track = Math.max(
       0,
@@ -193,10 +191,12 @@ export function stepSegment(state: StepState, dir: 1 | -1): void {
     if (dir === -1 && position > RESTART_AFTER) return quietly(state.seekInTrack(0));
     return quietly(state.goToTrack(trackIndex + dir));
   }
-  const inFiles = stepInFileOrder(queue, trackIndex, position, dir);
-  if (inFiles !== null) {
-    if (inFiles?.track !== undefined) return quietly(state.goToTrack(inFiles.track));
-    if (inFiles) quietly(state.seekBook(inFiles.bookPosition, inFiles.file));
+  const { offsets } = queue;
+  // Files sharing a start: whole-book seconds do not order their chapters.
+  if (trackIndex < offsets.length && offsets.some((o, i) => o === offsets[i - 1])) {
+    const to = stepInFileOrder(queue, trackIndex, position, dir);
+    if (to?.track !== undefined) return quietly(state.goToTrack(to.track));
+    if (to) quietly(state.seekBook(to.bookPosition, to.file));
     return;
   }
   const bookPosition = toBookPosition(queue.offsets, trackIndex, position);
