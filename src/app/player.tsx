@@ -143,9 +143,11 @@ export default function PlayerScreen() {
     // Keyed on the book's canonical rel_path (playBook stores that as nowPlaying.path,
     // which can differ from the decoded route param).
     const key = `${cid}|${libraryId}|${book.rel_path}`;
+    // Below 0 is kept: bad metadata can start a chapter there, and its file still names the
+    // place (`filePlaceIn` holds it to the file's start).
     const fileSeconds = Number(filePos);
     const filePlace =
-      file && Number.isFinite(fileSeconds) && fileSeconds >= 0
+      file && filePos && Number.isFinite(fileSeconds)
         ? { path: file, pos: fileSeconds }
         : undefined;
     const jumpKey = JSON.stringify([key, position, track, filePlace]);

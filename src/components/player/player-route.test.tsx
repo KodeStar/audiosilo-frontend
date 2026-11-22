@@ -182,6 +182,13 @@ describe('the player route', () => {
     expect(mockSeekBook.mock.calls).toEqual([[87, { path: 'p/1', pos: 17.5 }]]);
   });
 
+  it("keeps a chapter's file when bad metadata starts it below 0", async () => {
+    setNowPlaying(THIS_BOOK);
+    routeTo({ position: '0', file: 'p/2', filePos: '-2' });
+    await render(<PlayerScreen />);
+    expect(mockSeekBook.mock.calls).toEqual([[0, { path: 'p/2', pos: -2 }]]);
+  });
+
   it('goes to its track once in the same way', async () => {
     setNowPlaying(THIS_BOOK);
     routeTo({ track: '3' });
