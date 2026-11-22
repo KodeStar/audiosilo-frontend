@@ -2899,7 +2899,8 @@ media GETs only.
     compares the next move with its pending target and closes the span there. A move from 30
     back to 0 therefore sends `moved_back` even while the engine still reports 0. Until the
     seek lands no periodic save or cut runs, but a stop or a Mark as finished saves its target,
-    where the span closed. A paused
+    where the span closed. A call still out 10 s on (`ASK_SETTLE_MAX_MS`) while the engine plays
+    on away from its target was never taken: the engine's place is the book's again. A paused
     lock-screen move with no prior place (`from: null`) still counts. The watches share the
     bare-move and same-place rules
     (`Spans`). A
@@ -4013,8 +4014,8 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   outbox's `asServerTakes` sending a queued `stay` as a
   `jump` while the flag is off. Both watches judge the answer by the flag used to build that
   request, including a single-event retry. On Apple Watch the background upload's tag records
-  whether the body contained a Stay, so a later wake uses the same decision. A playing Stay
-  or cut replaces the stored Swift span in a single write. Wear OS ports the offer and send
+  whether the body contained a Stay, so a later wake uses the same decision. A playing Stay,
+  cut or move replaces the stored Swift span in a single write. Wear OS ports the offer and send
   rules (`SpanRecorder.kt`, `Outbox.kt`, `PlayerEngine.stay`).
   The watches recover a bare move's reason after a kill: the next span, when it is that
   book's and a resume from this watch's

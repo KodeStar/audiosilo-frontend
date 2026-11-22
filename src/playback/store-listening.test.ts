@@ -1202,6 +1202,25 @@ describe('with listening_sync', () => {
     },
   );
 
+  it.each([40, 2])(
+    'a hung seek to %i the engine never took gives way to the place it plays on at',
+    async (target) => {
+      await start();
+      pushSnapshot(snap('playing', 0, 10));
+      (mockSvc.seekTo as jest.Mock).mockImplementationOnce(() => new Promise<void>(() => {}));
+      void usePlayer.getState().seekBook(target);
+      await settle();
+      jest.setSystemTime(Date.now() + 15_000);
+      pushSnapshot(snap('playing', 0, 25));
+      await settle();
+      jest.setSystemTime(Date.now() + 15_000);
+      pushSnapshot(snap('playing', 0, 40.5));
+      await settle();
+      expect(mockWriteMirror.mock.lastCall?.[0]).toMatchObject({ position: 40.5 });
+      expect(mockClosed.at(-1)).toMatchObject({ to: { pos: 40.5 } });
+    },
+  );
+
   it('a stop while a seek is still landing saves the place its span closed at', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 10));

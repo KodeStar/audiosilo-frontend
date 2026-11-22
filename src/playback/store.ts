@@ -1609,7 +1609,7 @@ function cutListeningSpan(start: ListeningStart = 'continue') {
  * read while the book played; the history the PUT path began goes by `POST /history` up to
  * here). */
 function tickListeningSpan() {
-  if (pendingSeek?.landedAt === null) return;
+  if (seekOf(usePlayer.getState().nowPlaying)?.landedAt === null) return;
   if (!span) {
     openMissingSpan();
     return;
@@ -1713,13 +1713,16 @@ function observeSeek(np: NowPlaying | null, snapshot: PlaybackSnapshot, prev: Pl
   // check saw it play on, the new place is authoritative. With overlapping calls a
   // single report may be an older landing: require progress from a report of the target.
   const playedOn = (there && ahead >= PLAYED_ON) || snapshot.trackIndex > pendingSeek.trackIndex;
+  const settleOver =
+    changed && isPlayingState(snapshot.state) && now - pendingSeek.at >= ASK_SETTLE_MAX_MS;
+  // A call still out past `ASK_SETTLE_MAX_MS` while the engine plays on away from its target
+  // was never taken (a Cast receiver that never answers): no report from before it is out any
+  // more, so the engine's place is the book's again, or no save or cut would ever run.
+  const neverTaken = !there && pendingSeek.landedAt === null;
   if (
-    (seekCalls.size === 1 || seekReported) &&
-    askedPlace !== pendingSeek &&
-    changed &&
-    isPlayingState(snapshot.state) &&
-    now - pendingSeek.at >= ASK_SETTLE_MAX_MS &&
-    playedOn
+    settleOver &&
+    (neverTaken ||
+      ((seekCalls.size === 1 || seekReported) && askedPlace !== pendingSeek && playedOn))
   ) {
     dropSeeks();
     return;
