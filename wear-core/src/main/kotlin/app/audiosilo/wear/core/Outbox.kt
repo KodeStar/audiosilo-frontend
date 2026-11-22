@@ -95,8 +95,13 @@ class Outbox(
         val key = left.ref.key
         val previous = restored[key]
         val closed = queued.firstOrNull { it.id == left.id } as? SpanEvent
-        // The queue already accounts for this span before its finish, even if the clock went back.
-        if (closed != null && cuts[key] is SentPlace.Finished) return@recover
+        if (closed != null && cuts[key] is SentPlace.Finished) {
+          // The book's last span, appended with its finish: its end is the book's end, where the
+          // book starts again. An older span left on disk stays forgotten, even if the clock went back.
+          val last = queued.lastOrNull { it is SpanEvent && it.heardPlace && it.ref.key == key }
+          if (last?.id == left.id) places.recover(left, closed)
+          return@recover
+        }
         places.recover(left, closed) { place ->
           // A span still open on disk was written after every cut the queue on disk holds (one
           // writer, in order), even across a clock change: a cut's successor or a play after a

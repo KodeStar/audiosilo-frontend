@@ -507,7 +507,8 @@ class DurableRateTest {
   }
 
   // The book's end keeps its last span and its `finish` in one append: a kill right after it finds
-  // both in the outbox. The finish keeps the span left on disk from restoring its place.
+  // both in the outbox. The span's own event ends at the book's end, so the launch restores that
+  // place (where the book starts again), not the place kept before the book began its last span.
   @Test
   fun aKillInsideTheBooksLastCloseKeepsItsFinish() {
     val first = Launch()
@@ -520,9 +521,32 @@ class DurableRateTest {
     assertEquals("the span file still holds the last keep", 3595.0, fileSpanStore(dir).load()!!.to.pos, 0.0)
     val next = Launch()
     next.recover()
-    assertNull(next.places.place(ref))
+    assertEquals(3600.0, next.places.place(ref)!!.position, 0.0)
     assertEquals(listOf("e1"), next.outbox.events.filterIsInstance<SpanEvent>().map { it.id })
     assertEquals(listOf("finish"), next.outbox.events.filterIsInstance<FinishEvent>().map { it.kind })
+  }
+
+  // An older span of the finished book left on disk (its removal never landed) is not its last:
+  // its end stays forgotten behind the finish, and the book's end stands.
+  @Test
+  fun anOlderSpanLeftOnDiskDoesNotUndoTheBooksEnd() {
+    val first = Launch()
+    first.spans.open(book, at(3500.0), 1.0)
+    clock.advance(10.0)
+    first.tick(3510.0, keepDue = true, cutDue = false)
+    val spanFile = File(dir, "open-span.json")
+    val older = spanFile.readBytes()
+    clock.advance(5.0)
+    first.tick(3515.0, keepDue = true, cutDue = true)
+    clock.advance(85.0)
+    first.spans.finish(book, at(3600.0))
+    assertEquals(3600.0, PlaceStore(File(dir, "places.json")).place(ref)!!.position, 0.0)
+    spanFile.writeBytes(older)
+    assertEquals("e1", fileSpanStore(dir).load()!!.id)
+    val next = Launch()
+    next.recover()
+    assertEquals(3600.0, next.places.place(ref)!!.position, 0.0)
+    assertEquals(listOf("e1", "e2"), next.outbox.events.filterIsInstance<SpanEvent>().map { it.id })
   }
 
   // fe#321: the move a kill cut short outlives a launch that never plays (a background one).
