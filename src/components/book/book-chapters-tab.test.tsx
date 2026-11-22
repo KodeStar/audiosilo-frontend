@@ -3,7 +3,10 @@ import { render, screen } from '@testing-library/react-native';
 // The episode wording only (BRIDGE-12); the tab's rows and timeline are covered through
 // the book page's suite (book-page.test.tsx).
 
-jest.mock('@/components/player/book-timeline', () => ({ BookTimeline: () => null }));
+const mockTimeline = jest.fn((_props: { current?: number; starts: number[] }) => null);
+jest.mock('@/components/player/book-timeline', () => ({
+  BookTimeline: (p: { current?: number; starts: number[] }) => mockTimeline(p),
+}));
 jest.mock('@/playback/store', () =>
   // `require` because a jest.mock factory is hoisted above every import.
   // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -53,4 +56,12 @@ it('says "episode" on an episode page', async () => {
   expect(screen.getByText('The whole episode')).toBeTruthy();
   expect(screen.getByText('This episode has no chapter marks')).toBeTruthy();
   expect(screen.queryByText('The whole book')).toBeNull();
+});
+
+it('marks no run current when a file of unknown length leaves the timeline one run', async () => {
+  // A start after a file of unknown length is NaN: the timeline draws the book as one run,
+  // so the row index names no run on it.
+  const rows = parts.rows.map((r, i) => ({ ...r, start: i === 0 ? 0 : NaN }));
+  await render(<BookChaptersTab {...props({ list: { kind: 'parts', rows }, current: 1 })} />);
+  expect(mockTimeline.mock.lastCall?.[0]).toMatchObject({ starts: [], current: undefined });
 });

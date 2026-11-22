@@ -144,7 +144,8 @@ export function BookChaptersTab({
     <View className="gap-4">
       {total > 0 ? (
         <WholeBook
-          current={currentRow >= 0 ? currentRow : undefined}
+          // A row index is a timeline run only while every row has a start on it.
+          current={currentRow >= 0 && starts.length > 0 ? currentRow : undefined}
           starts={starts}
           titles={labels}
           total={total}
