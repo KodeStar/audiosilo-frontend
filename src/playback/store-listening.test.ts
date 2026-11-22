@@ -826,6 +826,23 @@ describe('with listening_sync', () => {
       );
     });
 
+    it('counts a seek on the queue that lost its name once the read confirms the book', async () => {
+      await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, 300);
+      engineBook = own;
+      pushSnapshot(phoneTick('playing', 300));
+      await settle();
+      // The engine holds the phone book again in a queue that names none, and is moved back.
+      engineBook = null;
+      const moves = localMoveCount();
+      remoteMove(0, 100);
+      pushSnapshot(phoneTick('playing', 100));
+      expect(usePlayer.getState().snapshot.position).toBe(300);
+      pendingBookConfirmation()?.({ ...own, trackIndex: 0, position: 101, rate: 1, playing: true });
+      await settle();
+      expect(localMoveCount()).toBe(moves + 1);
+      expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 101 });
+    });
+
     it('takes an unnamed outside play of the paused book while no car sync listens', async () => {
       offCarSync();
       await usePlayer.getState().playBook('c1', 2, phoneBook, phoneChapters, 188.003);

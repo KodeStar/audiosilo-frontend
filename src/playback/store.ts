@@ -4067,13 +4067,11 @@ async function createService(): Promise<PlaybackService> {
     void Promise.resolve().then(() => persist());
   };
   svc.onRemoteMove?.((index, position, checkpoint) => {
-    // Losing the name means the engine changed queues. A move on an already
-    // unnamed queue waits for a read begun after it, even if one is in flight.
-    if (
-      !checkpoint &&
-      namedQueue === null &&
-      (reportedOtherBook(svc) === unnamedQueue || canCheckUnnamed())
-    ) {
+    // A move on a queue held unnamed (its name lost, or never given) waits for a read begun
+    // after it, even if one is in flight: once that read confirms the store's book, it
+    // counts as the listener's move (its floor and its listening event), else it is the
+    // other book's.
+    if (!checkpoint && (reportedOtherBook(svc) === unnamedQueue || canCheckUnnamed())) {
       checkUnnamed(true);
       return;
     }
