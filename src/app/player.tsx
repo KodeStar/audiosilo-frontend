@@ -157,8 +157,7 @@ export default function PlayerScreen() {
       startedKeyRef.current = key; // this target is handled; don't auto-start it again
       if (jumpedKeyRef.current === jumpKey) return; // this jump is already done
       jumpedKeyRef.current = jumpKey;
-      if (filePlace) quietly(seekBook(posParam ?? 0, filePlace));
-      else if (hasPos) quietly(seekBook(posParam));
+      if (filePlace || hasPos) quietly(seekBook(hasPos ? posParam : 0, filePlace));
       else if (hasTrack) quietly(goToTrack(trackParam));
       return;
     }

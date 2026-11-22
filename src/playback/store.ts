@@ -966,10 +966,10 @@ type PlayerState = {
   /** Re-load the current track at the current position and resume - recovery after
    * the engine reports an `error` (e.g. the stream became unreachable). */
   retry: () => Promise<void>;
-  /** Seek to a whole-book place. `track`: the file it is in, when the caller knows it (a
-   * chapter's), else the playing one: among files that share a start (lengths unknown,
-   * `locate`) it is that file, not the first. */
-  seekBook: (bookPosition: number, track?: number | FilePlace) => Promise<void>;
+  /** Seek to a whole-book place. `file`: the file it is in and the seconds into it, when the
+   * caller knows them (a chapter's), else the playing file: among files that share a start
+   * (lengths unknown, `locate`) it is that file, not the first. */
+  seekBook: (bookPosition: number, file?: FilePlace) => Promise<void>;
   /** Seek within the current track (used when the whole-book timeline is unknown). */
   seekInTrack: (positionInTrack: number) => Promise<void>;
   /** Jump to a track by index (multi-file books without a reliable timeline). */
@@ -2530,9 +2530,10 @@ function reloadPlace(np: NowPlaying): { index: number; positionInTrack: number }
     return { index: ask.trackIndex, positionInTrack: ask.position };
   const player = usePlayer.getState();
   const live = selectBookPosition(player);
-  const atFloor = live < resumeFloor.position;
-  const index = atFloor ? resumeFloor.trackIndex : player.snapshot.trackIndex;
-  const position = atFloor ? resumeFloor.position : live;
+  const { position, trackIndex: index } =
+    live < resumeFloor.position
+      ? resumeFloor
+      : { position: live, trackIndex: player.snapshot.trackIndex };
   const { offsets } = np.queue;
   const start = offsets[index];
   if (start !== undefined && (start === offsets[index - 1] || start === offsets[index + 1])) {
@@ -4673,7 +4674,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
     await startLoadedEngine(svc);
   },
 
-  seekBook: async (bookPosition, track) => {
+  seekBook: async (bookPosition, file) => {
     const np = get().nowPlaying;
     if (!np || !Number.isFinite(bookPosition)) return;
     const clamped =
@@ -4681,10 +4682,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         ? Math.max(0, Math.min(bookPosition, np.queue.total))
         : Math.max(0, bookPosition);
     const svc = await ensureService();
-    const target =
-      typeof track === 'object'
-        ? locateBookPlace(np.queue, np.libraryId, clamped, track)
-        : locate(np.queue.offsets, clamped, track ?? get().snapshot.trackIndex);
+    const target = file
+      ? locateBookPlace(np.queue, np.libraryId, clamped, file)
+      : locate(np.queue.offsets, clamped, get().snapshot.trackIndex);
     moveListeningSpan(endAt(np, target.index, target.positionInTrack));
     userMoved(toBookPosition(np.queue.offsets, target.index, target.positionInTrack), target.index);
     // A faulted engine sits in another file than the snapshot's (`engineFault`): it is put in

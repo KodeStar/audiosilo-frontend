@@ -246,7 +246,7 @@ describe('usePlayBook', () => {
   it('jumps the loaded book there and plays it on, also when it was paused', async () => {
     setPlayer({ key: 'c:1:Book', live: false });
     await play({ at: { position: 1000 } });
-    expect(mockSeekBook).toHaveBeenCalledWith(1000);
+    expect(mockSeekBook).toHaveBeenCalledWith(1000, undefined);
     expect(mockToggle).toHaveBeenCalledTimes(1);
     setPlayer({ key: 'c:1:Book', live: true });
     await play({ at: { track: 3 } });
