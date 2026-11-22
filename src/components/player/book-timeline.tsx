@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { type LayoutChangeEvent, Platform, View } from 'react-native';
 import { GestureDetector } from 'react-native-gesture-handler';
@@ -353,13 +353,7 @@ export function PlayerBookTimeline({
   );
   const current = usePlayer((s) => selectCurrentChapter(s)?.index);
   // A hovered or scrubbed second names its chapter as the heading would there.
-  const chapterAtSecond = useCallback(
-    (seconds: number) => {
-      const found = chapterAt(chapters ?? [], seconds);
-      return found ? (chapters ?? []).indexOf(found) : 0;
-    },
-    [chapters],
-  );
+  const chapterAtSecond = (seconds: number) => chapterAt(chapters ?? [], seconds)?.index ?? 0;
   const position = usePlayer((s) => timelinePosition(selectBookPosition(s), total, starts));
   if (!queue || total <= 0) return null;
   return (

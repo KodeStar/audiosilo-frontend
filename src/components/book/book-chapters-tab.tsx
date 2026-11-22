@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
@@ -128,7 +128,7 @@ export function BookChaptersTab({
     [list.rows, list.kind, t],
   );
   // The timeline's hover names the row a place is in, as the rows mark it.
-  const rowAtSecond = useCallback((seconds: number) => rowAt(list.rows, seconds), [list.rows]);
+  const rowAtSecond = (seconds: number) => rowAt(list.rows, seconds);
   // Every row is behind a finished listener.
   const current = finished ? list.rows.length : currentRow;
   // The rows holding a bookmark (one in the book: never past its end).

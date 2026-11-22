@@ -43,10 +43,8 @@ export function stopAfterRows(
   if (queue.syntheticChapters || queue.chapters.length === 0) return [];
   const playing = playingFile === undefined ? undefined : (path: string) => path === playingFile;
   const countdowns = chapterCountdowns(queue.chapters, position, undefined, rate, playing);
-  // The first is the chapter playing. With no length (its file's length unknown) and the place
-  // past its start, its end is nowhere on the whole-book timeline, and the later chapters'
-  // ends fall inside this file's run: any stop would land mid-file, and a later chapter must
-  // not stand in as "This chapter".
+  // The first is the chapter playing. With no length, the place has run past its end and
+  // every later end falls inside its file: any stop would land mid-file.
   const here = countdowns[0]?.chapter;
   if (here && !(here.end > here.start) && countdowns[0].endPosition <= position + EPS) return [];
   return countdowns
