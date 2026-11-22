@@ -76,6 +76,253 @@ final class OutboxTests: XCTestCase {
     Outbox(directory: dir, acks: acks, deviceId: deviceId, clock: { [unowned self] in clock.now })
   }
 
+  private func cut(_ id: String, from: Double, to: Double, at: String, start: ListeningStart = .resume) -> ListeningEvent {
+    .listen(SpanEvent(id: id, libraryId: 3, path: "Author/Book", fromPos: from, toPos: to,
+                      toFile: "b.mp3", toFilePos: 20, playbackSpeed: 1.25, startedAt: at, endedAt: at, start: start))
+  }
+
+  private func sentBooks(in dir: URL) throws -> Set<String> {
+    let data = try Data(contentsOf: dir.appendingPathComponent("sent-places.json"))
+    let document = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    return Set(try XCTUnwrap(document["books"] as? [String: Any]).keys)
+  }
+
+  func testCutsWriteOnlyTheirOwnFileAndIgnoreTheUnshippedSyncStateField() async throws {
+    let dir = try tempDir(self)
+    let state = dir.appendingPathComponent("sync-state.json")
+    let legacy = Data(#"{ "failed": [], "clockSkewMs": 1250, "sentPlaces": {"accountId":"a","books":{"3\u0000old":{"position":42,"at":0}},"removed":[]} }"#.utf8)
+    try legacy.write(to: state)
+    let box = outbox(dir)
+    let places = PlaceStore(url: nil)
+    box.restorePlaces(for: "a", into: places)
+    XCTAssertNil(places.place(BookRef(libraryId: 3, path: "old")))
+    XCTAssertTrue(try sentBooks(in: dir).isEmpty)
+    XCTAssertEqual(box.state.clockSkewMs, 1250)
+    box.append([cut("first", from: 600, to: 625.48, at: "2026-10-25T07:33:15Z")])
+    let last = cut("last", from: 625.48, to: 640.73, at: "2026-10-25T07:33:30Z")
+    box.append([last])
+    XCTAssertEqual(try sentBooks(in: dir), [last.ref.key])
+    XCTAssertEqual(try Data(contentsOf: state), legacy, "even the original whitespace survives the cuts")
+    await box.flush(via: FakeTransport())
+    let written = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: state)) as? [String: Any])
+    XCTAssertNil(written["sentPlaces"])
+
+    let file = dir.appendingPathComponent("sent-places.json")
+    try lock(file)
+    let next = outbox(dir)
+    try unlock(file)
+    next.reload()
+    next.restorePlaces(for: "a", into: places)
+    XCTAssertEqual(places.place(last.ref)?.position, 640.73)
+  }
+
+  func testRelaunchTakesTheServerRowWhenThePlaceQueueAndSentCutWritesAllFail() async throws {
+    let dir = try tempDir(self)
+    let url = dir.appendingPathComponent("places.json")
+    let heard = cut("heard", from: 625.48, to: 640.73, at: "2026-10-25T07:33:30Z")
+    let stale = LocalPlace(position: 571.945, at: ISOTime.parse("2026-10-25T07:32:00Z")!)
+    let places = PlaceStore(url: url)
+    places.set(heard.ref, stale)
+    let box = outbox(dir)
+    box.restorePlaces(for: "a", into: places)
+    let reopen = try sealed(dir)
+    box.append([heard])
+    places.set(heard.ref, LocalPlace(position: 640.73, at: try XCTUnwrap(heard.time)))
+    var own = row(version: 29)
+    own.position = 640.73
+    let server = FakeTransport { answer($0, progress: [own]) }
+    await box.flush(via: server)
+    XCTAssertEqual(server.bodies.first?.events, [heard])
+    reopen()
+
+    let restored = PlaceStore(url: url)
+    outbox(dir).restorePlaces(for: "a", into: restored)
+    XCTAssertEqual(restored.place(heard.ref), stale)
+    for ack in [25, 29] {
+      let plan = Resume.plan(local: restored.place(heard.ref), row: own, deviceId: deviceId, ackVersion: ack, total: 1800)
+      XCTAssertTrue(plan.tookRow)
+      XCTAssertEqual(plan.position, 640.73)
+    }
+  }
+
+  func testOfflineRelaunchRecoversTheSentCutAfterAPlaceWriteFails() async throws {
+    let dir = try tempDir(self)
+    let placeDir = try tempDir(self)
+    let url = placeDir.appendingPathComponent("places.json")
+    let heard = cut("heard", from: 625.48, to: 640.73, at: "2026-10-25T07:33:30Z")
+    let stale = LocalPlace(position: 571.945, at: ISOTime.parse("2026-10-25T07:32:00Z")!)
+    let latest = LocalPlace(position: 640.73, file: "b.mp3", filePos: 20, at: try XCTUnwrap(heard.time), speed: 1.25)
+    let places = PlaceStore(url: url)
+    places.set(heard.ref, stale)
+    let box = outbox(dir)
+    box.restorePlaces(for: "a", into: places)
+    let reopen = try sealed(placeDir)
+    box.append([heard])
+    places.set(heard.ref, latest)
+    let server = FakeTransport()
+    await box.flush(via: server)
+    XCTAssertEqual(server.bodies.first?.events, [heard])
+    XCTAssertTrue(box.events.isEmpty)
+    reopen()
+
+    let restored = PlaceStore(url: url)
+    XCTAssertEqual(restored.place(heard.ref), stale)
+    let wrongAccount = PlaceStore(url: nil)
+    outbox(dir).restorePlaces(for: "b", into: wrongAccount)
+    XCTAssertNil(wrongAccount.place(heard.ref))
+
+    let next = outbox(dir)
+    // An older open span can be recovered again before the launch restores places.
+    next.restorePlaces(for: "a", into: restored) {
+      next.append([cut("old", from: 550, to: 571.945, at: "2026-10-25T07:32:00Z")])
+    }
+    XCTAssertEqual(restored.place(heard.ref), latest)
+    let plan = Resume.plan(local: restored.place(heard.ref), row: nil, deviceId: deviceId, ackVersion: 25, total: 1800)
+    XCTAssertEqual(plan.position, 640.73)
+    XCTAssertEqual(plan.filePos, 20)
+    var own = row(version: 29)
+    own.position = 300
+    own.updatedAt = "2026-10-25T07:32:00Z"
+    XCTAssertEqual(Resume.plan(local: restored.place(heard.ref), row: own, deviceId: deviceId, ackVersion: 25, total: 1800), plan)
+    own.updatedAt = "2026-10-25T07:35:00Z"
+    let rewind = Resume.plan(local: restored.place(heard.ref), row: own, deviceId: deviceId, ackVersion: 25, total: 1800)
+    XCTAssertTrue(rewind.tookRow)
+    XCTAssertEqual(rewind.position, 300)
+  }
+
+  func testRecoveryUsesOutboxOrderAcrossAClockChangeAndIgnoresAnEmptyResume() throws {
+    let dir = try tempDir(self)
+    let heard = cut("heard", from: 600, to: 640, at: "2026-10-25T07:40:00Z")
+    let rewind = cut("rewind", from: 300, to: 300, at: "2026-10-25T07:35:00Z", start: .movedBack)
+    let empty = cut("empty", from: 100, to: 100.2, at: "2026-10-25T07:50:00Z")
+    let other = listen("other", path: "Another book")
+    // On upgrade the outbox can hold cuts, with no sent places in the previous sync state.
+    try Data(#"{"failed":[],"clockSkewMs":1250}"#.utf8).write(to: dir.appendingPathComponent("sync-state.json"))
+    outbox(dir).append([heard, other, rewind, empty])
+    let next = outbox(dir)
+    let places = PlaceStore(url: nil)
+    let newer = LocalPlace(position: 42, at: clock.now)
+    places.set(other.ref, newer)
+    next.restorePlaces(for: "a", into: places) {
+      next.append([cut("old", from: 550, to: 571.945, at: "2026-10-25T07:32:00Z")])
+    }
+    XCTAssertEqual(places.place(heard.ref), LocalPlace(position: 300, file: "b.mp3", filePos: 20,
+                                                       at: try XCTUnwrap(rewind.time), speed: 1.25))
+    XCTAssertEqual(places.place(other.ref), newer)
+    XCTAssertEqual(next.state.clockSkewMs, 1250)
+  }
+
+  func testBackgroundUploadHasARecoverableCutBeforeItsAnswerEvenIfTheOutboxWriteFails() throws {
+    let dir = try tempDir(self)
+    let box = outbox(dir)
+    box.restorePlaces(for: "a", into: PlaceStore(url: nil))
+    // A directory at the file's path refuses the atomic replacement.
+    let queue = dir.appendingPathComponent("outbox.json")
+    try FileManager.default.createDirectory(at: queue, withIntermediateDirectories: false)
+    try Data().write(to: queue.appendingPathComponent("block"))
+    let heard = cut("heard", from: 625.48, to: 640.73, at: "2026-10-25T07:33:30Z")
+    box.append([heard])
+    XCTAssertEqual(box.backgroundBody()?.events, [heard])
+    let next = outbox(dir)
+    XCTAssertTrue(next.events.isEmpty)
+    let places = PlaceStore(url: nil)
+    next.restorePlaces(for: "a", into: places)
+    XCTAssertEqual(places.place(heard.ref)?.position, 640.73)
+  }
+
+  func testAnAnsweredCutRetriesItsFailedSentPlaceWrite() async throws {
+    let dir = try tempDir(self)
+    let box = outbox(dir)
+    let heard = listen("heard")
+    box.restorePlaces(for: "a", into: PlaceStore(url: nil))
+    let reopen = try sealed(dir)
+    box.append([heard])
+    reopen()
+    await box.flush(via: FakeTransport())
+
+    let next = outbox(dir)
+    XCTAssertTrue(next.events.isEmpty)
+    let places = PlaceStore(url: nil)
+    next.restorePlaces(for: "a", into: places)
+    XCTAssertEqual(places.place(heard.ref)?.position, 16800)
+  }
+
+  func testRemovingABookForgetsItsPlaceEvenWhileItsListeningWaits() async throws {
+    let dir = try tempDir(self)
+    let box = outbox(dir)
+    let removed = listen("old")
+    let kept = listen("keep", path: "Another book")
+    box.restorePlaces(for: "a", into: PlaceStore(url: nil))
+    box.append([removed, kept])
+    box.forgetPlace(removed.ref)
+    let next = outbox(dir)
+    let places = PlaceStore(url: nil)
+    next.restorePlaces(for: "a", into: places)
+    XCTAssertEqual(next.events, [removed, kept])
+    XCTAssertNil(places.place(removed.ref))
+    XCTAssertEqual(places.place(kept.ref)?.position, 16800)
+    await next.flush(via: FakeTransport())
+    XCTAssertEqual(try sentBooks(in: dir), [kept.ref.key], "the removal marker goes with the queued listening")
+    next.append([listen("waiting", path: "Another book")])
+    next.discardAll()
+    XCTAssertFalse(FileManager.default.fileExists(atPath: dir.appendingPathComponent("sent-places.json").path))
+    let signedInAgain = PlaceStore(url: nil)
+    outbox(dir).restorePlaces(for: "a", into: signedInAgain)
+    XCTAssertNil(signedInAgain.place(kept.ref))
+  }
+
+  func testAQueueWriteFailureKeepsTheRemovalMarkerForTheOldQueueOnDisk() async throws {
+    let dir = try tempDir(self)
+    let box = outbox(dir)
+    let removed = listen("old")
+    box.restorePlaces(for: "a", into: PlaceStore(url: nil))
+    box.append([removed])
+    box.forgetPlace(removed.ref)
+    // Block replacement of just the queue file. Put its old bytes back for the relaunch.
+    let queue = dir.appendingPathComponent("outbox.json")
+    let old = try Data(contentsOf: queue)
+    try FileManager.default.removeItem(at: queue)
+    try FileManager.default.createDirectory(at: queue, withIntermediateDirectories: false)
+    try Data().write(to: queue.appendingPathComponent("block"))
+    await box.flush(via: FakeTransport())
+    XCTAssertTrue(box.events.isEmpty)
+    try FileManager.default.removeItem(at: queue)
+    try old.write(to: queue)
+    let next = outbox(dir)
+    let places = PlaceStore(url: nil)
+    next.restorePlaces(for: "a", into: places)
+    XCTAssertEqual(next.events, [removed])
+    XCTAssertNil(places.place(removed.ref))
+    await next.flush(via: FakeTransport())
+    XCTAssertTrue(try sentBooks(in: dir).isEmpty)
+  }
+
+  func testFinishForgetsTheCutEvenIfTheFinishIsAnsweredBeforeTheSpan() async throws {
+    let dir = try tempDir(self)
+    // This span preceded the finish in the queue, even though the watch's clock went back.
+    let first = listen("old", endedAt: "2026-10-25T07:35:00Z")
+    let other = listen("other", path: "Another book")
+    let finish = ListeningEvent.finish(FinishEvent(id: "finish", kind: "finish", libraryId: first.ref.libraryId,
+                                                  path: first.ref.path, at: "2026-10-25T07:34:00Z"))
+    let box = outbox(dir)
+    box.restorePlaces(for: "a", into: PlaceStore(url: nil))
+    box.append([first, other, finish])
+    box.applyBackground(SyncResponse(results: [SyncResult(id: finish.id, status: "applied")]), sentIds: [finish.id])
+    let next = outbox(dir)
+    let places = PlaceStore(url: nil)
+    next.restorePlaces(for: "a", into: places)
+    XCTAssertNil(places.place(first.ref))
+    XCTAssertEqual(places.place(other.ref)?.position, 16800)
+    await next.flush(via: FakeTransport())
+    XCTAssertEqual(try sentBooks(in: dir), [other.ref.key])
+
+    let replay = cut("replay", from: 0, to: 15, at: "2026-10-25T07:40:00Z", start: .restart)
+    next.append([replay])
+    await next.flush(via: FakeTransport())
+    outbox(dir).restorePlaces(for: "a", into: places)
+    XCTAssertEqual(places.place(first.ref)?.position, 15)
+  }
+
   // Stay wins (row 9c-2): a queued `stay` goes as a `jump` once the server lacks
   // `listening_stay`, as it is otherwise; the stored event keeps its start and id.
   func testAQueuedStayIsSentAsAJumpWhenTheServerNoLongerTakesIt() async {

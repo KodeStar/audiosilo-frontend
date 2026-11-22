@@ -237,9 +237,8 @@ final class SpanRecorder {
     unfinishDue = unfinish
   }
 
-  /// `ref` loads at the server's row (`ResumePlan.tookRow`: another device's newer place, or the
-  /// server's when the watch has none), not where this watch left it. A move a kill cut short
-  /// here was not made from that place, so it is not the reason of the book's first span.
+  /// When the book loads at a server row (`ResumePlan.tookRow`), its first span starts from
+  /// that row. Drop any move recovered from the old local place.
   func loadsFromRow(_ ref: BookRef) {
     recover()
     if recoveredMove?.ref == ref { keepMove(nil) }

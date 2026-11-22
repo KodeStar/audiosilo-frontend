@@ -24,6 +24,51 @@ struct CouldNotSync: Codable, Equatable, Sendable {
   var at: Date
 }
 
+/// A finish or download removal suppresses older queued listening until it leaves the outbox.
+private enum SentPlace: Codable, Equatable {
+  case heard(place: LocalPlace)
+  case finished(through: Date)
+  case removed
+
+  var place: LocalPlace? {
+    if case .heard(let place) = self { return place }
+    return nil
+  }
+
+  /// Merge independent copies on the watch's clock. A removed download stays removed until a fresh cut.
+  static func newer(_ kept: Self, _ cut: Self) -> Self {
+    switch (kept, cut) {
+    case (.removed, _), (_, .removed): return .removed
+    case (.heard(let a), .heard(let b)): return .heard(place: LocalPlace.newer(a, b))
+    case (.finished(let a), .finished(let b)): return .finished(through: max(a, b))
+    case (.heard(let place), .finished(let end)), (.finished(let end), .heard(let place)):
+      return place.at > end ? .heard(place: place) : .finished(through: end)
+    }
+  }
+
+  /// Each book's last heard cut or finish in queue order, including a deliberate move while paused.
+  static func lastHeard(in events: ArraySlice<ListeningEvent>) -> [String: Self] {
+    var places: [String: Self] = [:]
+    for event in events {
+      switch event {
+      case .listen(let cut) where cut.heardPlace:
+        guard let at = event.time else { continue }
+        places[event.ref.key] = .heard(place: LocalPlace(position: cut.toPos, file: cut.toFile, filePos: cut.toFilePos,
+                                                        at: at, speed: cut.playbackSpeed ?? 1))
+      case .finish(let end) where end.kind == "finish":
+        if let at = event.time { places[event.ref.key] = .finished(through: at) }
+      default: continue
+      }
+    }
+    return places
+  }
+}
+
+private struct SentPlaces: Codable, Equatable {
+  var accountId: String
+  var books: [String: SentPlace] = [:]
+}
+
 /// What Sync status shows, and the server's clock skew.
 struct SyncState: Codable, Equatable, Sendable {
   var lastSyncAt: Date?
@@ -49,18 +94,23 @@ final class Outbox {
 
   private let eventsFile: JSONFile<[ListeningEvent]>?
   private let stateFile: JSONFile<SyncState>?
+  private let sentPlacesFile: JSONFile<SentPlaces>?
+  private var sentPlaces: SentPlaces?
+  private var sentPlacesWriteFailed = false
   private let acks: AckStore
   /// Asked when first needed, never at launch: before the watch's first unlock the id kept for it
   /// can't be read yet (`Files.deviceId`), and nothing is sent until it can.
   private let deviceIdOf: () -> String
   private var deviceId: String { deviceIdOf() }
   private let clock: () -> Date
+  private var placeAccount: String?
 
   private(set) var events: [ListeningEvent]
   private(set) var state: SyncState
   /// The outbox file is there, but could be neither read nor moved aside: nothing is written over
   /// it, so what waits is in memory alone until a save finds it reads or moves (`saveEvents`).
   private var stuck = false
+  private var eventsWriteFailed = false
   /// The server has not answered since a flush failed (offline, or the server failed).
   private(set) var lastFlushFailed = false
 
@@ -88,6 +138,7 @@ final class Outbox {
     self.directory = directory
     eventsFile = directory.map { JSONFile(url: $0.appendingPathComponent("outbox.json")) }
     stateFile = directory.map { JSONFile(url: $0.appendingPathComponent("sync-state.json")) }
+    sentPlacesFile = directory.map { JSONFile(url: $0.appendingPathComponent("sent-places.json")) }
     self.acks = acks
     deviceIdOf = deviceId
     self.clock = clock
@@ -95,6 +146,7 @@ final class Outbox {
     events = restored?.events ?? []
     stuck = restored?.stuck ?? false
     state = stateFile?.read() ?? SyncState()
+    sentPlaces = sentPlacesFile?.read()
   }
 
   // MARK: - The document
@@ -159,7 +211,69 @@ final class Outbox {
     stuck = restored.stuck
     let more = join(restored.events)
     if let kept = stateFile?.read() { state = kept }
+    if let kept = sentPlacesFile?.read() { sentPlaces = kept }
     if more { saveEvents() } else { onChange?() }
+  }
+
+  /// Restore each book's place from the account's kept cuts and the last heard cut per book in
+  /// queue order. The one open span recovered at launch can be an older span whose removal
+  /// failed, so compare its end with the cut already in the queue.
+  func restorePlaces(for accountId: String?, into places: PlaceStore, recoverSpan: () -> Void = {}) {
+    guard let accountId, placeAccount != accountId else {
+      recoverSpan()
+      return
+    }
+    let queued = events.count
+    recoverSpan()
+    var cuts = SentPlace.lastHeard(in: events.prefix(queued))
+    cuts.merge(SentPlace.lastHeard(in: events.dropFirst(queued)), uniquingKeysWith: SentPlace.newer)
+    placeAccount = accountId
+    var kept = sentPlaces ?? SentPlaces(accountId: accountId)
+    guard kept.accountId == accountId else { return }
+    kept.books.merge(cuts, uniquingKeysWith: SentPlace.newer)
+    savePlaces(kept)
+    places.recoverCuts(kept.books.compactMapValues(\.place))
+  }
+
+  /// Record fresh cuts as they enter the queue. A retry or a late upload answer cannot reorder them.
+  private func recordPlaces(in events: [ListeningEvent]) {
+    guard let placeAccount else { return }
+    let cuts = SentPlace.lastHeard(in: events[...])
+    guard !cuts.isEmpty else { return }
+    var kept = sentPlaces ?? SentPlaces(accountId: placeAccount)
+    if kept.accountId != placeAccount { kept = SentPlaces(accountId: placeAccount) }
+    kept.books.merge(cuts) { _, cut in cut }
+    savePlaces(kept)
+  }
+
+  func forgetPlace(_ ref: BookRef) {
+    guard var kept = sentPlaces, kept.accountId == placeAccount else { return }
+    kept.books[ref.key] = .removed
+    savePlaces(kept)
+  }
+
+  private func savePlaces(_ places: SentPlaces) {
+    var kept = places
+    // A failed queue write can leave older cuts on disk even after their upload was answered.
+    if kept.books.values.contains(where: { $0.place == nil }) {
+      var waiting: Set<String> = []
+      for event in events {
+        guard case .listen(let cut) = event, cut.heardPlace else { continue }
+        let key = event.ref.key
+        waiting.insert(key)
+        // A cut queued before a finish can have a later timestamp if the watch clock moved back.
+        // Even if the finish is acknowledged first, that cut must stay forgotten.
+        if case .finished(let through) = kept.books[key], let at = event.time, at > through {
+          kept.books[key] = .finished(through: at)
+        }
+      }
+      if !stuck, !eventsWriteFailed {
+        kept.books = kept.books.filter { $0.value.place != nil || waiting.contains($0.key) }
+      }
+    }
+    guard kept != sentPlaces || sentPlacesWriteFailed else { return }
+    sentPlaces = kept
+    sentPlacesWriteFailed = sentPlacesFile?.write(kept) == false
   }
 
   /// Append closed events (immutable from here); one with a number that is not one, or an id
@@ -170,6 +284,7 @@ final class Outbox {
     guard !add.isEmpty else { return }
     events += add
     saveEvents()
+    recordPlaces(in: add)
   }
 
   /// Every event waiting (signing out is blocked while any is, decision 9).
@@ -199,6 +314,9 @@ final class Outbox {
     again = false
     events = []
     state = SyncState()
+    sentPlaces = nil
+    sentPlacesWriteFailed = false
+    placeAccount = nil
     chunkSize = Self.MAX_CHUNK
     // Nothing waits, so nothing failed: the 15 s cut runs again (the cold-start state).
     lastFlushFailed = false
@@ -207,6 +325,7 @@ final class Outbox {
     // A file still in the way goes with them: the listener chose to drop what waits.
     stuck = false
     saveEvents()
+    sentPlacesFile?.write(nil)
     saveState()
   }
 
@@ -218,7 +337,7 @@ final class Outbox {
       if let kept = again.events { _ = join(kept) }
     }
     // Never over a file that could be neither read nor moved.
-    if !stuck { eventsFile?.write(events) }
+    if !stuck { eventsWriteFailed = eventsFile?.write(events) == false }
     onChange?()
   }
 
@@ -231,7 +350,10 @@ final class Outbox {
     guard !ids.isEmpty else { return }
     let before = events.count
     events.removeAll { ids.contains($0.id) }
-    if events.count != before { saveEvents() }
+    if events.count != before {
+      saveEvents()
+      if let kept = sentPlaces, kept.accountId == placeAccount { savePlaces(kept) }
+    }
   }
 
   private func moveToFailed(_ items: [(event: ListeningEvent, reason: String)]) {

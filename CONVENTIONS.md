@@ -3952,7 +3952,16 @@ downloads and talks to the server directly; the phone only hands it a pairing to
   last Continue listening refresh's, or the one read when its download started: the phone's
   `keepServerPlace`), so an in-progress book never opens at 0 offline. The server's finished row
   beats a newer place here under the phone's `serverFinishWins` (the finish is newer, or at a
-  version not seen here, and none of this watch's events wait). Another device's place is
+  version not seen here, and none of this watch's events wait). An unfinished row from this watch
+  is taken when its position differs, its version is at least the acknowledged version, and its
+  update time, corrected for server clock skew, is later than the local place; taken, it becomes
+  the watch's place (`LocalPlace.fromRow`), so a play that saves none still leaves it. The outbox keeps
+  each book's last heard cut in `sent-places.json`, written atomically as it queues spans, before
+  either uploader sends them. Removing a download, finishing a book or taking a finished row drops
+  its cut. While older listening still waits, a marker keeps it from restoring that cut. Signing
+  out removes the file.
+  On relaunch the outbox recovers the signed-in account's cuts and the last heard cut per book in
+  queue order. A newer local place still wins. Another device's place is
   offered (Jump / Stay) under `offerOf` and the throttles, only from a live answer, also for a
   loaded book when the app comes to the foreground with it not playing and when it plays again
   after a minute's pause; an offer
@@ -4236,9 +4245,10 @@ certificate), versionCode from `:app`'s defaultConfig (EAS takes a fresh one per
   `SpanRecorder.playingTick`, `recover(carry)`, `keep(heardAt)` and the cut's (`tick`, `cut`), `move`'s `acknowledge`,
   `OpenSpan.fromHeard`, the recorder's `keepPlace` and the stalled-span rule (`Spans.STALL`),
   `PlaceStore.set(save:)` and `PlaceStore.recover`, the `DurableWriter`, and the outbox removing
-  its file when empty. Also Wear-only, for a full disk: `Resume.plan`'s `clockSkewMs` (this
-  watch's own newer row, `LocalPlace.fromRow`), `PlaceStore.recoverCuts`, `Outbox.recoverListening`
-  with its sent-places fallback (`sentPlacesFile`, `accountId`), `SpanRecorder.forgetAccount`, and
+  its file when empty. Both watches use `Resume.plan`'s `clockSkewMs` for their own newer row
+  and recover the last heard cuts with `PlaceStore.recoverCuts`: Wear's `Outbox.recoverListening`
+  from the queue and a separate fallback file (`sentPlacesFile`, `accountId`), the Apple Watch's
+  `Outbox.restorePlaces` from the queue and `sent-places.json`. Also Wear-only are `SpanRecorder.forgetAccount` and
   `AccountRules.awaitSignOut` in place of the Apple Watch's `signOut` gate. `JsonFile(durable = true)`
   syncs the bytes before its rename and the folder after (a battery death never empties the file): only
   `outbox.json`, `open-span.json`, `open-span-move.json`, `places.json` and `sent-places.json`, whose loss

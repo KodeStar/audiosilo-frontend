@@ -179,10 +179,49 @@ final class ResumeTests: XCTestCase {
     XCTAssertEqual(p, ResumePlan(position: 900, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: true))
   }
 
-  func testTheWatchsOwnPlaceStandsOverItsOwnRow() {
+  func testANewerMoveHereKeepsItsFileOverTheWatchsOwnRow() {
     let local = LocalPlace(position: 300, file: "a.mp3", filePos: 300, at: at)
-    let p = Resume.plan(local: local, row: row(device: "watch"), deviceId: "watch", ackVersion: 2, total: 1800)
+    let p = Resume.plan(local: local, row: row(device: "watch", updatedAt: "2026-10-25T07:59:58Z"),
+                        deviceId: "watch", ackVersion: 2, total: 1800)
     XCTAssertEqual(p, ResumePlan(position: 300, file: "a.mp3", filePos: 300, start: .resume, unfinish: false, tookRow: false))
+  }
+
+  // The same failed-write and clock-skew cases as wear-core's PlayerRulesTest.
+  func testRelaunchAfterFailedWritesResumesAtTheNewerCutThisWatchSent() {
+    let local = LocalPlace(position: 571.945, file: "a.mp3", filePos: 571.945, at: at)
+    let sent = row(position: 640.73, version: 29, device: "watch")
+    for ack in [25, 29] {
+      let p = Resume.plan(local: local, row: sent, deviceId: "watch", ackVersion: ack, total: 1800)
+      XCTAssertEqual(p, ResumePlan(position: 640.73, file: nil, filePos: nil, start: .resume, unfinish: false, tookRow: true))
+    }
+  }
+
+  func testOwnRowMustHaveADifferentPlaceAndBeAtLeastTheAcknowledgedVersion() {
+    let local = LocalPlace(position: 300, file: "a.mp3", filePos: 20, at: at)
+    for sent in [row(position: 300, version: 29, device: "watch"), row(version: 28, device: "watch")] {
+      let p = Resume.plan(local: local, row: sent, deviceId: "watch", ackVersion: 29, total: 1800)
+      XCTAssertEqual(p, ResumePlan(position: 300, file: "a.mp3", filePos: 20, start: .resume, unfinish: false, tookRow: false))
+    }
+  }
+
+  // A finished row of this watch's is finishWins' alone: a newer row time is not a finish newer
+  // than the place here.
+  func testTheWatchsOwnFinishedRowIsNotTakenAsANewerPlace() {
+    let local = LocalPlace(position: 300, file: "a.mp3", filePos: 20, at: at)
+    var r = row(position: 1800, finished: true, version: 29, device: "watch")
+    r.finishedAt = "2026-10-25T07:00:00Z"
+    let p = Resume.plan(local: local, row: r, deviceId: "watch", ackVersion: 29, total: 1800)
+    XCTAssertEqual(p, ResumePlan(position: 300, file: "a.mp3", filePos: 20, start: .jump, unfinish: true, tookRow: false))
+  }
+
+  func testAServerClockAheadOfTheWatchDoesNotUndoALaterRewind() {
+    let local = LocalPlace(position: 300, at: at)
+    let sent = row(position: 640.73, version: 29, device: "watch", updatedAt: "2026-10-25T08:00:10Z")
+    for skew in [10_000.0, 15_000.0] {
+      let p = Resume.plan(local: local, row: sent, deviceId: "watch", ackVersion: 29, total: 1800, clockSkewMs: skew)
+      XCTAssertEqual(p.position, 300)
+      XCTAssertFalse(p.tookRow)
+    }
   }
 
   func testAnotherDevicesNewerPlaceAtAnUnseenVersionIsTaken() {

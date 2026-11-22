@@ -131,6 +131,7 @@ final class AppModel: ObservableObject {
       // Removing the playing book stops it and closes its span first (decision 8).
       if self?.engine.loadedBook == ref { self?.engine.stop() }
       self?.places.remove(ref)
+      self?.outbox.forgetPlace(ref)
     }
     downloads.onChange = { [weak self] in self?.publishState() }
     outbox.onChange = { [weak self] in
@@ -145,7 +146,7 @@ final class AppModel: ObservableObject {
     PhoneLink.shared.onMessage = { [weak self] m in self?.receive(m) }
     // A span a kill left open goes into the outbox before anything else (sent on becoming active).
     // Before the first unlock its file can't be read: `catchUp` does it (nothing plays until then).
-    if loaded { spans.recover() }
+    if loaded { recoverListening() }
     // Held across a kill: aged, and queued if a sign-in finished just before it.
     releaseHeld()
     #if DEBUG
@@ -193,10 +194,14 @@ final class AppModel: ObservableObject {
     outbox.reload()
     downloads.reload()
     loaded = true
-    spans.recover()
+    recoverListening()
     releaseHeld()
     publishState()
     return true
+  }
+
+  private func recoverListening() {
+    outbox.restorePlaces(for: account?.accountId, into: places, recoverSpan: spans.recover)
   }
 
   /// The client for the account's address now, with its token; nil when signed out.
@@ -391,9 +396,20 @@ final class AppModel: ObservableObject {
     case .noAnswer: row = [library.keptPlace(record.ref), cache.serverPlace].compactMap { $0 }.max { $0.version < $1.version }
     }
     let local = places.place(record.ref)
-    let plan = Resume.plan(local: local, row: row, deviceId: Files.deviceId, ackVersion: acks.ackVersion(record.ref),
-                           total: timeline.total, waiting: outbox.events.contains { $0.ref == record.ref })
-    if plan.tookRow, let row { acks.ackResume(row) }
+    let me = Files.deviceId
+    let skew = outbox.state.clockSkewMs ?? 0
+    let plan = Resume.plan(local: local, row: row, deviceId: me, ackVersion: acks.ackVersion(record.ref),
+                           total: timeline.total, waiting: outbox.events.contains { $0.ref == record.ref },
+                           clockSkewMs: skew)
+    if plan.tookRow, let row {
+      if row.finished {
+        outbox.forgetPlace(record.ref)
+      } else if row.deviceId == me, let sent = LocalPlace.fromRow(row, clockSkewMs: skew) {
+        // A play that never saves another place still leaves this watch's own cut for an offline relaunch.
+        places.set(record.ref, sent)
+      }
+      acks.ackResume(row)
+    }
     engine.load(LoadedBook(ref: record.ref, title: record.title, author: record.author, timeline: timeline, urls: urls),
                 plan: plan, savedSpeed: Resume.savedSpeed(plan, local: local, row: row))
     // Offered only from the server's answer, never from a kept place.
@@ -653,6 +669,7 @@ final class AppModel: ObservableObject {
         addresses: AddressPicker.merge(prior: p.addresses, fresh: session.addresses), signedInAt: Date())
       Account.save(a)
       account = a
+      outbox.restorePlaces(for: a.accountId, into: places)
       router.start(at: AddressPicker.isOwn(base, serverURL: a.serverURL, addresses: a.addresses) ? base : nil)
       if let keptToken, AccountRules.endsKeptToken(change, kept: keptToken, new: session.token) {
         // A Send again whose `GET /me` got no word: the session the old token holds ends too, once
