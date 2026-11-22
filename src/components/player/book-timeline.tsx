@@ -351,9 +351,14 @@ export function PlayerBookTimeline({
     }),
     [chapters, t],
   );
-  const current = usePlayer((s) => selectCurrentChapter(s)?.index);
-  // A hovered or scrubbed second names its chapter as the heading would there.
-  const chapterAtSecond = (seconds: number) => chapterAt(chapters ?? [], seconds)?.index ?? 0;
+  const playing = usePlayer(selectCurrentChapter);
+  const current = playing?.index;
+  // A hovered or scrubbed second names its chapter as the heading would there: among
+  // chapters sharing the playing one's start (files of unknown length), the playing one.
+  const chapterAtSecond = (seconds: number) => {
+    const at = chapterAt(chapters ?? [], seconds);
+    return (at && playing && at.book_offset === playing.book_offset ? playing : at)?.index ?? 0;
+  };
   const position = usePlayer((s) => timelinePosition(selectBookPosition(s), total, starts));
   if (!queue || total <= 0) return null;
   return (
