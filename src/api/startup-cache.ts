@@ -1,7 +1,7 @@
 import type { InfiniteData, QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
-import { isServerInfoKey, reportedServerId, serverResetCid } from '@/lib/auth-failure';
+import { foreignServerAnswer, isServerInfoKey } from '@/lib/auth-failure';
 import { isInProgress } from '@/lib/progress-view';
 import { isRecord, STARTUP_CACHE_KEY } from '@/lib/storage-keys';
 import { APP_VERSION } from '@/lib/version';
@@ -269,8 +269,7 @@ export function restore(
   const kept = new Set<string>();
   const unasked = new Set<string>();
   for (const e of readEntries(store)) {
-    if (isServerInfoKey(e.key) && (!reportedServerId(e.data) || serverResetCid(e.key, e.data)))
-      continue;
+    if (isServerInfoKey(e.key) && foreignServerAnswer(e.key, e.data)) continue;
     if (cache.find({ queryKey: e.key, exact: true })) continue;
     // An infinite query restarts from its first page (whose param is always `undefined`:
     // JSON can't keep it).

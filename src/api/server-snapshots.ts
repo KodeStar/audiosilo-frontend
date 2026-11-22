@@ -1,4 +1,4 @@
-import { isServerInfoKey, reportedServerId, serverResetCid } from '@/lib/auth-failure';
+import { foreignServerAnswer, isServerInfoKey, reportedServerId } from '@/lib/auth-failure';
 import { getItem, setItem } from '@/lib/storage';
 import { isRecord, OFFLINE_SERVERS_KEY } from '@/lib/storage-keys';
 import { tabLock } from '@/lib/tab-lock';
@@ -110,11 +110,7 @@ export function forgetServerSnapshot(connectionId: string): Promise<void> {
 export function seedServerSnapshot(connectionId: string, snapshot: ServerSnapshot): void {
   const key = qk.server(connectionId);
   // An older build could have kept the answer from another host at a home address.
-  if (
-    !reportedServerId(snapshot.info) ||
-    serverResetCid(key, snapshot.info, useSession.getState().connections)
-  )
-    return;
+  if (foreignServerAnswer(key, snapshot.info, useSession.getState().connections)) return;
   queryClient.setQueryDefaults(key, { gcTime: Infinity });
   const state = queryClient.getQueryState<ServerInfo>(key);
   if (state?.data !== undefined && state.dataUpdatedAt >= snapshot.savedAt) return;
@@ -181,8 +177,7 @@ export function keepServerFlag(connectionId: string, flag: keyof Capabilities): 
   const state = queryClient.getQueryState<ServerInfo>(key);
   const held = state?.data;
   if (!state || !held?.capabilities || held.capabilities[flag]) return;
-  if (!reportedServerId(held) || serverResetCid(key, held, useSession.getState().connections))
-    return;
+  if (foreignServerAnswer(key, held, useSession.getState().connections)) return;
   cacheServerAnswer(
     connectionId,
     { ...held, capabilities: { ...held.capabilities, [flag]: true } },

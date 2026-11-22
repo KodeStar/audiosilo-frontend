@@ -67,3 +67,14 @@ export function serverResetCid(
   const conn = connections.find((c) => c.id === cid) ?? { id: cid };
   return serverId !== serverIdOf(conn) ? cid : null;
 }
+
+/** Whether a `/server` answer kept for the connection `key` names can't be taken as its
+ * own: it names no install, or another one (`serverResetCid`). Kept answers are read
+ * without the address that gave them, so neither case flags the connection. */
+export function foreignServerAnswer(
+  key: readonly unknown[],
+  data: unknown,
+  connections: readonly { id: string; serverId?: string }[] = [],
+): boolean {
+  return !reportedServerId(data) || serverResetCid(key, data, connections) !== null;
+}
