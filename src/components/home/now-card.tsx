@@ -13,6 +13,7 @@ import {
   type SourcedProgress,
 } from '@/api/hooks';
 import { ConnectionScope } from '@/api/provider';
+import type { Chapter } from '@/api/types';
 import { BookCover } from '@/components/library/book-cover';
 import { bookMetaWork } from '@/components/library/book-meta';
 import { CoverWash } from '@/components/library/cover-wash';
@@ -41,6 +42,7 @@ import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
+import { fileOf } from '@/playback/book-queue';
 import { type PlacedProgress, positionOn } from '@/playback/progress-sync';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
@@ -50,7 +52,14 @@ import { tabularNums } from '@/theme/tabular-nums';
 import { BookScale } from './book-scale';
 import type { BookAt } from './home-model';
 import { dailyPace, estimatedFinish } from './listening';
-import { bookmarkPins, bookScale, chapterPlace, nowCardCompact } from './now-card-model';
+import {
+  bookmarkPins,
+  bookScale,
+  chapterPlace,
+  nowCardCompact,
+  type TieChapter,
+  tiedChapterIndexAt,
+} from './now-card-model';
 
 /** The live position is read in steps this long, so the card redraws every few
  * seconds rather than on every engine tick (its figures are minutes). */
@@ -132,35 +141,62 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
   // Chapter starts recomputed from the file durations, as the book page does (the
   // server's `book_offset` is unreliable on some books); the queue's are already. Never the
   // queue's synthetic 30 minute slices: a chapterless book has no chapters here either.
-  const { titles, starts } = useMemo(() => {
+  // With each chapter's file and length, so chapters sharing a start name the one the player
+  // does (`tiedChapterIndexAt`).
+  const { titles, starts, ties } = useMemo(() => {
+    const tie = (c: Chapter, file: number): TieChapter => ({
+      path: c.file_path,
+      start: c.start,
+      file,
+      length: Math.max(0, c.end - c.start),
+    });
     if (queue && !queue.syntheticChapters && queue.chapters.length > 0) {
       return {
         titles: queue.chapters.map((c) => c.title),
         starts: queue.chapters.map((c) => c.book_offset),
+        ties: queue.chapters.map((c) => tie(c, c.file_index)),
       };
     }
     const chapters = chapterData?.chapters ?? [];
+    const files = chapterData?.files ?? [];
+    const order = new Map(files.map((f, i) => [f.rel_path, i]));
     return {
       titles: chapters.map((c) => c.title),
-      starts: chapterStartsOf(chapters, chapterData?.files ?? []),
+      starts: chapterStartsOf(chapters, files),
+      ties: chapters.map((c) => tie(c, order.get(c.file_path) ?? -1)),
     };
   }, [chapterData, queue]);
+  // The file playing and its whole-book start, so the live place names its own file.
+  const liveFile = usePlayer((s) =>
+    loaded && s.nowPlaying ? fileOf(s.nowPlaying, s.snapshot.trackIndex) : undefined,
+  );
+  const liveFileStart = usePlayer((s) =>
+    loaded ? (s.nowPlaying?.queue.offsets[s.snapshot.trackIndex] ?? 0) : 0,
+  );
 
   const total = queue?.total || chapterData?.duration || saved?.duration || book?.duration || 0;
   // While a book is still loading the player reports 0: keep the saved place until it
   // has really moved. The saved place as Resume plays it: this device's file place read on
   // these chapters' files (`positionOn`).
   const savedPosition = saved ? positionOn(saved, chapterData?.files) : 0;
-  const position = loaded && livePosition > 0 ? livePosition : savedPosition;
+  const live = loaded && livePosition > 0;
+  const position = live ? livePosition : savedPosition;
+  const fileAt = live
+    ? liveFile === undefined
+      ? undefined
+      : // The live place is floored to a step, which can fall short of its file's start.
+        { path: liveFile, pos: Math.max(0, livePosition - liveFileStart) }
+    : saved?.file;
+  const current = tiedChapterIndexAt(starts, ties, position, fileAt);
   const finished = !!saved?.finished && !loaded;
   // The book's own speed: the player's while loaded, else its saved one, else the default.
   const speed = useBookSpeed(at, saved?.playback_speed);
   const percent = percentHeard(position, total, finished);
   const left = timeLeft(position, total, speed)?.seconds ?? 0;
-  const place = chapterPlace(titles, starts, position);
+  const place = chapterPlace(titles, starts, position, current);
   // No "Chapter 1 of 1" for an episode without chapters.
   const shownPlace = place && (!episode || place.count > 1) ? place : null;
-  const segments = bookScale(starts, total, position, compact ? 60 : undefined);
+  const segments = bookScale(starts, total, position, compact ? 60 : undefined, current);
   const pins = bookmarkPins(
     (bookmarks ?? []).map((b) => b.position),
     total,

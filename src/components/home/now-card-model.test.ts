@@ -2,6 +2,7 @@ import {
   bookmarkPins,
   bookScale,
   chapterIndexAt,
+  tiedChapterIndexAt,
   chapterPlace,
   nowCardCompact,
   scaleRuns,
@@ -55,6 +56,41 @@ describe('scaleRuns', () => {
     expect(scaleRuns([0, 100], 600, Infinity)).toHaveLength(2);
     expect(scaleRuns([], 600, 10)).toEqual([]);
     expect(scaleRuns([0], 0, 10)).toEqual([]);
+  });
+});
+
+describe('tiedChapterIndexAt', () => {
+  // Files a and b of unknown length: their chapters share book second 0. a also opens with a
+  // duplicated zero-length marker before its real first chapter.
+  const starts = [0, 0, 100, 0];
+  const ties = [
+    { path: 'a', start: 0, file: 0, length: 0 },
+    { path: 'a', start: 0, file: 0, length: 100 },
+    { path: 'a', start: 100, file: 0, length: 50 },
+    { path: 'b', start: 0, file: 1, length: 300 },
+  ];
+
+  it("names the chapter in the place's own file among chapters sharing a start", () => {
+    expect(tiedChapterIndexAt(starts, ties, 50, { path: 'b', pos: 50 })).toBe(3);
+    expect(tiedChapterIndexAt(starts, ties, 120, { path: 'b', pos: 120 })).toBe(3);
+    expect(tiedChapterIndexAt(starts, ties, 120, { path: 'a', pos: 120 })).toBe(2);
+  });
+
+  it('without a file takes the first in file order, past a marker of no length', () => {
+    expect(tiedChapterIndexAt(starts, ties, 50)).toBe(1);
+    expect(tiedChapterIndexAt(starts, ties, 50, { path: 'gone', pos: 50 })).toBe(1);
+    // Starts alone keep the marker; the place's file names the real chapter.
+    expect(chapterIndexAt(starts, 50)).toBe(0);
+  });
+
+  it('feeds the card its chapter and its tick', () => {
+    const current = tiedChapterIndexAt(starts, ties, 50, { path: 'b', pos: 50 });
+    expect(chapterPlace(['m', 'a1', 'a2', 'b1'], starts, 50, current)?.title).toBe('b1');
+    expect(bookScale([0, 100, 200], 300, 50, undefined, 2).map((s) => s.state)).toEqual([
+      'past',
+      'past',
+      'current',
+    ]);
   });
 });
 

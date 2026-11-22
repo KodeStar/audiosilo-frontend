@@ -1,4 +1,5 @@
-import { indexAtOffset } from '@/playback/book-queue';
+import type { FilePlace } from '@/lib/paths';
+import { indexAtOffset, tiedMarkerWins } from '@/playback/book-queue';
 
 /**
  * The Now card's whole-book scale (STYLEGUIDE section 8, "Now card"): one tick per
@@ -60,6 +61,41 @@ export function chapterIndexAt(starts: readonly number[], position: number): num
   );
 }
 
+/** A chapter as equal starts are told apart (the player's `chapterAt`): its file's rel path,
+ * its in-file start, its file's order in the book (-1 when unknown) and its length. */
+export type TieChapter = { path: string; start: number; file: number; length: number };
+
+/**
+ * The chapter holding `position` as the player names it among chapters sharing a start
+ * (files of unknown length, a zero-length marker): in the place's own file (`at`) when one
+ * of its chapters holds it, else at `starts` by `tiedMarkerWins` (the first in file order,
+ * a marker of no length yielding to the chapter starting with it). `chapters` runs
+ * alongside `starts`.
+ */
+export function tiedChapterIndexAt(
+  starts: readonly number[],
+  chapters: readonly TieChapter[],
+  position: number,
+  at?: FilePlace,
+): number {
+  const indexes = starts.map((_, i) => i);
+  const wins = (a: number, b: number) =>
+    !!chapters[a] && !!chapters[b] && tiedMarkerWins(chapters[a], chapters[b]);
+  if (at) {
+    const own = indexAtOffset(
+      indexes,
+      at.pos,
+      (i) => (chapters[i]?.path === at.path ? chapters[i].start : NaN),
+      wins,
+    );
+    if (own >= 0) return own;
+  }
+  return Math.max(
+    0,
+    indexAtOffset(indexes, position, (i) => starts[i], wins),
+  );
+}
+
 /** A run's state against the chapter the listener is in. */
 export function runState(run: ScaleRun, current: number): ScaleState {
   return run.last < current ? 'past' : run.first > current ? 'ahead' : 'current';
@@ -76,6 +112,9 @@ export function bookScale(
   total: number,
   position: number,
   max = MAX_SCALE_SEGMENTS,
+  /** The chapter the listener is in, when the caller tells tied starts apart
+   * (`tiedChapterIndexAt`); else the first holding `position`. */
+  current?: number,
 ): ScaleSegment[] {
   if (total <= 0) return [];
   const at = Math.min(Math.max(position, 0), total);
@@ -85,10 +124,10 @@ export function bookScale(
       { weight: total - at, state: 'ahead' as const },
     ].filter((s) => s.weight > 0);
   }
-  const current = chapterIndexAt(starts, at);
+  const chapter = current ?? chapterIndexAt(starts, at);
   return scaleRuns(starts, total, max).map((r) => ({
     weight: r.weight,
-    state: runState(r, current),
+    state: runState(r, chapter),
   }));
 }
 
@@ -115,8 +154,10 @@ export function chapterPlace(
   titles: readonly string[],
   starts: readonly number[],
   position: number,
+  /** As `bookScale`'s. */
+  current?: number,
 ): ChapterPlace | null {
   if (titles.length === 0 || starts.length !== titles.length) return null;
-  const number = chapterIndexAt(starts, position) + 1;
+  const number = (current ?? chapterIndexAt(starts, position)) + 1;
   return { number, count: titles.length, title: titles[number - 1] ?? '' };
 }
