@@ -26,6 +26,7 @@ import { SectionTitle } from '@/components/ui/section-title';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useDeviceOnline } from '@/lib/device-online';
 import { joinNames } from '@/lib/names';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useNow } from '@/lib/use-now';
@@ -89,6 +90,7 @@ export function DevicesSection({
 }) {
   const { t } = useTranslation();
   const devices = useMyDevices(connectionId);
+  const online = useDeviceOnline();
   const signedOut = useSignedOutConnection(connectionId);
   const unread = useUnreadQuery(devices);
   const revoke = useRevokeMyDevice(connectionId);
@@ -166,6 +168,7 @@ export function DevicesSection({
           ) : (
             rows.map((d, i) => {
               const name = deviceName(d, t);
+              const detail = deviceDetail(d, t, now);
               return (
                 <AccountListRow
                   key={d.id}
@@ -179,7 +182,7 @@ export function DevicesSection({
                       </Badge>
                     ) : null
                   }
-                  detail={deviceDetail(d, t, now)}
+                  detail={online && d.last_ip ? `${detail} · ${d.last_ip}` : detail}
                   first={i === 0}
                   action={
                     canRevoke(d)

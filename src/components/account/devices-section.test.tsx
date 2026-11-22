@@ -9,6 +9,11 @@ import { expectNativeTarget } from '@/testing/touch-target';
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
+let mockOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+}));
 
 type DevicesQuery = {
   data?: MyDevice[];
@@ -45,7 +50,6 @@ const device = (over: Partial<MyDevice>): MyDevice => ({
   client: { app: 'AudioSilo', version: '1.4.2', platform: 'ios' },
   created_at: '2026-10-01T10:00:00Z',
   last_seen: new Date(NOW - 2 * 3600_000).toISOString(),
-  last_ip: '',
   current: false,
   ...over,
 });
@@ -71,6 +75,7 @@ const mount = () => mountWithPortal(<DevicesSection connectionId="c" serverName=
 const OS = Platform.OS;
 beforeEach(() => {
   jest.clearAllMocks();
+  mockOnline = true;
   mockDevices = loaded([laptop, key, here]);
   Platform.OS = OS;
   useSession.setState({ connections: [] });
@@ -99,6 +104,23 @@ describe('DevicesSection', () => {
         'AudioSilo 1.4.0 · Browser · last seen 2 hours ago',
       ),
     ).toBeTruthy();
+  });
+
+  it('shows the live address online and keeps the device detail readable offline', async () => {
+    const detail = 'AudioSilo 1.4.0 · Browser · last seen 2 hours ago';
+    mockDevices = loaded([{ ...laptop, last_ip: '192.0.2.12' }]);
+    const view = await mount();
+    expect(screen.getByText(`${detail} · 192.0.2.12`)).toBeTruthy();
+
+    mockOnline = false;
+    await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
+    expect(screen.getByText(detail)).toBeTruthy();
+    expect(screen.queryByText(/192\.0\.2\.12/)).toBeNull();
+
+    mockDevices = { ...loaded([laptop]), isPaused: true };
+    await view.rerender(<DevicesSection connectionId="c" serverName="Hearthside" />);
+    expect(screen.getByText('Work laptop')).toBeTruthy();
+    expect(screen.getByText(detail)).toBeTruthy();
   });
 
   // Revoking this device's own token would kill it before the sign-out teardown (final

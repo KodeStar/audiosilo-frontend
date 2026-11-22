@@ -32,8 +32,8 @@ import { APP_VERSION } from '@/lib/version';
  * the browser's reload, and AsyncStorage can't be read before the first render.
  */
 
-/** The document's shape version: a document of another is ignored (and replaced). */
-const VERSION = 1;
+/** Version 1 kept full device rows, including the address of their last request. */
+const VERSION = 2;
 /** The most (characters of JSON) the document holds: localStorage is one small quota per
  * origin (about 5 MB, counted in UTF-16 by some browsers) that the session, the progress
  * queue and the downloads registry share, and their writes fail quietly once it is full. */
@@ -116,6 +116,25 @@ function isInfinite(data: unknown): data is InfiniteData<unknown, unknown> {
   return isRecord(data) && Array.isArray(data.pages) && Array.isArray(data.pageParams);
 }
 
+/** Keep only the device fields used offline. A server can add network or location fields. */
+function cachedDevices(data: unknown) {
+  if (!Array.isArray(data)) return [];
+  return data.filter(isRecord).map((d) => ({
+    id: d.id,
+    kind: d.kind,
+    name: d.name,
+    client: isRecord(d.client)
+      ? { app: d.client.app, version: d.client.version, platform: d.client.platform }
+      : null,
+    created_at: d.created_at,
+    last_seen: d.last_seen,
+    current: d.current,
+    member_sign_ins: Array.isArray(d.member_sign_ins)
+      ? d.member_sign_ins.filter(isRecord).map(({ id, name }) => ({ id, name }))
+      : undefined,
+  }));
+}
+
 /** The kept entries of `client`'s cache: each startup query's last answer (of an infinite
  * one only the first page, the one a reload starts from), of the queries `keep` takes. */
 export function snapshot(
@@ -133,8 +152,9 @@ export function snapshot(
     const cid = q.queryKey[2];
     if (q.queryKey[0] === 'progress' && typeof cid === 'string' && Array.isArray(q.state.data))
       progressLists.push({ cid, rows: q.state.data });
-    const { data, dataUpdatedAt: updatedAt } = q.state;
+    const updatedAt = q.state.dataUpdatedAt;
     const key = [...q.queryKey];
+    const data = key[0] === 'myDevices' ? cachedDevices(q.state.data) : q.state.data;
     if (!isInfinite(data)) out.push({ key, data, updatedAt });
     else if (data.pages.length > 0)
       out.push({ key, data: data.pages[0], updatedAt, firstPage: true });
@@ -228,9 +248,9 @@ export function save(client: QueryClient, keep?: (key: readonly unknown[]) => bo
 function readEntries(store: Storage): Entry[] {
   try {
     const doc: unknown = JSON.parse(store.getItem(STARTUP_CACHE_KEY) ?? 'null');
-    if (!isRecord(doc) || doc.v !== VERSION || doc.app !== APP_VERSION) return [];
+    if (!isRecord(doc) || (doc.v !== 1 && doc.v !== VERSION) || doc.app !== APP_VERSION) return [];
     if (!Array.isArray(doc.entries)) return [];
-    return doc.entries.filter(
+    const entries = doc.entries.filter(
       (e): e is Entry =>
         isRecord(e) &&
         Array.isArray(e.key) &&
@@ -240,6 +260,13 @@ function readEntries(store: Storage): Entry[] {
         // The whole-library list is the one infinite query kept: only ever its first page.
         (e.firstPage === true) === (e.key[0] === 'libraryBooks'),
     );
+    if (doc.v === 1) {
+      for (const e of entries) {
+        if (e.key[0] === 'myDevices') e.data = cachedDevices(e.data);
+      }
+      write(store, entries);
+    }
+    return entries;
   } catch {
     return [];
   }

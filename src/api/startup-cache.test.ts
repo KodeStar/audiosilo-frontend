@@ -117,8 +117,6 @@ describe('snapshot and restore', () => {
   it('puts the kept answers back, each to be asked for again on mount', async () => {
     const before = newClient();
     before.setQueryData(['server', C], { server_id: 'srv' });
-    const devices = [{ id: 1, name: 'Phone', current: true }];
-    before.setQueryData(['myDevices', C], devices);
     const listKey = ['libraryBooks', C, 1, { sort: 'recent' }, { pageSize: 200 }];
     before.setQueryData(listKey, {
       pages: [{ books: [book('A')], next_cursor: 'p2' }, { books: [book('B')] }],
@@ -129,8 +127,6 @@ describe('snapshot and restore', () => {
     const qc = newClient();
     restore(qc);
     expect(qc.getQueryData(['server', C])).toEqual({ server_id: 'srv' });
-    expect(qc.getQueryData(['myDevices', C])).toEqual(devices);
-    expect(qc.getQueryState(['myDevices', C])?.isInvalidated).toBe(true);
     // The list restarts from its first page, whose param is `undefined` again.
     expect(qc.getQueryData(listKey)).toEqual({
       pages: [{ books: [book('A')], next_cursor: 'p2' }],
@@ -147,6 +143,58 @@ describe('snapshot and restore', () => {
     expect(queryFn).toHaveBeenCalledTimes(1);
     expect(qc.getQueryData(['server', C])).toEqual({ server_id: 'srv', version: 'new' });
     unsubscribe();
+  });
+
+  it('keeps device addresses in the live query and only offline row details in storage', () => {
+    const key = ['myDevices', C];
+    const phone = {
+      id: 1,
+      name: 'Phone',
+      kind: 'session',
+      current: false,
+      client: { app: 'AudioSilo', version: '1.4.2', platform: 'ios' },
+      created_at: '2026-10-01T10:00:00Z',
+      last_seen: '2026-11-01T10:00:00Z',
+      member_sign_ins: [{ id: 9, name: 'Evie' }],
+    };
+    const browser = { ...phone, id: 2, name: 'Browser', current: true, client: null };
+    const live = newClient();
+    live.setQueryData(key, [
+      { ...phone, last_ip: '192.0.2.1', location: 'Home' },
+      { ...browser, last_ip: '2001:db8::2' },
+    ]);
+    save(live);
+
+    expect(stored().entries[0].data).toStrictEqual([phone, browser]);
+    expect(live.getQueryData(key)).toMatchObject([
+      { last_ip: '192.0.2.1', location: 'Home' },
+      { last_ip: '2001:db8::2' },
+    ]);
+    const offline = newClient();
+    restore(offline);
+    expect(offline.getQueryData(key)).toStrictEqual([phone, browser]);
+    expect(offline.getQueryState(key)?.isInvalidated).toBe(true);
+  });
+
+  it('cleans a legacy device list on disk before restoring it offline', () => {
+    const key = ['myDevices', C];
+    const device = { id: 1, name: 'Tablet', current: false, client: null };
+    const entry = { key, data: [device], updatedAt: 17 };
+    const other = { key: ['queue', C], data: [], updatedAt: 23 };
+    items.set(
+      STARTUP_CACHE_KEY,
+      JSON.stringify({
+        v: 1,
+        app: '9.9.9',
+        entries: [{ ...entry, data: [{ ...device, last_ip: '192.0.2.9' }] }, other],
+      }),
+    );
+
+    const offline = newClient();
+    restore(offline);
+    expect(stored().entries).toStrictEqual([entry, other]);
+    expect(offline.getQueryData(key)).toEqual([device]);
+    expect(offline.getQueryState(key)?.dataUpdatedAt).toBe(17);
   });
 
   it('never replaces a query already in the cache', () => {
