@@ -165,9 +165,12 @@ export function startCastSync(
         break;
       case 'ended': {
         const router = currentRouter();
-        const ended = ending ? ending.session : session;
+        const own = !ending || ending.generation === generation;
+        // A connect that was still awaiting the router at `ending` took the route since: no
+        // later session has begun (same generation), so that one is the session ending.
+        const ended = ending?.session ?? (own ? session : null);
         const read = ending?.read ?? Promise.resolve();
-        if (!ending || ending.generation === generation) {
+        if (own) {
           generation++;
           session = null;
           useCast.setState({ status: 'off', deviceName: null });

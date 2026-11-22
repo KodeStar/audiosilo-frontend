@@ -201,6 +201,23 @@ describe('startCastSync', () => {
     stop();
   });
 
+  it('ends a session that took the route between its ending and its end', async () => {
+    const driver = fakeDriver();
+    const stop = startCastSync({ driver, prepare: async () => ({ items: [] }) });
+    await flush();
+    driver.fire({ type: 'started', remote: remote() });
+    await flush();
+    driver.fire({ type: 'ending' });
+    const router = routed(localEngine()); // the stores' engine arrives as the session ends
+    await flush();
+    expect(router.castRoute()).not.toBeNull();
+    driver.fire({ type: 'ended' });
+    await flush();
+    expect(router.castRoute()).toBeNull();
+    expect(router.isCasting()).toBe(false);
+    stop();
+  });
+
   it('explains a book that cannot be cast and ends the session', async () => {
     const router = routed(localEngine());
     const driver = fakeDriver();
