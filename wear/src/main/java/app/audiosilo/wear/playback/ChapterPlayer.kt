@@ -54,7 +54,7 @@ class ChapterPlayer(player: Player, private val engine: PlayerEngine) : Forwardi
   override fun seekTo(mediaItemIndex: Int, positionMs: Long) {
     val b = engine.state.value.book ?: return
     if (mediaItemIndex !in b.timeline.offsets.indices) return
-    engine.seek(b.timeline.bookPosition(mediaItemIndex, positionMs / 1000.0))
+    engine.seek(b.timeline.bookPosition(mediaItemIndex, positionMs / 1000.0), track = mediaItemIndex)
   }
 
   companion object {

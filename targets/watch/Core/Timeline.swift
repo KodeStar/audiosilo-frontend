@@ -160,9 +160,14 @@ struct Timeline: Equatable, Sendable {
     self.syntheticChapters = !synthetic.isEmpty
   }
 
-  /// A whole-book position as (file index, seconds into it).
-  func locate(_ position: Double) -> (index: Int, positionInTrack: Double) {
-    locateIn(offsets, position)
+  /// A whole-book position as (file index, seconds into it): the first of files sharing its
+  /// start, or `prefer` (the playing file) when it is one of them (the phone's `locate`).
+  func locate(_ position: Double, prefer: Int? = nil) -> (index: Int, positionInTrack: Double) {
+    let at = locateIn(offsets, position)
+    guard let p = prefer, p > at.index, offsets.indices.contains(p), offsets[p] == offsets[at.index] else {
+      return at
+    }
+    return (p, max(0, position - offsets[p]))
   }
 
   /// (file index, seconds into it) as a whole-book position.
@@ -180,12 +185,14 @@ struct Timeline: Equatable, Sendable {
   }
 
   /// Where a saved place resumes: in its file at its own seconds when the book still has the
-  /// file (clamped to the file's length), else by the whole-book position (fe#188).
-  func resumePlace(position: Double, file: String?, filePos: Double?) -> (index: Int, positionInTrack: Double) {
+  /// file (clamped to the file's length), else by the whole-book position (fe#188), in
+  /// `prefer` when files share its start (`locate`).
+  func resumePlace(position: Double, file: String?, filePos: Double?,
+                   prefer: Int? = nil) -> (index: Int, positionInTrack: Double) {
     if let file, let filePos, filePos.isFinite, let i = files.firstIndex(where: { $0.path == file }) {
       let d = files[i].duration
       return (i, max(0, d > 0 ? min(filePos, d) : filePos))
     }
-    return locate(position)
+    return locate(position, prefer: prefer)
   }
 }

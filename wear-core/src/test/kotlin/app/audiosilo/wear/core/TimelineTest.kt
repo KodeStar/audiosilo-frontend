@@ -300,6 +300,18 @@ class SynthesizeAndTimelineMathTest {
   }
 
   @Test
+  fun aPlaceStaysInTheFileThatPlaysAmongTiedFiles() {
+    // Files 1 and 2 share their start (file 1's length is unknown): a seek with no file named
+    // keeps the playing one, as the phone's `locate(offsets, position, prefer)` does.
+    val t = Timeline.of(makeBook(files = listOf(file("a", 0, 60.0), file("b", 1, 0.0), file("c", 2, 40.0))))
+    assertEquals(Located(1, 20.0), t.locate(80.0))
+    assertEquals(Located(2, 20.0), t.locate(80.0, prefer = 2))
+    assertEquals(Located(1, 20.0), t.locate(80.0, prefer = 0))
+    assertEquals(Located(2, 20.0), t.resumePlace(80.0, null, null, prefer = 2))
+    assertEquals(Located(1, 5.0), t.resumePlace(80.0, "b", 5.0, prefer = 2))
+  }
+
+  @Test
   fun theChapterIndexClampsBelowTheFirst() {
     val chapters = listOf(ch(index = 0, bookOffset = 0.0), ch(index = 1, bookOffset = 50.0))
     assertEquals(1, ChapterNav.index(chapters, 75.0))

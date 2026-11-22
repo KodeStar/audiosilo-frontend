@@ -387,12 +387,19 @@ class PlayerEngine(private val context: Context, private val spans: SpanRecorder
   /**
    * Move to `target` (whole-book seconds). `reason` null: a jump, or moved back when behind.
    * `acknowledge`: an offer's Jump, run between the span the move ends and its own
-   * (`SpanRecorder.move`); at once when nothing moves.
+   * (`SpanRecorder.move`); at once when nothing moves. `track`: the file the place is in, when the
+   * caller names one (Media3's item index), else the playing one among files sharing its start.
    */
-  fun seek(target: Double, reason: ListeningStart? = null, chapter: Chapter? = null, acknowledge: () -> Unit = {}) {
+  fun seek(
+    target: Double,
+    reason: ListeningStart? = null,
+    chapter: Chapter? = null,
+    track: Int? = null,
+    acknowledge: () -> Unit = {},
+  ) {
     val b = book ?: return acknowledge()
     val to = Skips.target(target, 0.0, b.timeline.total)
-    val place = b.timeline.resumePlace(to, chapter?.filePath, chapter?.start)
+    val place = b.timeline.resumePlace(to, chapter?.filePath, chapter?.start, track ?: where()?.index)
     val end = b.timeline.spanEnd(place.index, place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     val from = spanEnd()

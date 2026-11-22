@@ -133,8 +133,17 @@ data class Timeline(
   val chapters: List<Chapter>,
   val syntheticChapters: Boolean,
 ) {
-  /** A whole-book position as (file index, seconds into it). */
-  fun locate(position: Double): Located = locateIn(offsets, position)
+  /**
+   * A whole-book position as (file index, seconds into it): the first of files sharing its start,
+   * or `prefer` (the playing file) when it is one of them (the phone's `locate`).
+   */
+  fun locate(position: Double, prefer: Int? = null): Located {
+    val at = locateIn(offsets, position)
+    if (prefer == null || prefer <= at.index || prefer >= offsets.size || offsets[prefer] != offsets[at.index]) {
+      return at
+    }
+    return Located(prefer, max(0.0, position - offsets[prefer]))
+  }
 
   /** (file index, seconds into it) as a whole-book position. */
   fun bookPosition(index: Int, positionInTrack: Double): Double =
@@ -153,9 +162,10 @@ data class Timeline(
 
   /**
    * Where a saved place resumes: in its file at its own seconds when the book still has the file
-   * (clamped to the file's length), else by the whole-book position (fe#188).
+   * (clamped to the file's length), else by the whole-book position (fe#188), in `prefer` when
+   * files share its start (`locate`).
    */
-  fun resumePlace(position: Double, file: String?, filePos: Double?): Located {
+  fun resumePlace(position: Double, file: String?, filePos: Double?, prefer: Int? = null): Located {
     if (file != null && filePos != null && filePos.isFinite()) {
       val i = files.indexOfFirst { it.path == file }
       if (i >= 0) {
@@ -163,7 +173,7 @@ data class Timeline(
         return Located(i, max(0.0, if (d > 0) min(filePos, d) else filePos))
       }
     }
-    return locate(position)
+    return locate(position, prefer)
   }
 
   companion object {

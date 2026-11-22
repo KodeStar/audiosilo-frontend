@@ -443,7 +443,10 @@ final class WatchAudioEngine: NSObject, ObservableObject {
   func seek(to target: Double, reason: ListeningStart? = nil, chapter: Chapter? = nil) {
     guard let b = book else { return }
     let to = Skips.target(position: target, by: 0, total: b.timeline.total)
-    let place = b.timeline.resumePlace(position: to, file: chapter?.filePath, filePos: chapter?.start)
+    // Among files sharing the place's start (lengths unknown) a skip or scrub stays in the
+    // playing one; a chapter names its own.
+    let place = b.timeline.resumePlace(position: to, file: chapter?.filePath, filePos: chapter?.start,
+                                       prefer: where_()?.index)
     let target = b.timeline.spanEnd(index: place.index, positionInTrack: place.positionInTrack)
     // Previous at the book's start: nothing moves, so no span and no newer time on the place.
     let from = spanEnd()

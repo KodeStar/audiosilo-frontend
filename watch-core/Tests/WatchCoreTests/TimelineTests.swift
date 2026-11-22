@@ -223,6 +223,18 @@ final class SynthesizeAndTimelineMathTests: XCTestCase {
     XCTAssertEqual(toBookPosition(offsets, 1, 10), 70)
   }
 
+  func testAPlaceStaysInTheFileThatPlaysAmongTiedFiles() {
+    // Files 1 and 2 share their start (file 1's length is unknown): a seek with no file named
+    // keeps the playing one, as the phone's `locate(offsets, position, prefer)` does.
+    let t = Timeline(book: makeBook(files: [file("a", seq: 0, duration: 60), file("b", seq: 1, duration: 0),
+                                            file("c", seq: 2, duration: 40)]))
+    XCTAssertTrue(t.locate(80) == (1, 20))
+    XCTAssertTrue(t.locate(80, prefer: 2) == (2, 20))
+    XCTAssertTrue(t.locate(80, prefer: 0) == (1, 20))
+    XCTAssertTrue(t.resumePlace(position: 80, file: nil, filePos: nil, prefer: 2) == (2, 20))
+    XCTAssertTrue(t.resumePlace(position: 80, file: "b", filePos: 5, prefer: 2) == (1, 5))
+  }
+
   func testTheChapterIndexClampsBelowTheFirst() {
     let chapters = [ch(index: 0, bookOffset: 0), ch(index: 1, bookOffset: 50)]
     XCTAssertEqual(ChapterNav.index(chapters, 75), 1)
