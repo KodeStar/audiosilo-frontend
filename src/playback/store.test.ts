@@ -3820,6 +3820,14 @@ describe('a book whose files have no known length', () => {
     });
   });
 
+  it('retries at the floor when the failed engine reports no place', async () => {
+    await usePlayer.getState().playBook('c1', 2, book, chapters, 200, { path: files[1], pos: 200 });
+    pushSnapshot(snap('error', NaN, { trackIndex: 1 }));
+    (mockSvc.load as jest.Mock).mockClear();
+    await usePlayer.getState().retry();
+    expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 200]);
+  });
+
   it('retries in the file that failed, not the first', async () => {
     await usePlayer.getState().playBook('c1', 2, book, chapters, 0);
     pushSnapshot(snap('error', 30, { trackIndex: 1 }));

@@ -2530,10 +2530,10 @@ function reloadPlace(np: NowPlaying): { index: number; positionInTrack: number }
     return { index: ask.trackIndex, positionInTrack: ask.position };
   const player = usePlayer.getState();
   const live = selectBookPosition(player);
-  const { position, trackIndex: index } =
-    live < resumeFloor.position
-      ? resumeFloor
-      : { position: live, trackIndex: player.snapshot.trackIndex };
+  // Not `<`: an engine with no place yet (NaN) reloads at the floor, not at NaN.
+  const { position, trackIndex: index } = !(live >= resumeFloor.position)
+    ? resumeFloor
+    : { position: live, trackIndex: player.snapshot.trackIndex };
   const { offsets } = np.queue;
   const start = offsets[index];
   if (start !== undefined && (start === offsets[index - 1] || start === offsets[index + 1])) {
