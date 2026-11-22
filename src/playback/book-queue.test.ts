@@ -633,6 +633,18 @@ describe('chapterCountdowns', () => {
     expect(chapterCountdowns([], 10)).toEqual([]);
   });
 
+  it('starts at the chapter in the playing file among chapters sharing a start', () => {
+    // Two files of unknown length: both chapters start at book second 0.
+    const tied = [
+      chapter({ index: 0, file_index: 0, file_path: 'a', end: 300 }),
+      chapter({ index: 1, file_index: 1, file_path: 'b', end: 200 }),
+    ];
+    expect(chapterCountdowns(tied, 50).map((c) => c.chapter.index)).toEqual([0, 1]);
+    const inB = chapterCountdowns(tied, 50, undefined, 1, (path) => path === 'b');
+    expect(inB.map((c) => c.chapter.index)).toEqual([1]);
+    expect(inB[0].untilEnd).toBe(150);
+  });
+
   // Build N back-to-back chapters of `len` seconds each, from offset 0.
   const evenChapters = (n: number, len: number) =>
     Array.from({ length: n }, (_, i) =>

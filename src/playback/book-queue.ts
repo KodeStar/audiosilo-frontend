@@ -588,15 +588,19 @@ export type ChapterCountdown = {
  * upcoming chapters: keep chapters until one's countdown passes `maxSeconds`
  * (that chapter is the last kept, so the list always crosses the threshold rather
  * than stopping just short), but never fewer than `minCount`.
+ *
+ * `playing` names the file playing, as `chapterAt` takes it: among chapters sharing a
+ * start, the current one is the player's, so "this chapter" is the one its heading names.
  */
 export function chapterCountdowns(
   chapters: Chapter[],
   bookPosition: number,
   limit?: { minCount: number; maxSeconds: number },
   rate = 1,
+  playing?: (filePath: string) => boolean,
 ): ChapterCountdown[] {
   if (chapters.length === 0) return [];
-  const current = chapterAt(chapters, bookPosition);
+  const current = chapterAt(chapters, bookPosition, playing);
   const from = current ? chapters.indexOf(current) : 0;
   const list = chapters.slice(Math.max(0, from)).map((ch) => {
     const endPosition = chapterEndPosition(ch);

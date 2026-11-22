@@ -64,6 +64,17 @@ describe('stopAfterRows', () => {
     expect(stopAfterRows(queue([]), 0, 1)).toEqual([]);
   });
 
+  it("counts from the playing file's chapter among chapters sharing a start", () => {
+    // Files of unknown length: both chapters start at book second 0, as the player sees them.
+    const tied = [
+      { ...chapter(0, 0, 300), file_path: 'a.mp3' },
+      { ...chapter(1, 0, 200), file_index: 1, file_path: 'b.mp3' },
+    ];
+    const q = { chapters: tied, total: 300 };
+    expect(stopAfterRows(q, 50, 1).map((r) => r.chapter.index)).toEqual([0, 1]);
+    expect(stopAfterRows(q, 50, 1, 'b.mp3').map((r) => r.chapter.index)).toEqual([1]);
+  });
+
   it('leaves out a chapter ending past the book (bad metadata)', () => {
     const q = { chapters: [chapter(0, 0, 600), chapter(1, 600, 9000)], total: 1200 };
     expect(stopAfterRows(q, 0, 1).map((r) => r.chapter.index)).toEqual([0]);
