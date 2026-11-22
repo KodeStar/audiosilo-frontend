@@ -250,11 +250,32 @@ class ResumeTest {
   }
 
   @Test
+  fun ownRowMustHaveADifferentPlaceAndBeAtLeastTheAcknowledgedVersion() {
+    val local = LocalPlace(300.0, "a.mp3", 20.0, at)
+    for (sent in listOf(row(position = 300.0, device = "watch", version = 29), row(device = "watch", version = 28))) {
+      assertEquals(plan(300.0, "a.mp3", 20.0), Resume.plan(local, sent, "watch", 29, 1800.0))
+    }
+  }
+
+  // A finished row of this watch's is finishWins' alone: a newer row time is not a finish newer
+  // than the place here.
+  @Test
+  fun theWatchsOwnFinishedRowIsNotTakenAsANewerPlace() {
+    val local = LocalPlace(300.0, "a.mp3", 20.0, at)
+    val r = row(position = 1800.0, finished = true, version = 29, device = "watch", finishedAt = "2026-10-25T07:00:00Z")
+    assertEquals(
+      plan(300.0, "a.mp3", 20.0, ListeningStart.JUMP, unfinish = true),
+      Resume.plan(local, r, "watch", 29, 1800.0),
+    )
+  }
+
+  @Test
   fun aServerClockAheadOfTheWatchDoesNotUndoALaterRewind() {
     val local = LocalPlace(300.0, at = at)
     val sent = row(position = 640.73, device = "watch", version = 29, updatedAt = "2026-10-25T08:00:10Z")
-    val p = Resume.plan(local, sent, "watch", 29, 1800.0, clockSkewMs = 15_000.0)
-    assertEquals(plan(300.0), p)
+    for (skew in listOf(10_000.0, 15_000.0)) {
+      assertEquals(plan(300.0), Resume.plan(local, sent, "watch", 29, 1800.0, clockSkewMs = skew))
+    }
   }
 
   @Test
