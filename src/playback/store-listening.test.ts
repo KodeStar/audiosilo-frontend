@@ -3020,6 +3020,32 @@ describe('the open span is kept every 5 s', () => {
     }
   });
 
+  it('the hold ending with no move makes the cut asked while it held', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    const release = holdSaves();
+    pushSnapshot(snap('playing', 0, 9));
+    cutListeningSpanNow(); // the app going to the background
+    await settle();
+    expect(mockClosed).toHaveLength(0);
+    release();
+    await settle();
+    expect(mockClosed.map((s) => [s.from.pos, s.to.pos])).toEqual([[1, 9]]);
+  });
+
+  it('the hold ending in a move owes no cut: the move cut the span', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    const release = holdSaves();
+    pushSnapshot(snap('playing', 0, 9));
+    cutListeningSpanNow();
+    release({ flush: false });
+    await settle();
+    expect(mockClosed).toHaveLength(0);
+  });
+
   // A native lock-screen move: the engine's landed place reaches the store before the move.
   it('never moves the span back: a remote move landing as the keep is due ends where it was', async () => {
     await start();

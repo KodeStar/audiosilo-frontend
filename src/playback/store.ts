@@ -647,7 +647,12 @@ let outputVolume = 1;
  * device's newer one (the server is last-write-wins). A hold always ends: released by
  * its owner, or by itself after `SAVE_HOLD_MAX_MS` (a slow check never loses listening).
  */
-let saveHold: { timer: ReturnType<typeof setTimeout>; expiresAt: number } | null = null;
+let saveHold: {
+  timer: ReturnType<typeof setTimeout>;
+  expiresAt: number;
+  /** A cut asked while held (`cutListeningSpanNow`), made once the hold ends with no move. */
+  cutOwed?: boolean;
+} | null = null;
 
 const savesHeld = (): boolean => saveHold !== null && Date.now() < saveHold.expiresAt;
 const SAVE_HOLD_MAX_MS = 5_000;
@@ -2327,9 +2332,13 @@ export async function answerAfterSpan<T = void>(
 /** Cut the playing span now (the server came back, the app went to the background, the web
  * page hid); a no-op with no span open, or for another connection than `connectionId` when
  * given. Not while a reconcile holds saves: as the save loop's cut (`tickListeningSpan`), it
- * would replace the last trusted keep a kill recovers with a span at the held place. */
+ * would replace the last trusted keep a kill recovers with a span at the held place. That
+ * cut is made once the hold ends with no move (`holdSaves`): a move cuts the span itself. */
 export function cutListeningSpanNow(connectionId?: string): void {
-  if (!savesHeld()) cutSpanOf(connectionId);
+  if (!span || (connectionId !== undefined && span.connectionId !== connectionId)) return;
+  const hold = savesHeld() ? saveHold : null;
+  if (hold) hold.cutOwed = true;
+  else cutListeningSpan();
 }
 
 function cutSpanOf(connectionId?: string): void {
@@ -5420,20 +5429,26 @@ function isPlaceTick(shown: PlaybackSnapshot, live: PlaybackSnapshot): boolean {
  * the hold ended in a move to another device's place (that place is already saved, and
  * the engine may not have reported the move yet). Ends by itself after
  * `SAVE_HOLD_MAX_MS`, flushing: by its timer, or by the next save past that deadline when
- * the timer cannot fire (see `persist`). A second hold replaces the first.
+ * the timer cannot fire (see `persist`). A second hold replaces the first, and takes over a
+ * cut it owes. A flushing release also makes the cut asked while held (`cutListeningSpanNow`:
+ * the app leaving, its server back, the page hidden), the place now trusted.
  */
 export function holdSaves(): (opts?: { flush?: boolean }) => void {
+  const cutOwed = saveHold?.cutOwed;
   if (saveHold) clearTimeout(saveHold.timer);
-  const hold = {
+  const hold: NonNullable<typeof saveHold> = {
     timer: setTimeout(() => release(), SAVE_HOLD_MAX_MS),
     expiresAt: Date.now() + SAVE_HOLD_MAX_MS,
+    ...(cutOwed ? { cutOwed } : {}),
   };
   saveHold = hold;
   function release(opts?: { flush?: boolean }) {
     if (saveHold !== hold) return; // already released, or replaced
     clearTimeout(hold.timer);
     saveHold = null;
-    if (opts?.flush ?? true) void persist();
+    if (!(opts?.flush ?? true)) return;
+    void persist();
+    if (hold.cutOwed) cutSpanOf();
   }
   return release;
 }
