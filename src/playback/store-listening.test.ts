@@ -397,6 +397,43 @@ it('a recovery that never ends holds the resume for a while only', async () => {
   expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 12]);
 });
 
+it('a start at a place asked during launch recovery reads the finish it recovers', async () => {
+  // A kill in the book's last seconds: the recovered span finishes the mirror's record.
+  let recovered!: () => void;
+  const recovery = new Promise<void>((resolve) => (recovered = resolve));
+  mockRecoverOpenSpan.mockImplementationOnce(async () => {
+    await recovery;
+    mockReadMirror.mockResolvedValue({
+      ack_version: 41,
+      position: 100,
+      finished: true,
+      playback_speed: 1.5,
+    });
+  });
+  const playing = start(40); // a chapter tap at launch
+  await settle(50);
+  expect(mockSvc.load).not.toHaveBeenCalled();
+  recovered();
+  await playing;
+  pushSnapshot(snap('playing', 0, 40));
+  pushSnapshot(snap('paused', 0, 45));
+  await settle();
+  expect(mockAppended).toEqual([
+    expect.objectContaining({ kind: 'unfinish', library_id: 2, path: folder }),
+  ]);
+  expect(usePlayer.getState().rate).toBe(1.5);
+});
+
+it('a start at a place waits for a recovery that never ends for a while only', async () => {
+  mockRecoverOpenSpan.mockImplementationOnce(() => new Promise<void>(() => {}));
+  const playing = start(40);
+  await settle(50);
+  expect(mockSvc.load).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(SPAN_RECOVERY_WAIT_MS);
+  await playing;
+  expect(mockSvc.load).toHaveBeenCalled();
+});
+
 describe('without listening_sync (the PUT path, unchanged)', () => {
   it('saves by PUT and hands the outbox nothing', async () => {
     mockSync = false;

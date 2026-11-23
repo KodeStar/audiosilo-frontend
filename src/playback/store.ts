@@ -4882,7 +4882,11 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         // (starting at the default would save the default over the book's own), and on Sync
         // v2 whether it is finished (a listen never unfinishes it: played again, it is
         // unfinished first, as a PUT save from the place did) and the server's row the
-        // listener saw (its version acknowledged, so a move back from there applies).
+        // listener saw (its version acknowledged, so a move back from there applies). Read
+        // after the launch's span recovery, as a resume is (a finish a kill left in the last
+        // seconds is in the mirror only then), for the same short while at most.
+        await spanRecovered();
+        if (!current() || replaced()) return;
         const known = await knownProgress(connectionId, libraryId, book.rel_path);
         const saved = known.newest?.playback_speed ?? 0;
         if (!askedSpeed && saved > 0) speed = clampRate(saved);
