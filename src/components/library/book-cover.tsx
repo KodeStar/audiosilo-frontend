@@ -69,7 +69,7 @@ export type BookCoverProps = {
    * story card asks for its 1080-wide share image's). */
   thumbnail?: CoverSize;
   /** The server holds no cover this caller may read (a household row's
-   * `cover_unavailable`): ask it for none, so only a downloaded copy or the title shows. */
+   * `outside_grant`): ask it for none, so only a downloaded copy or the title shows. */
   noArt?: boolean;
 };
 

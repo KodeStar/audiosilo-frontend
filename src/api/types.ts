@@ -1517,10 +1517,11 @@ export type HouseListeningState = 'playing' | 'paused' | 'recent';
 /** One other person on the server who shares, on their newest book (capability
  * `household`). Never carries a device, an address, an app or a token. */
 export type HouseListeningRow = {
-  /** True when `path` names no indexed book whose cover this listener may read (a disc
-   * folder of a book outside their grant, a book no longer indexed): ask for no art.
-   * Sent only when true; absent on older servers, so treat missing as false. */
-  cover_unavailable?: boolean;
+  /** True when this listener's grant does not reach the row's book (a disc folder of a
+   * book outside their grant, a book no longer indexed): show the local cover, ask for
+   * no art and open nothing. Sent only when true; absent on older servers, so treat
+   * missing as false. */
+  outside_grant?: boolean;
   user_id: number;
   username: string;
   library_id: number;

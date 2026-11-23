@@ -80,7 +80,7 @@ const CARD = 'min-h-[62px] flex-row items-center gap-3 rounded-card py-3 pl-3 pr
 
 /** One housemate: their avatar and name, the book's title and state line, its cover.
  * Tapping opens the book's page on this connection, except on a row whose path names no
- * book this listener may read (`cover_unavailable`): that page could only say the book
+ * book this listener may read (`outside_grant`): that page could only say the book
  * isn't in their library, so the card is no link and asks the server nothing. */
 function HouseCard({
   connectionId,
@@ -121,11 +121,11 @@ function HouseCard({
         width={COVER}
         title={copy.title}
         author={row.author ?? undefined}
-        noArt={row.cover_unavailable}
+        noArt={row.outside_grant}
       />
     </>
   );
-  if (row.cover_unavailable) {
+  if (row.outside_grant) {
     return (
       <RowSurface testID="house-card" accessible accessibilityLabel={copy.label} className={CARD}>
         {content}

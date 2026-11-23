@@ -78,7 +78,7 @@ beforeEach(() => {
 
 describe('HouseRow', () => {
   it('asks for no art when the holding book is outside the grant', async () => {
-    share('a', [row({ path: 'Book/CD1', title: 'CD1', cover_unavailable: true })]);
+    share('a', [row({ path: 'Book/CD1', title: 'CD1', outside_grant: true })]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
     // The row's own path still goes along: a downloaded copy is looked up by it.
     expect(mockBookCover).toHaveBeenCalledWith(
@@ -101,7 +101,7 @@ describe('HouseRow', () => {
     ]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
 
-    // Rows without `cover_unavailable` (every row from an older server) ask for the art.
+    // Rows without `outside_grant` (every row from an older server) ask for the art.
     expect(mockBookCover).toHaveBeenCalled();
     expect(mockBookCover.mock.calls.filter(([p]) => p.noArt)).toEqual([]);
     expect(screen.getByText('Listening in the house')).toBeTruthy();
@@ -133,9 +133,7 @@ describe('HouseRow', () => {
   });
 
   it('opens nothing for a row naming no book the listener may read', async () => {
-    share('a', [
-      row({ path: 'Book/CD1', title: 'CD1', chapter_index: null, cover_unavailable: true }),
-    ]);
+    share('a', [row({ path: 'Book/CD1', title: 'CD1', chapter_index: null, outside_grant: true })]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
     // Its page could only say the book isn't in their library: the card is no button.
     expect(screen.queryByRole('button')).toBeNull();
