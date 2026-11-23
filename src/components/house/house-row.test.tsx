@@ -15,7 +15,8 @@ jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openBook: (...a: unknown[]) => mockOpenBook(...a) }),
   openHousehold: (...a: unknown[]) => mockOpenHousehold(...a),
 }));
-jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
+const mockBookCover = jest.fn(() => null);
+jest.mock('@/components/library/book-cover', () => ({ BookCover: () => mockBookCover() }));
 
 /** Per connection: the caller's setting and the house's answer (undefined = loading,
  * an error, or a server without `household`: the hooks hand back no data). */
@@ -73,6 +74,14 @@ beforeEach(() => {
 });
 
 describe('HouseRow', () => {
+  it('shows the path label without requesting art when the holding book is outside the grant', async () => {
+    mockBookCover.mockClear();
+    share('a', [row({ path: 'Book/CD1', title: 'CD1', cover_unavailable: true })]);
+    await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
+    expect(screen.getByText('CD1')).toBeTruthy();
+    expect(mockBookCover).not.toHaveBeenCalled();
+  });
+
   it('shows each housemate with the book, a state line and a spoken sentence', async () => {
     share('a', [
       row(),
@@ -88,6 +97,7 @@ describe('HouseRow', () => {
     ]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
 
+    expect(mockBookCover).toHaveBeenCalled();
     expect(screen.getByText('Listening in the house')).toBeTruthy();
     expect(screen.getByText('Hearthside · shared by choice')).toBeTruthy();
     const list = screen.getByLabelText('Listening in the house on Hearthside');

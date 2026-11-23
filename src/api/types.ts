@@ -1517,6 +1517,8 @@ export type HouseListeningState = 'playing' | 'paused' | 'recent';
 /** One other person on the server who shares, on their newest book (capability
  * `household`). Never carries a device, an address, an app or a token. */
 export type HouseListeningRow = {
+  /** The server found no indexed book whose cover this listener can read. */
+  cover_unavailable?: boolean;
   user_id: number;
   username: string;
   library_id: number;
