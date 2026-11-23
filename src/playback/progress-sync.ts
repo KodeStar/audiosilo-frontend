@@ -156,9 +156,12 @@ async function readMirrorMap(): Promise<Record<string, ProgressSave>> {
   return (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
 }
 
-/** `readMirrorMap` that rejects when storage could not be read. */
+/** `readMirrorMap` that rejects when storage could not be read, read once more first: a
+ * change that rejects is lost (a recovered span's place, whose stored span is cleared all
+ * the same; an offer's acknowledgement). */
 async function readMirrorMapStrict(): Promise<Record<string, ProgressSave>> {
-  return (await getItemStrict<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
+  const read = () => getItemStrict<Record<string, ProgressSave>>(MIRROR_KEY);
+  return (await read().catch(read)) ?? {};
 }
 
 /** The offline replay queue. */

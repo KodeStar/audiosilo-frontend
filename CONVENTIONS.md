@@ -2728,12 +2728,13 @@ media GETs only.
     a span that says something (`spanSaysSomething`), with its last file, offset, speed and
     capture time, never finished (the span's length is the audio's, not the book's); an
     existing one moves only when it is older than the span's end, only forward, and never
-    when it is finished, so a place written since stands. While a reconcile holds saves,
-    the keeper leaves the span at its previous place and time, and the save loop, the
-    background, a reconnect and the web's `hidden` leave it uncut (`savesHeld`): the hold
-    ending with no move makes the cut they asked for (`holdSaves`), a move cuts it itself,
-    and a sign-out takes it at once. On the web it runs for a span another tab left behind
-    too, dated when that tab kept it, never now. The legacy path has no span:
+    when it is finished, so a place written since stands. The mirror's changes read it
+    strictly, once more before they give up (`readMirrorMapStrict`). While a reconcile
+    holds saves, the keeper leaves the span at its previous place and time, and the save
+    loop, the background, a reconnect and the web's `hidden` leave it uncut (`savesHeld`):
+    the hold ending with no move makes the cut they asked for (`holdSaves`), a move cuts it
+    itself, and a sign-out takes it at once. On the web it runs for a span another tab left
+    behind too, dated when that tab kept it, never now. The legacy path has no span:
     15 s here, and the server (so every other device) holds the last PUT, up to 60 s back,
     until this device saves again.
   - The pace is **read at every check**, not set by an event (`engineTicker`'s `period`):

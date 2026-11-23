@@ -577,6 +577,35 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await outboxEvents('c1')).toEqual([]);
   });
 
+  it('reads the mirror once more when a read fails, so the recovered place still lands', async () => {
+    await writeMirror(capture());
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    // Armed as the recovery asks the downloads registry, just before it changes the mirror.
+    let failNext = false;
+    let failed = false;
+    setDownloadEndCheck(async () => {
+      failNext = true;
+      return undefined;
+    });
+    getItem.mockImplementation((key: string) => {
+      if (key === PROGRESS_MIRROR_KEY && failNext) {
+        failNext = false;
+        failed = true;
+        return Promise.reject(new Error('busy'));
+      }
+      return read(key);
+    });
+    try {
+      await relaunch();
+    } finally {
+      getItem.mockImplementation(read);
+      setDownloadEndCheck(async () => undefined);
+    }
+    expect(failed).toBe(true);
+    expect(await record()).toMatchObject({ position: 16800 });
+  });
+
   it('never creates a finished first mirror: the span measures the audio, not the book', async () => {
     // Within 5 s of the audio's end, where a book whose chapters run past it is not finished.
     await relaunch(span({ to: { pos: 61198, file: 'Author/Book/05.mp3', filePos: 3000 } }));
