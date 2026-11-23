@@ -359,6 +359,36 @@ describe('startJumpUndo', () => {
     stop();
   });
 
+  it('keeps the chip while the jump stalls, and lives ten seconds from where it lands', () => {
+    // The web reports a seek's place at the ask; the stream then stalls into an error (the
+    // stall watchdog) and the move lands long after the chip's first ten seconds.
+    const { report, jump, stop } = playingAt(1000);
+    report('playing', 4000);
+    report('loading', 4000);
+    jest.advanceTimersByTime(3000);
+    report('error', 4000);
+    jest.advanceTimersByTime(20_000);
+    expect(jump()).toMatchObject({ from: 1003, bookKey: 'srv:1:a/book' });
+    expect(jump()!.until).toBeGreaterThan(Date.now());
+    report('playing', 4000.2);
+    expect(jump()!.until).toBe(Date.now() + UNDO_WINDOW_MS);
+    jest.advanceTimersByTime(UNDO_WINDOW_MS - 1);
+    expect(jump()?.from).toBe(1003);
+    jest.advanceTimersByTime(1);
+    expect(jump()).toBeNull();
+    stop();
+  });
+
+  it('undoes a jump still waiting to land', () => {
+    const { report, undo, seekBook, stop } = playingAt(1000);
+    report('playing', 4000);
+    report('loading', 4000);
+    jest.advanceTimersByTime(UNDO_WINDOW_MS + 5000);
+    expect(undo.undoJump()).toBe(1003);
+    expect(seekBook).toHaveBeenCalledWith(1003);
+    stop();
+  });
+
   it('is replaced by a new jump, with a fresh ten seconds', () => {
     const { report, jump, stop } = playingAt(1000);
     report('playing', 4000);
