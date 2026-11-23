@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import { type ReactNode, useState } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -70,6 +70,29 @@ function FindShowsContent() {
   const librariesRead = useLibrariesOf(cid);
   const libraries = librariesRead.data;
   const librariesOffline = useDialogRead(librariesRead).offline;
+  const linked = params?.libraryId;
+  const lacksLinked = !!libraries && !libraries.some((l) => l.id === linked);
+  // A list read before the page opened on this library may predate it (a library added
+  // since, or a list fresh enough that nothing reads it again), and a list whose last read
+  // failed is read again only on a reconnect or a focus. So when the page opens on a
+  // library, or moves to another, with such a list and no read settled since, it reads the
+  // list once more, and it calls the library missing only from a read since then. Once per
+  // library: a read that fails again is not asked again.
+  const { dataUpdatedAt, errorUpdatedAt } = librariesRead;
+  const page = `${cid}:${linked}`;
+  const [opened, setOpened] = useState({ page, dataUpdatedAt, errorUpdatedAt });
+  if (opened.page !== page) setOpened({ page, dataUpdatedAt, errorUpdatedAt });
+  const readSinceOpened = opened.page === page && dataUpdatedAt > opened.dataUpdatedAt;
+  const settledSinceOpened = readSinceOpened || errorUpdatedAt > opened.errorUpdatedAt;
+  const stale = !settledSinceOpened && (!!librariesRead.error || lacksLinked);
+  const askedFor = useRef<string | null>(null);
+  const { isFetching: librariesFetching, refetch: readLibraries } = librariesRead;
+  useEffect(() => {
+    if (linked === undefined || askedFor.current === page) return;
+    if (!stale || librariesOffline || librariesFetching) return;
+    askedFor.current = page;
+    void readLibraries();
+  }, [linked, page, stale, librariesOffline, librariesFetching, readLibraries]);
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
@@ -91,19 +114,19 @@ function FindShowsContent() {
     );
   }
 
-  // Only once the libraries are known and settled (a cached list read again may hold a
-  // library added since): a library the server lacks. A books library is the server's to
-  // refuse (`not_podcast_library`). A kept list may predate the library, so while its read
-  // again waits for the network or failed, a missing one waits for an answer, and the page
-  // stays as it does for a list not read yet: each section says what became of its own
-  // reads, and replacing the page would drop a typed address, kept results or a running
-  // import with its Stop.
+  // Only once the libraries are known and settled, from a read since the page opened on
+  // this library (a cached list read again may hold a library added since): a library the
+  // server lacks. A books library is the server's to refuse (`not_podcast_library`). A kept
+  // list may predate the library, so while its read again waits for the network or failed,
+  // a missing one waits for an answer, and the page stays as it does for a list not read
+  // yet: each section says what became of its own reads, and replacing the page would drop
+  // a typed address, kept results or a running import with its Stop.
   if (
-    libraries &&
-    !librariesRead.isFetching &&
+    lacksLinked &&
+    readSinceOpened &&
+    !librariesFetching &&
     !librariesOffline &&
-    !librariesRead.error &&
-    !libraries.some((l) => l.id === params.libraryId)
+    !librariesRead.error
   ) {
     return (
       <View testID="find-shows-library-missing">
