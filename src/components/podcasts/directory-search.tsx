@@ -128,9 +128,11 @@ export function DirectorySearch({
       country: using === 'itunes' ? (deviceCountry() ?? null) : null,
       limit: SEARCH_LIMIT,
     };
-    // The same search: its held results stand; asked again only after it failed.
+    // The same search: its held results stand; asked again only after it failed, and not
+    // while that ask runs (the keyboard's Search still submits while the button spins, and
+    // a refetch over kept results restarts the request, spending the search budget again).
     if (sameSearch(params, next)) {
-      if (search.isError) void search.refetch();
+      if (search.isError && !search.isFetching) void search.refetch();
       return;
     }
     setParams(next);

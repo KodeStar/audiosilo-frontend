@@ -233,6 +233,9 @@ describe('DirectorySearch', () => {
     expect(screen.getByText('Searching...')).toBeTruthy();
     expect(screen.queryByTestId('directory-search-error')).toBeNull();
     expect(screen.queryByText('Search again')).toBeNull();
+    // The keyboard's Search still submits while the button spins: it must not restart it.
+    await fireEvent(screen.getByTestId('directory-search-input'), 'submitEditing');
+    expect(mockRefetch).not.toHaveBeenCalled();
   });
 
   it.each([false, true])(
