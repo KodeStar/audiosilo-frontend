@@ -220,6 +220,21 @@ describe('DirectorySearch', () => {
     expect(mockRefetch).toHaveBeenCalledTimes(1);
   });
 
+  it('drops the refresh failure while the search is asked again', async () => {
+    mockSearch = {
+      isError: true,
+      isFetching: true,
+      error: new ApiError(502, 'no'),
+      data: { provider: 'itunes', query: 'history', country: 'GB', results: [result()] },
+    };
+    await mount();
+    await search('history');
+    expect(screen.getAllByTestId('discovery-result')).toHaveLength(1);
+    expect(screen.getByText('Searching...')).toBeTruthy();
+    expect(screen.queryByTestId('directory-search-error')).toBeNull();
+    expect(screen.queryByText('Search again')).toBeNull();
+  });
+
   it.each([false, true])(
     'replaces a held search spinner with the offline reason (cached results: %s)',
     async (cached) => {

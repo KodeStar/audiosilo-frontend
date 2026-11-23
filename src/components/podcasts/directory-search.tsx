@@ -158,8 +158,10 @@ export function DirectorySearch({
 
   const answered = search.data;
   const providerName = t(`podcasts.find.provider.${answered?.provider ?? provider}`);
+  // Not while it is asked again: a failed re-read with results kept stays `isError` while
+  // its retry runs, and "Searching..." says what is happening then (fe#299).
   const failure =
-    params && search.isError && unread !== 'offline' && !keptOffline
+    params && search.isError && !search.isFetching && unread !== 'offline' && !keptOffline
       ? searchErrorCopy(search.error)
       : null;
 
