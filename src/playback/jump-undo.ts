@@ -286,8 +286,9 @@ export function startJumpUndo(): () => void {
       state === 'playing' || state === 'paused' || (state === 'error' && showsFaultPlace());
     const live = useJumpUndo.getState().jump;
     if (!settledState) {
-      // The chip waits for the book to settle.
-      if (live?.bookKey === key && expiry) {
+      // The chip waits for the book to settle: still moving (loading) or stalled (an error).
+      // Not at the book's end or a load at rest: nothing more lands there.
+      if ((state === 'loading' || state === 'error') && live?.bookKey === key && expiry) {
         clearTimeout(expiry);
         expiry = null;
       }

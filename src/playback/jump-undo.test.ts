@@ -378,6 +378,15 @@ describe('startJumpUndo', () => {
     stop();
   });
 
+  it("runs its ten seconds out at the book's end: nothing more lands there", () => {
+    const { report, jump, stop } = playingAt(1000);
+    report('playing', 4000);
+    report('ended', 4000);
+    jest.advanceTimersByTime(UNDO_WINDOW_MS);
+    expect(jump()).toBeNull();
+    stop();
+  });
+
   it('undoes a jump still waiting to land', () => {
     const { report, undo, seekBook, stop } = playingAt(1000);
     report('playing', 4000);
