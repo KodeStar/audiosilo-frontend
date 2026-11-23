@@ -2135,29 +2135,64 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
       expect(held).toEqual([[guarded, ahead]]);
     });
 
-    it('sends the latest held capture with its original time before the sign-out purge', async () => {
+    it("drops a held capture at the sign-out's last flush, never PUT unguarded", async () => {
       const api = serverWith(ahead);
       routeClients({ c1: api });
       const newer = { ...guarded, updated_at: '2026-01-01T00:03:00Z', position: 44 };
       await saveProgress(api, newer);
-      // An older capture reaches the queue late. The latest one still gets the final send.
+      // An older capture reaches the queue late. The latest one is kept.
       await saveProgress(api, guarded);
       await flushConnection('c1');
       expect(api.saveProgress).not.toHaveBeenCalled();
       expect(await readQueue()).toEqual([newer]);
+      // Unanswered at sign-out: the legacy PUT would move the other device's further place
+      // back (last-write-wins by updated_at), so it goes nowhere.
+      api.getProgress.mockClear();
       await flushConnection('c1', { lastChance: true });
+      expect(api.getProgress).toHaveBeenCalledTimes(1);
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([]);
       await removalCleanup('c1');
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toBeNull();
+      // Nor does it reach whoever signs in next under that connection id.
+      const next = serverWith(null);
+      routeClients({ c1: next });
+      await flushQueue();
+      expect(next.saveProgress).not.toHaveBeenCalled();
+    });
+
+    it("sends a queued guarded capture at the last flush once the server's row lets it", async () => {
+      let row: Progress = ahead;
+      const api = serverWith(async () => row);
+      routeClients({ c1: api });
+      await saveProgress(api, guarded);
+      expect(await readQueue()).toEqual([guarded]);
+      // The other device's place is no further on any more (it moved back, or was reset).
+      row = { ...ahead, position: 2 };
+      await flushConnection('c1', { lastChance: true });
       expect(api.saveProgress).toHaveBeenCalledTimes(1);
       expect(api.saveProgress).toHaveBeenCalledWith(
         1,
         'A/Book',
-        expect.objectContaining({
-          position: newer.position,
-          updated_at: newer.updated_at,
-          version: 0,
-        }),
+        expect.objectContaining({ position: guarded.position, updated_at: guarded.updated_at }),
       );
-      expect(await readMirrorOf('c1', 1, 'A/Book')).toBeNull();
+      expect(await readQueue()).toEqual([]);
+    });
+
+    it('keeps a held capture whose guard read gets no answer at the last flush, unsent', async () => {
+      let fail = false;
+      const api = serverWith(async () => {
+        if (fail) throw new TypeError('Failed to fetch');
+        return ahead;
+      });
+      routeClients({ c1: api });
+      await saveProgress(api, guarded);
+      fail = true;
+      await flushConnection('c1', { lastChance: true });
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      // Left for the purge (an unreachable server's unsynced saves go with the sign-in).
+      expect(await readQueue()).toEqual([guarded]);
+      await removalCleanup('c1');
       expect(await readQueue()).toEqual([]);
     });
 

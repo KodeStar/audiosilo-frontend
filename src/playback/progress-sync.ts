@@ -1211,10 +1211,11 @@ export async function readMirror(
 // a place this device never checked against the server (offline, or behind another
 // device's further place) would move that further place back, with no question asked: the
 // v2.5.1 sweep saw a place go from 3570 s to 4.78 s. Such a save carries `guard`; before
-// a normal live PUT or replay, the guard checks the server's row. An unanswered place
-// further on holds the capture in the queue. The loaded book offers that place through
-// `onHeldSave`. The capture can go after an answer, when a fresh check permits it, or at
-// the final flush before sign-out. Sync v2 resolves each span on its `base_version`.
+// a live PUT or replay, the guard checks the server's row. An unanswered place further on
+// holds the capture in the queue. The loaded book offers that place through `onHeldSave`.
+// The capture goes after an answer or when a fresh check permits it; one still held at the
+// final flush before sign-out is dropped, never PUT. Sync v2 resolves each span on its
+// `base_version`.
 
 /** How much further on (s) another device's place must be to hold a guarded save; the
  * place reconcile's threshold too (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
@@ -1342,14 +1343,14 @@ function notePut(save: ProgressSave): void {
 export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 
 /** Send a live or replayed capture only through its own sign-in. A guard read can outlast
- * account removal, as can the PUT itself. */
+ * account removal, as can the PUT itself. A guarded save is always checked first, also at a
+ * sign-out's last flush: a held one is never PUT (`flushGroup`). */
 async function putSave(
   client: ApiClient,
   save: ProgressSave,
   current: () => boolean,
-  lastChance = false,
 ): Promise<'held' | 'saved' | 'dropped'> {
-  const allowed = lastChance || (await guardPasses(client, save, current));
+  const allowed = await guardPasses(client, save, current);
   if (!current()) return 'dropped';
   if (!allowed) return 'held';
   await client.saveProgress(save.libraryId, save.path, putBody(save));
@@ -1487,10 +1488,13 @@ async function flushGroup(
       continue;
     }
     try {
-      // Until sign-out the listener can still answer the offer. At the final flush this
-      // capture and its mirror are about to be purged, so send its original timestamp and
-      // let the legacy server reconcile it before the token goes.
-      if ((await putSave(client, save, current, lastChance)) === 'held') remaining.push(save);
+      // Held: it waits in the queue for the listener's answer to the offer. Not at a
+      // sign-out's last flush: unanswered, it is dropped with the mirror, never PUT. The
+      // legacy PUT is last-write-wins by `updated_at`, so it would move the other device's
+      // further place back (fe#198). Sync v2 never queues one here: its listens reach the
+      // server as events, which the server resolves against that place.
+      const outcome = await putSave(client, save, current);
+      if (outcome === 'held' && !lastChance) remaining.push(save);
     } catch (e) {
       if (!current() || isRefusedForGood(e)) continue;
       noteFailure(cid, e); // only a check marks the server down

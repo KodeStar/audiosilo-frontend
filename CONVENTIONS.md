@@ -2849,8 +2849,12 @@ media GETs only.
   answering it prompts a fresh read before a guarded PUT. Jump and Stay on the offer both lift
   the active session's guard. Stay saves this device's place at once. A timeout leaves the
   choice open for the next play or move. At sign-out the outbox finishes transferring any
-  rollback saves first, then the final legacy flush sends the queued place with its original
-  capture time before the token is revoked. Queue writes check the connection's sign-in
+  rollback saves first, then the final legacy flush checks each guarded save as any replay
+  does: one the server's row lets through is PUT with its original capture time before the
+  token is revoked, one still held is dropped with the mirror, never PUT unguarded (it would
+  move the other device's further place back). A Sync v2 server never sees one: its listens
+  go as events, which `ResolvePlace` and the `resume_behind` backstop resolve against the
+  further place. Queue writes check the connection's sign-in
   after an outstanding guard read or PUT, so a late response cannot recreate purged saves.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
