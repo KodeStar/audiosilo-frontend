@@ -56,6 +56,7 @@ jest.mock('@/components/library/use-book-community', () => ({
 }));
 
 /* eslint-disable import/first */
+import { SPAN_RECOVERY_WAIT_MS } from '@/playback/span-recovery';
 import { colors } from '@/theme/tokens';
 
 import { PreviouslyOnCard, resumeWithOverlap } from './previously-on';
@@ -113,6 +114,20 @@ describe('resumeWithOverlap', () => {
       mockLookup.mockResolvedValue(lookup);
       await resumeWithOverlap(at, saved);
       expect(mockStart).toHaveBeenCalledWith(at, { position: 3540, speed: 1.25 });
+    }
+  });
+
+  it('waits for a recovery that never ends for a while only', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRecover.mockImplementationOnce(() => new Promise<void>(() => {}));
+      mockLookup.mockResolvedValue({ kind: 'empty' });
+      const resuming = resumeWithOverlap(at, saved);
+      await jest.advanceTimersByTimeAsync(SPAN_RECOVERY_WAIT_MS);
+      await expect(resuming).resolves.toBe(true);
+      expect(mockStart).toHaveBeenCalledWith(at, { position: 3540, speed: 1.25 });
+    } finally {
+      jest.useRealTimers();
     }
   });
 

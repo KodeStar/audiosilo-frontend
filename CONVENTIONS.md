@@ -2720,13 +2720,20 @@ media GETs only.
     for book seconds, the range is 0.5x to 2x). On this device, any server, online or
     not: the mirror, **15 s**. On the sync path the open span is nearer, **5 s**: the
     next launch closes it into the outbox (`recoverOpenSpan`) and brings the mirror's
-    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). Resume waits
-    for that local recovery before reading the place, including when the server is offline.
-    A book with no record gets its first one from the span, with its last file, offset,
-    speed and capture time; an existing one moves by `mirrorSpanEnd`'s rules. While a
-    reconcile holds saves, the keeper leaves the span at its previous place and time. On
-    the web it runs for a span another tab left behind too, dated when that tab kept it, never now. The legacy path has no span: 15 s
-    here, and the server (so every other device) holds the last PUT, up to 60 s back,
+    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). Every reader
+    of the place (`playBook`'s lookup, Previously on's `resumeWithOverlap`, the book page's
+    `fetchBookProgress`, the car's play specs) waits for that local recovery, including when
+    the server is offline, for 2 s at most (`spanRecovered`): past it, it reads the places
+    as they are and the recovery lands later. A book with no record gets its first one from
+    a span that says something (`spanSaysSomething`), with its last file, offset, speed and
+    capture time, never finished (the span's length is the audio's, not the book's); an
+    existing one moves only when it is older than the span's end, only forward, and never
+    when it is finished, so a place written since stands. While a reconcile holds saves,
+    the keeper leaves the span at its previous place and time, and nothing cuts it but a
+    sign-out (the save loop, the background, a reconnect, the web's `hidden`: `savesHeld`).
+    On the web it runs for a span another tab left behind too, dated when that tab kept it,
+    never now. The legacy path has no span:
+    15 s here, and the server (so every other device) holds the last PUT, up to 60 s back,
     until this device saves again.
   - The pace is **read at every check**, not set by an event (`engineTicker`'s `period`):
     the next save is due that long after the LAST one, so a change mid-play (the hot-swap
@@ -5631,8 +5638,9 @@ under their empty state).
   when its book was last played 12+ days ago and a community recap reaches the listener (the Story so
   far gate); "Resume, with 30 seconds of overlap" (`resumeWithOverlap`) starts 30 s before the NEWEST
   saved place at its speed: the resume lookup (`loadInitialProgress`: the server, the local mirror and
-  the offline queue) against Home's server row, since a start at an explicit position skips the
-  store's own reconciliation. The card is dark in both themes through `ScopedThemeColors`
+  the offline queue, once `recoverOpenSpan` has brought the mirror up to a span a kill left, 2 s at
+  most: `spanRecovered`) against
+  Home's server row, since a start at an explicit position skips the store's own reconciliation. The card is dark in both themes through `ScopedThemeColors`
   (`use-theme-colors.tsx`), which also hands the dark colours to `useThemeColors` below it, so colour
   props (a Button's spinner, icons) follow the scope as classes do.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web

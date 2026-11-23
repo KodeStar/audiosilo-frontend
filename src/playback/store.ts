@@ -73,7 +73,6 @@ import {
   newEventId,
   type OpenSpan,
   type OutboxEntry,
-  recoverOpenSpan,
   sendOnPageHide,
   type SpanEnd,
   spanIsBareMove,
@@ -118,6 +117,7 @@ import {
 import { clampRate } from './rate';
 import { createPlaybackService } from './service';
 import { provideSpanCut } from './span-cut';
+import { spanRecovered } from './span-recovery';
 import { bookSpeed } from './time-left';
 import { flushTimeSaved, noteSilenceSaved } from './time-saved';
 import { mayNeedWebTranscode } from './transcode';
@@ -4774,8 +4774,9 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // The server's place still to come for a downloaded book that stopped waiting for it.
       let late: Promise<LatePlace | null> | undefined;
       if (startBookPosition === undefined && startTrack === undefined) {
-        // Recover the last kept file place before the resume reads the mirror.
-        await recoverOpenSpan();
+        // Recover the last kept file place before the resume reads the mirror (for a short
+        // while at most: past it the resume goes on without, `spanRecovered`).
+        await spanRecovered();
         if (!current() || replaced()) return;
         if (markedFinished()) return await callOff(svc, request);
         // A downloaded book never waits long on its server: not asked at all when it is known

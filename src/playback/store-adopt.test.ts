@@ -230,7 +230,9 @@ function snap(state: PlaybackState, trackIndex: number, position: number): Playb
   return { state, trackIndex, position, duration: 100, rate: 1.5 };
 }
 
-async function flushMicrotasks(turns = 8) {
+/** Enough turns for a start's resume to reach its lookup past the launch's span recovery
+ * (`spanRecovered`). */
+async function flushMicrotasks(turns = 12) {
   for (let i = 0; i < turns; i++) await Promise.resolve();
 }
 

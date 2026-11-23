@@ -26,8 +26,8 @@ import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
-import { recoverOpenSpan } from '@/playback/listening-outbox';
 import { loadInitialProgress } from '@/playback/progress-sync';
+import { spanRecovered } from '@/playback/span-recovery';
 import { usePlayer } from '@/playback/store';
 import { ScopedThemeColors } from '@/theme/use-theme-colors';
 
@@ -68,7 +68,7 @@ function savedAt(place: { updated_at: string }): number {
  */
 export async function resumeWithOverlap(at: BookAt, saved: SavedPlace): Promise<boolean> {
   const { connectionId, libraryId, path } = at;
-  await recoverOpenSpan();
+  await spanRecovered();
   const lookup = await loadInitialProgress(
     resolveClient(connectionId),
     connectionId,

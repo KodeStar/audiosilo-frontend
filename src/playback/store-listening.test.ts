@@ -228,6 +228,7 @@ import {
 } from './finish-route';
 import { closeSpan } from './listening-outbox';
 import { cutPlayingSpan } from './span-cut';
+import { SPAN_RECOVERY_WAIT_MS } from './span-recovery';
 import {
   answerAfterSpan,
   cutListeningSpanNow,
@@ -376,6 +377,22 @@ it('a play asked during launch recovery loads the last kept file place', async (
   expect(mockLoadInitialProgress).not.toHaveBeenCalled();
   expect(mockSvc.load).not.toHaveBeenCalled();
   recovered();
+  await playing;
+  expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 12]);
+});
+
+it('a recovery that never ends holds the resume for a while only', async () => {
+  // Another tab's span writes hold the lock the sweep waits for (the web's `spanOps`).
+  mockRecoverOpenSpan.mockImplementationOnce(() => new Promise<void>(() => {}));
+  mockLoadInitialProgress.mockResolvedValueOnce({
+    kind: 'progress',
+    progress: row({ position: 62 }),
+    file: { path: order[1], pos: 12 },
+  });
+  const playing = start();
+  await settle(50);
+  expect(mockLoadInitialProgress).not.toHaveBeenCalled();
+  jest.advanceTimersByTime(SPAN_RECOVERY_WAIT_MS);
   await playing;
   expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 12]);
 });
