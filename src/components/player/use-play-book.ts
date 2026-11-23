@@ -1,11 +1,11 @@
 import { Platform } from 'react-native';
 
 import { contentKeyOf } from '@/lib/content-key';
-import { bookPlayPressed, rememberPlayerPress } from '@/playback/playing-claim';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import type { BookPlace } from '@/lib/paths';
 import { currentNavState } from '@/lib/root-stack';
+import { bookPlayPressed, rememberPlayerPress } from '@/playback/playing-claim';
 import { selectIsTransportLive, usePlayer } from '@/playback/store';
 
 import { navFor, type PlayTarget, playRoute } from './play-route';

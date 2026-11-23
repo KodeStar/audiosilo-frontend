@@ -153,6 +153,17 @@ function gate<T = void>() {
   return { promise, resolve, reject };
 }
 
+/** Hold the next send after its chunk is read: `ready` once it waits, `release` lets it go. */
+function holdNextSend() {
+  const ready = gate();
+  const hold = gate();
+  mockBeforeSend = () => {
+    ready.resolve();
+    return hold.promise;
+  };
+  return { ready: ready.promise, release: () => hold.resolve() };
+}
+
 type Stored = { connectionId: string; event: ListeningEvent } & Record<string, unknown>;
 
 let browser: ReturnType<typeof fakeBrowser>;
@@ -292,18 +303,13 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
   it('a send another tab starts after the withdrawal leaves the finish out', async () => {
     await a.appendEvents('c1', [listen('a'), finish('f')]);
     // B has read its chunk (both events) and is about to send it.
-    const hold = gate();
-    const ready = gate();
-    mockBeforeSend = () => {
-      ready.resolve();
-      return hold.promise;
-    };
+    const send = holdNextSend();
     const flushing = b.flushOutbox('c1');
-    await ready.promise;
+    await send.ready;
     mockBeforeSend = null; // only B's send waits on it
     const taken = await a.withdrawFinish('c1', 3, 'Author/Book');
     expect(taken.unsent).toBe(true);
-    hold.resolve();
+    send.release();
     await flushing;
     // Sent after the Undo's edit, it would have finished the book again.
     expect(b.sent()).toEqual([['a']]);
@@ -317,21 +323,16 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
     'handles a %i for the single event left after another tab withdrew the finish',
     async (status, reason) => {
       await a.appendEvents('c1', [finish('f'), listen('listen')]);
-      const ready = gate();
-      const hold = gate();
-      mockBeforeSend = () => {
-        ready.resolve();
-        return hold.promise;
-      };
+      const send = holdNextSend();
       b.sync(async () => {
         throw b.refusal(status);
       });
       const flushing = b.flushOutbox('c1');
       try {
-        await ready.promise;
+        await send.ready;
         await a.withdrawFinish('c1', 3, 'Author/Book');
       } finally {
-        hold.resolve();
+        send.release();
         await flushing;
       }
       expect(b.sent()).toEqual([['listen']]);

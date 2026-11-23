@@ -1,4 +1,3 @@
-import { bookPlayPressed, newerTabPlay } from './playing-claim';
 import { create } from 'zustand';
 
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
@@ -22,6 +21,7 @@ import {
   pollDelay,
   REFUSAL_CODES,
 } from './episode-fetch-rules';
+import { bookPlayPressed, newerTabPlay } from './playing-claim';
 
 /**
  * Playing an episode that is not on the server yet (Bridge Phase 2d-1). The server fetches
