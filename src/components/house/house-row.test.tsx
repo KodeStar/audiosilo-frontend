@@ -132,6 +132,18 @@ describe('HouseRow', () => {
     expect(mockOpenBook).toHaveBeenCalledWith('b', 7, 'Sci-Fi/Leviathan Wakes');
   });
 
+  it('opens nothing for a row naming no book the listener may read', async () => {
+    share('a', [
+      row({ path: 'Book/CD1', title: 'CD1', chapter_index: null, cover_unavailable: true }),
+    ]);
+    await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
+    // Its page could only say the book isn't in their library: the card is no button.
+    expect(screen.queryByRole('button')).toBeNull();
+    expect(screen.getByLabelText('sam is listening to CD1')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('house-card'));
+    expect(mockOpenBook).not.toHaveBeenCalled();
+  });
+
   it('links to the sharing settings, on the Household page (8b-1)', async () => {
     share('a', [row()]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
