@@ -752,6 +752,10 @@ describe.each([
     await sleep(40);
     expect(b.player().snapshot.state).toBe('playing');
     expect(b.gaveWay()).toBe(0);
+    // Once the receiver reported the pause, its own play claims the connection as before.
+    await a.engine.svc.play();
+    await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+    expect(a.player().snapshot.state).toBe('playing');
   });
 
   it('a newer play wins while an older OS Play is still waiting for audio', async () => {
