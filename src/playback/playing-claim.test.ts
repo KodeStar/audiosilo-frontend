@@ -71,6 +71,27 @@ describe('givesWayTo (one tab plays at a time per connection)', () => {
     expect([aYields, bYields].filter(Boolean)).toHaveLength(1);
   });
 
+  it('after the clock was set back, a play asked for since is the newer one', () => {
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      const hour = 60 * 60_000;
+      const then = 1_800_000_000_000;
+      clock.mockReturnValue(then - hour);
+      // This tab's play, from before the step, gives way to a claim asked for since.
+      expect(
+        givesWayTo(claim({ askedAt: then - hour, sentAt: then - hour }), mine({ askedAt: then })),
+      ).toBe(true);
+      // A claim of a play from before the step takes nothing from a play asked for since.
+      expect(
+        givesWayTo(claim({ askedAt: then, sentAt: then - hour }), mine({ askedAt: then - hour })),
+      ).toBe(false);
+      // Both from before it: the later stands, as ever.
+      expect(givesWayTo(claim({ askedAt: then + 5 }), mine({ askedAt: then }))).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it("never to the tab's own claim", () => {
     expect(givesWayTo(claim({ tab: 'tab-a', askedAt: 9000 }), mine())).toBe(false);
   });

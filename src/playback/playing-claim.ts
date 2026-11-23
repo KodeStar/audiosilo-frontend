@@ -113,9 +113,11 @@ export type OwnPlay = {
 };
 
 /**
- * Whether a tab gives way to another tab's `claim` (pure): it plays (or means to) on the
- * claim's connection, and the claim's play was asked for later than its own (the same
- * millisecond: the greater tab id). A tab with nothing playing gives way to nothing.
+ * Whether a tab gives way to another tab's `claim`: it plays (or means to) on the claim's
+ * connection, and the claim's play was asked for later than its own (the same millisecond:
+ * the greater tab id). A tab with nothing playing gives way to nothing. A play asked for
+ * before the clock was set back (`beforeClockStep`) is older than one asked for since,
+ * whatever the two times say.
  */
 export function givesWayTo(claim: PlayingClaim, mine: OwnPlay): boolean {
   // The same connection under an id the identity migration moved it from too: a tab that
@@ -128,6 +130,9 @@ export function givesWayTo(claim: PlayingClaim, mine: OwnPlay): boolean {
   ) {
     return false;
   }
+  const now = Date.now();
+  const mineBefore = beforeClockStep(mine.askedAt, now);
+  if (mineBefore !== beforeClockStep(claim.askedAt, now)) return mineBefore;
   return laterPlay(claim, mine);
 }
 
@@ -200,20 +205,25 @@ export function bookPlayPressed(connectionId: string): number {
   return Date.now();
 }
 
-/** A claim sent more than this far ahead of this tab's clock (ms) is from before the clock
- * was set back: the tabs share one clock, so no claim made since can be. */
+/** How far ahead of the clock (ms) a time must be to be from before the clock was set back. */
 const CLOCK_STEP_MS = 60_000;
+
+/** Whether `at` (ms) is from before the clock was set back, read at `now`: more than
+ * `CLOCK_STEP_MS` ahead of it. The tabs share one clock, so nothing dated since can be. The
+ * one rule for a tab's own play (`givesWayTo`), a rival claim (`newerTabPlay`) and the claim
+ * kept per connection (`tabClaims`). */
+const beforeClockStep = (at: number, now: number) => at > now + CLOCK_STEP_MS;
 
 export function newerTabPlay(connectionId: string, askedAt: number): PlayingClaim | null {
   const mine = { connectionId, askedAt, tab: tabClaims().tab, live: true };
   // Kept until a newer one comes: after the clock was set back, one of then would win over
   // every press here until the clock passed it, though that tab may have stopped long since.
-  const latest = Date.now() + CLOCK_STEP_MS;
+  const now = Date.now();
   // Under whichever id the press was noted: the identity migration can name one connection
   // by two ids (the target's and the loaded book's).
   let newest: PlayingClaim | null = null;
   for (const [cid, claim] of rivals) {
-    if (!claim || claim.sentAt > latest) continue;
+    if (!claim || beforeClockStep(claim.sentAt, now)) continue;
     if (!sameConnection(cid, connectionId) || !givesWayTo(claim, mine)) continue;
     if (!newest || laterPlay(claim, newest)) newest = claim;
   }
@@ -242,7 +252,7 @@ export function tabClaims(): PlayingClaims {
     const claims = playingClaims(tabChannel<unknown>(PLAYING_CHANNEL));
     claims.subscribe((claim) => {
       // One from before the clock was set back gives way to any claim made since.
-      const stale = (previous: PlayingClaim) => previous.sentAt > claim.sentAt + CLOCK_STEP_MS;
+      const stale = (previous: PlayingClaim) => beforeClockStep(previous.sentAt, claim.sentAt);
       for (const [cid, previous] of rivals) {
         if (
           sameConnection(cid, claim.connectionId) &&

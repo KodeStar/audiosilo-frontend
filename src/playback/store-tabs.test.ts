@@ -689,6 +689,24 @@ describe.each([
     expectNoSharedSeconds();
   });
 
+  it('after the clock was set back, a play pressed since still wins over the one before it', async () => {
+    await a.start(5);
+    await sleep(10);
+    a.engine.at(10);
+    // The system clock steps back an hour: A's play is dated ahead of every press from here.
+    const now = Date.now;
+    const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() - 60 * 60_000);
+    try {
+      await b.start(30);
+      await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+      expect(b.player().snapshot.state).toBe('playing');
+      expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 0]);
+      await b.player().pause();
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('a tab that is not playing does nothing', async () => {
     await a.start(5);
     await a.player().pause();
