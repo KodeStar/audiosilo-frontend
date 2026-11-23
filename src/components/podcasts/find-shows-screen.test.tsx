@@ -34,6 +34,7 @@ const mockCapCids = new Set<string | undefined>();
 let mockLibraries: { id: number; kind?: string }[] | undefined;
 let mockLibrariesFetching = false;
 let mockLibrariesPaused = false;
+let mockLibrariesError: Error | null = null;
 let mockServerPaused = false;
 let mockServerError: Error | null = null;
 const mockServerRetry = jest.fn();
@@ -54,6 +55,7 @@ jest.mock('@/api/hooks', () => ({
       data: mockLibraries,
       isFetching: mockLibrariesFetching,
       isPaused: mockLibrariesPaused,
+      error: mockLibrariesError,
     };
   },
 }));
@@ -124,6 +126,7 @@ beforeEach(() => {
   mockLibraries = [{ id: 7, kind: 'podcasts' }];
   mockLibrariesFetching = false;
   mockLibrariesPaused = false;
+  mockLibrariesError = null;
   mockServerPaused = false;
   mockServerError = null;
   mockServerRetry.mockReset();
@@ -229,13 +232,15 @@ describe('FindShowsScreen', () => {
   });
 
   it.each([
-    ['held', { paused: true, online: true }],
-    ['failed with the device offline', { paused: false, online: false }],
+    ['held', { paused: true, online: true, failed: false }],
+    ['failed with the device offline', { paused: false, online: false, failed: true }],
+    ['failed online (the server may hold it since)', { paused: false, online: true, failed: true }],
   ])(
     'keeps the page while a kept list without the library is read again %s',
-    async (_, { paused, online }) => {
+    async (_, { paused, online, failed }) => {
       mockLibraries = [{ id: 3 }];
       mockLibrariesPaused = paused;
+      mockLibrariesError = failed ? new Error('unavailable') : null;
       mockOnline = online;
       await mountWithPortal(<FindShowsScreen />);
       expect(screen.getByTestId('section-search').props.children).toBe('search 7');

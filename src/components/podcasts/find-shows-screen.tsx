@@ -93,14 +93,16 @@ function FindShowsContent() {
 
   // Only once the libraries are known and settled (a cached list read again may hold a
   // library added since): a library the server lacks. A books library is the server's to
-  // refuse (`not_podcast_library`). Offline, a kept list may predate the library, so a
-  // missing one waits for the network, and the page stays as it does for a list not read
-  // yet: each section says it is offline itself, and replacing the page would drop a typed
-  // address, kept results or a running import with its Stop.
+  // refuse (`not_podcast_library`). A kept list may predate the library, so while its read
+  // again waits for the network or failed, a missing one waits for an answer, and the page
+  // stays as it does for a list not read yet: each section says what became of its own
+  // reads, and replacing the page would drop a typed address, kept results or a running
+  // import with its Stop.
   if (
     libraries &&
     !librariesRead.isFetching &&
     !librariesOffline &&
+    !librariesRead.error &&
     !libraries.some((l) => l.id === params.libraryId)
   ) {
     return (
