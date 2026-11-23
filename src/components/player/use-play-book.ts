@@ -94,10 +94,14 @@ export function usePlayBook() {
 async function playOn(connectionId: string, at: BookPlace) {
   const store = usePlayer.getState();
   const askedAt = bookPlayPressed(connectionId);
-  const moves = !!at.file || at.position !== undefined || at.track !== undefined;
-  if (at.file || at.position !== undefined) await store.seekBook(at.position ?? 0, at.file);
-  else if (at.track !== undefined) await store.goToTrack(at.track);
+  const move =
+    at.file || at.position !== undefined
+      ? store.seekBook(at.position ?? 0, at.file)
+      : at.track !== undefined
+        ? store.goToTrack(at.track)
+        : null;
+  await move;
   const player = usePlayer.getState();
   if (!selectIsTransportLive(player)) await player.toggle(askedAt);
-  else if (moves) playOnThroughStall();
+  else if (move) playOnThroughStall();
 }

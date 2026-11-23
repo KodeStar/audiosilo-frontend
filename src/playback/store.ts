@@ -210,14 +210,14 @@ let stallDeadline: number | null = null;
  * time, not the pause's promise: Android's resolves before the engine has paused. */
 let pauseFenceUntil = 0;
 /** A move the listener asked to play on from (`playOnThroughStall`: a chapter or bookmark
- * row's Play while the book plays), until `until`: the book, the listener's moves then
- * (`localMoves`), and the timer that stops the engine at `until` once a stall of it is
- * held (`holdStalledSeek`). */
+ * row's Play while the book plays): the book and the listener's moves then (`localMoves`),
+ * the timer that ends it `SEEK_PLAY_ON_MS` after the ask, and whether a stall of it is held
+ * (`holdStalledSeek`). */
 let seekPlayOn: {
   np: NowPlaying;
   moves: number;
-  until: number;
-  timer: ReturnType<typeof setTimeout> | null;
+  timer: ReturnType<typeof setTimeout>;
+  holding: boolean;
 } | null = null;
 /** How long a move asked to play on keeps its stalled engine waiting (ms, from the ask). */
 const SEEK_PLAY_ON_MS = 30_000;
@@ -3621,32 +3621,33 @@ function stopStalledEngine() {
 export function playOnThroughStall(): void {
   endSeekPlayOn(false);
   const np = usePlayer.getState().nowPlaying;
-  if (np) seekPlayOn = { np, moves: localMoves, until: Date.now() + SEEK_PLAY_ON_MS, timer: null };
+  if (!np) return;
+  const timer = setTimeout(() => endSeekPlayOn(true), SEEK_PLAY_ON_MS);
+  seekPlayOn = { np, moves: localMoves, timer, holding: false };
 }
 
 /** The watchdog fired on the move asked to play on (`seekPlayOn`), the same book and no move
- * since: hold the stop until that move's time is up. Whether it holds. */
+ * since: the stop waits for that move's time to be up. Whether it holds. */
 function holdStalledSeek(): boolean {
   const held = seekPlayOn;
-  const np = usePlayer.getState().nowPlaying;
-  if (!held || held.np !== np || held.moves !== localMoves || Date.now() >= held.until) {
+  if (held?.np !== usePlayer.getState().nowPlaying || held.moves !== localMoves) {
     endSeekPlayOn(false);
     return false;
   }
-  if (held.timer) clearTimeout(held.timer);
-  held.timer = setTimeout(() => endSeekPlayOn(true), held.until - Date.now());
+  held.holding = true;
   return true;
 }
 
-/** The move asked to play on is over (`seekPlayOn`). `stop`: an engine still held waiting in
+/** The move asked to play on is over (`seekPlayOn`). `stop`: an engine it held waiting in
  * the error of its book is stopped now, as the watchdog would have. */
 function endSeekPlayOn(stop: boolean) {
   const held = seekPlayOn;
   if (!held) return;
   seekPlayOn = null;
-  if (!held.timer) return;
   clearTimeout(held.timer);
-  if (stop && errorHeld() && usePlayer.getState().nowPlaying === held.np) stopStalledEngine();
+  if (stop && held.holding && errorHeld() && usePlayer.getState().nowPlaying === held.np) {
+    stopStalledEngine();
+  }
 }
 
 /** Where the store's book stood at `asked`, else null: null too once the listener moved the
