@@ -30,6 +30,7 @@ beforeEach(() => {
 });
 let mockCollectionsError: Error | null = null;
 let mockTargetsError: Error | null = null;
+const mockTargetsRetry = jest.fn();
 let mockCollections: Collection[] | undefined = [];
 let mockDetailError: Error | null = null;
 const mockDetailRetry = jest.fn();
@@ -63,7 +64,12 @@ jest.mock('@/api/hooks', () => {
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
-    useShareTargets: () => ({ data: mockTargets, isPaused: mockPaused, error: mockTargetsError }),
+    useShareTargets: () => ({
+      data: mockTargets,
+      isPaused: mockPaused,
+      error: mockTargetsError,
+      refetch: mockTargetsRetry,
+    }),
     useSetCollectionShares: () => mutation(mockSetShares),
     // A server without household_members hands back no data.
     useHouseholdMembers: () => ({ data: mockMembers }),
@@ -283,6 +289,22 @@ describe('ShareCollectionDialog: household members (8b-1)', () => {
       expect(screen.queryByText('Retry')).toBeNull();
     },
   );
+
+  // Save replaces the shares with the whole list, so a stale one could undo a change made
+  // elsewhere: it waits for a fresh read.
+  it('holds Save after a kept people list fails to read again online, until Retry', async () => {
+    mockTargetsError = new Error('unavailable');
+    mockTargetsRetry.mockReset();
+    await mountShare();
+    expect(screen.getByText("Couldn't load the people on this server")).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'evie' })).toBeNull();
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    await fireEvent.press(save);
+    expect(mockSetShares).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Retry'));
+    expect(mockTargetsRetry).toHaveBeenCalled();
+  });
 
   it('says a picked member on "Only collections I share" can listen to all of it', async () => {
     await mountShare();

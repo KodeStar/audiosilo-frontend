@@ -432,6 +432,10 @@ export function ShareCollectionDialog({
   const { t } = useTranslation();
   const targets = useShareTargets(open, connectionId);
   const { unread, offline } = useDialogRead(targets);
+  // Save sends the whole list of people (it replaces the shares), so a kept list whose
+  // read again failed online is not shown or saved from: it waits for Retry to read it
+  // fresh. Offline, the kept list shows with Save held by the offline line instead.
+  const failed = unread === 'failed' || (!offline && !!targets.error);
   const save = useSetCollectionShares(connectionId);
   const [ids, setIds] = useState(() => sharedIds(collection));
 
@@ -454,7 +458,7 @@ export function ShareCollectionDialog({
           <DialogDescription>{t('library.collection.share.hint')}</DialogDescription>
         </DialogHeader>
         {offline ? <Text variant="muted">{t('library.collection.share.offline')}</Text> : null}
-        {unread === 'failed' ? (
+        {failed ? (
           (serverRefusalState(targets.error, connectionId, () => onOpenChange(false)) ?? (
             <ErrorNote
               message={t('library.collection.share.error')}
@@ -485,7 +489,7 @@ export function ShareCollectionDialog({
           <Button
             title={t('common.save')}
             loading={!offline && save.isPending}
-            disabled={offline || !targets.data}
+            disabled={offline || failed || !targets.data}
             onPress={() => void submit()}
           />
         </DialogFooter>
