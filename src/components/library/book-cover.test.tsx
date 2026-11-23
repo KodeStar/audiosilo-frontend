@@ -131,6 +131,27 @@ describe('BookCover', () => {
     expect(source().uri).toBe('https://s/libraries/1/cover?path=A/B&size=640');
   });
 
+  it('asks the server for nothing when it holds no cover the caller may read', async () => {
+    await render(<BookCover {...props} noArt />);
+    expect(mockApi.coverUrl).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('cover-image')).toBeNull();
+    expect(screen.queryByText('Dune')).toBeTruthy();
+  });
+
+  it('still shows the downloaded copy when the server holds no cover the caller may read', async () => {
+    mockCoverUri = 'file:///d/cover.jpg';
+    await render(<BookCover {...props} noArt />);
+    expect(source()).toBe('file:///d/cover.jpg');
+    expect(mockApi.coverUrl).not.toHaveBeenCalled();
+  });
+
+  it('shows the title at once with no server art, not an empty frame while the flags load', async () => {
+    mockInfo = {};
+    await render(<BookCover {...props} noArt />);
+    expect(screen.queryByTestId('cover-image')).toBeNull();
+    expect(screen.queryByText('Dune')).toBeTruthy();
+  });
+
   it('takes an unreachable server as one without thumbnails', async () => {
     mockInfo = { isError: true };
     await render(<BookCover {...props} />);

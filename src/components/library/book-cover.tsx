@@ -68,6 +68,9 @@ export type BookCoverProps = {
   /** The thumbnail to ask for instead of the one that covers `width` on this screen (a
    * story card asks for its 1080-wide share image's). */
   thumbnail?: CoverSize;
+  /** The server holds no cover this caller may read (a household row's
+   * `outside_grant`): ask it for none, so only a downloaded copy or the title shows. */
+  noArt?: boolean;
 };
 
 /**
@@ -79,6 +82,7 @@ export type BookCoverProps = {
  * thumbnail 404 means the server can't make one). `cover_version` rides along as the
  * cache buster. With no art at all it shows the title and author. While the server's
  * flags are unknown it shows an empty frame rather than fetching the full art first.
+ * With `noArt` it asks the server for nothing: the downloaded copy, else the title at once.
  *
  * A cover URL carries the media token (`?token=`), so the web hands the browser the plain
  * URL: it caches it like any image, and a story card's share (html-to-image, which inlines
@@ -97,6 +101,7 @@ export function BookCover({
   shadow = 'xs',
   className,
   thumbnail,
+  noArt,
 }: BookCoverProps) {
   const api = useOptionalApi(connectionId);
   const info = useServerInfo(connectionId);
@@ -108,17 +113,19 @@ export function BookCover({
       ? false
       : undefined;
   const local = useDownloadedCoverUri(connectionId, libraryId, path);
+  const remote = noArt ? null : api;
   const candidates = coverCandidates({
     local,
-    thumbnails: api ? thumbnails : false,
-    url: (size) => (api ? api.coverUrl(libraryId, path, { size, version: coverVersion }) : null),
+    thumbnails: remote ? thumbnails : false,
+    url: (size) =>
+      remote ? remote.coverUrl(libraryId, path, { size, version: coverVersion }) : null,
     size: thumbnail ?? coverSizeFor(width, PixelRatio.get()),
   });
   // URIs that failed to load. Keyed by URI, not reset: a recycled list cell moving to
   // another book gets new URIs, which none of these match.
   const [failed, setFailed] = useState<readonly string[]>([]);
   const uri = candidates.find((c) => !failed.includes(c));
-  const pending = !uri && thumbnails === undefined && !!api;
+  const pending = !uri && thumbnails === undefined && !!remote;
   const plain = uri === local || Platform.OS === 'web';
   const source = uri ? (plain ? uri : { uri, headers: api?.authHeaders() }) : null;
 

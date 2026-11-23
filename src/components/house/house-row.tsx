@@ -7,7 +7,7 @@ import type { HouseListeningRow } from '@/api/types';
 import { HomeSection } from '@/components/home/home-section';
 import { BookCover } from '@/components/library/book-cover';
 import { Portrait } from '@/components/series/portrait';
-import { PressableRow } from '@/components/ui/row-surface';
+import { PressableRow, RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
 import { openHousehold, useOpen } from '@/lib/open';
@@ -76,8 +76,12 @@ function HouseSection({ connection, active }: { connection: Connection; active: 
   );
 }
 
+const CARD = 'min-h-[62px] flex-row items-center gap-3 rounded-card py-3 pl-3 pr-3.5';
+
 /** One housemate: their avatar and name, the book's title and state line, its cover.
- * Tapping opens the book's page on this connection. */
+ * Tapping opens the book's page on this connection, except on a row whose path names no
+ * book this listener may read (`outside_grant`): that page could only say the book
+ * isn't in their library, so the card is no link and asks the server nothing. */
 function HouseCard({
   connectionId,
   row,
@@ -90,14 +94,8 @@ function HouseCard({
   const { t } = useTranslation();
   const { openBook } = useOpen();
   const copy = houseCopy(row, today, t);
-  return (
-    <PressableRow
-      testID="house-card"
-      accessibilityRole="button"
-      accessibilityLabel={copy.label}
-      onPress={() => openBook(connectionId, row.library_id, row.path)}
-      className="min-h-[62px] flex-row items-center gap-3 rounded-card py-3 pl-3 pr-3.5"
-    >
+  const content = (
+    <>
       <Portrait name={row.username} kind="user" size={AVATAR} />
       <View className="min-w-0 flex-1 gap-px">
         <View className="flex-row items-center gap-1.5">
@@ -123,7 +121,26 @@ function HouseCard({
         width={COVER}
         title={copy.title}
         author={row.author ?? undefined}
+        noArt={row.outside_grant}
       />
+    </>
+  );
+  if (row.outside_grant) {
+    return (
+      <RowSurface testID="house-card" accessible accessibilityLabel={copy.label} className={CARD}>
+        {content}
+      </RowSurface>
+    );
+  }
+  return (
+    <PressableRow
+      testID="house-card"
+      accessibilityRole="button"
+      accessibilityLabel={copy.label}
+      onPress={() => openBook(connectionId, row.library_id, row.path)}
+      className={CARD}
+    >
+      {content}
     </PressableRow>
   );
 }
