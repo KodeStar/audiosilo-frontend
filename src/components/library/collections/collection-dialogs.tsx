@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
@@ -68,14 +68,22 @@ function useCollectionForm(connectionId: string, collection?: Collection) {
   const create = useCreateCollection(connectionId);
   const update = useUpdateCollection(connectionId);
   const pending = create.isPending || update.isPending;
-  /** The stored collection, or null when there was nothing to save; rejects on a failed
-   * write. */
+  // `pending` is read from the render: two keyboard submits before React renders again
+  // would both pass it and store two collections. This one is set before the write starts.
+  const saving = useRef(false);
+  /** The stored collection, or null when there was nothing to save (or a save is on its
+   * way); rejects on a failed write. */
   const save = async (): Promise<Collection | null> => {
-    if (!validName(name) || pending) return null;
+    if (!validName(name) || pending || saving.current) return null;
+    saving.current = true;
     const fields = { name: name.trim(), description: description.trim() };
-    return collection
-      ? update.mutateAsync({ id: collection.id, ...fields })
-      : create.mutateAsync(fields);
+    try {
+      return await (collection
+        ? update.mutateAsync({ id: collection.id, ...fields })
+        : create.mutateAsync(fields));
+    } finally {
+      saving.current = false;
+    }
   };
   return { name, setName, description, setDescription, pending, save };
 }
@@ -303,12 +311,16 @@ export function AddToCollectionDialog({
   const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
   const close = () => onOpenChange(false);
+  // Set from the first submit until the book is in the new collection (or it failed):
+  // `add.isPending`, read from the render, lets a second keyboard submit through before
+  // React renders again, and once the new collection is stored `form.save` is free again
+  // while the book is still being added, so either would store a second collection.
+  // (Offline, the form's `disabled` holds it.)
+  const submitting = useRef(false);
 
   const submit = async () => {
-    // The keyboard's Done submits too: once the new collection is stored, `form.save` is
-    // free again while the book is still being added to it, and would store a second one.
-    // (Offline, the form's `disabled` holds it.)
-    if (add.isPending) return;
+    if (add.isPending || submitting.current) return;
+    submitting.current = true;
     try {
       const c = await form.save();
       if (!c) return;
@@ -317,6 +329,8 @@ export function AddToCollectionDialog({
       onOpenChange(false);
     } catch (e) {
       collectionFailed(e, t, 'tooMany');
+    } finally {
+      submitting.current = false;
     }
   };
 

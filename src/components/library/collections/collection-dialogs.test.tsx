@@ -161,6 +161,19 @@ describe('AddToCollectionDialog', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
+  // Two Enters about 15 ms apart arrive before React renders again, so the mutation's
+  // `isPending` still reads false for the second.
+  it('creates one collection from two keyboard submits before a render', async () => {
+    mockCreate.mockReturnValue(new Promise(() => {}));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    await fireEvent(name, 'submitEditing');
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
   it('names a collection whose membership is held without offering a toggle', async () => {
     mockCollections = [road];
     mockDetails = {};
@@ -413,6 +426,16 @@ describe('CollectionFormDialog', () => {
     await fireEvent.press(create);
     await fireEvent(name, 'submitEditing');
     expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates one collection from two keyboard submits before a render', async () => {
+    mockCreate.mockReturnValue(new Promise(() => {}));
+    await mountForm();
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    await fireEvent(name, 'submitEditing');
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 
   it('creates online', async () => {
