@@ -125,7 +125,8 @@ function CollectionForm({
         <Button
           title={submitLabel}
           disabled={disabled || !validName(form.name)}
-          loading={loading}
+          // Held offline, it shows no spinner, as the other dialogs' actions do.
+          loading={!disabled && loading}
           onPress={submit}
         />
       </DialogFooter>
@@ -162,7 +163,7 @@ export function CollectionFormDialog({
 }) {
   const { t } = useTranslation();
   const form = useCollectionForm(connectionId, collection);
-  const online = useDeviceOnline();
+  const offline = !useDeviceOnline();
 
   const submit = async () => {
     try {
@@ -188,12 +189,12 @@ export function CollectionFormDialog({
             <DialogDescription>{t('library.collection.form.newHint')}</DialogDescription>
           )}
         </DialogHeader>
-        {online ? null : <Text variant="muted">{t('library.collection.offline')}</Text>}
+        {offline ? <Text variant="muted">{t('library.collection.offline')}</Text> : null}
         <CollectionForm
           form={form}
           submitLabel={t(collection ? 'common.save' : 'library.collection.form.create')}
-          disabled={!online}
-          loading={online && form.pending}
+          disabled={offline}
+          loading={form.pending}
           onSubmit={() => void submit()}
           onCancel={() => onOpenChange(false)}
         />
@@ -334,7 +335,7 @@ export function AddToCollectionDialog({
             form={form}
             submitLabel={t('library.collection.form.createAndAdd')}
             disabled={offline}
-            loading={!offline && (form.pending || add.isPending)}
+            loading={form.pending || add.isPending}
             onSubmit={() => void submit()}
             onCancel={() => setCreating(false)}
           />
@@ -432,9 +433,10 @@ export function ShareCollectionDialog({
   const { t } = useTranslation();
   const targets = useShareTargets(open, connectionId);
   const { unread, offline } = useDialogRead(targets);
-  // Save sends the whole list of people (it replaces the shares), so a kept list whose
-  // read again failed online is not shown or saved from: it waits for Retry to read it
-  // fresh. Offline, the kept list shows with Save held by the offline line instead.
+  // Save replaces the shares with every picked person, so it is offered only over a people
+  // list the server answered: a kept list whose read again failed online shows the failure
+  // and Retry instead, and Save waits for a fresh read. Offline, the kept list shows with
+  // Save held by the offline line.
   const failed = unread === 'failed' || (!offline && !!targets.error);
   const save = useSetCollectionShares(connectionId);
   const [ids, setIds] = useState(() => sharedIds(collection));

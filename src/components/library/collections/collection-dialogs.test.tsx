@@ -26,6 +26,7 @@ beforeEach(() => {
   mockAddPending = false;
   mockCollectionsError = null;
   mockTargetsError = null;
+  mockTargetsRetry.mockReset();
   mockReconnect.mockReset();
 });
 let mockCollectionsError: Error | null = null;
@@ -290,11 +291,8 @@ describe('ShareCollectionDialog: household members (8b-1)', () => {
     },
   );
 
-  // Save replaces the shares with the whole list, so a stale one could undo a change made
-  // elsewhere: it waits for a fresh read.
   it('holds Save after a kept people list fails to read again online, until Retry', async () => {
     mockTargetsError = new Error('unavailable');
-    mockTargetsRetry.mockReset();
     await mountShare();
     expect(screen.getByText("Couldn't load the people on this server")).toBeTruthy();
     expect(screen.queryByRole('checkbox', { name: 'evie' })).toBeNull();

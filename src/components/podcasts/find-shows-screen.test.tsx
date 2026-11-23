@@ -228,8 +228,6 @@ describe('FindShowsScreen', () => {
     expect(screen.queryByText('Retry')).toBeNull();
   });
 
-  // Each section says it is offline itself; replacing the page would drop a typed
-  // address, kept search results or a running import with its Stop.
   it.each([
     ['held', { paused: true, online: true }],
     ['failed with the device offline', { paused: false, online: false }],
