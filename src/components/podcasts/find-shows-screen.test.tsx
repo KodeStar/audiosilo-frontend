@@ -42,6 +42,7 @@ const mockLibrariesRead = jest.fn();
 let mockServerPaused = false;
 let mockServerError: Error | null = null;
 let mockServerFetching = false;
+let mockServerFailures = 0;
 const mockServerRetry = jest.fn();
 const mockLibrariesCids = new Set<string>();
 jest.mock('@/api/hooks', () => ({
@@ -49,6 +50,7 @@ jest.mock('@/api/hooks', () => ({
     isPaused: mockServerPaused,
     error: mockServerError,
     isFetching: mockServerFetching,
+    errorUpdateCount: mockServerFailures,
     refetch: mockServerRetry,
   }),
   useCapability: (flag: string, cid?: string) => {
@@ -142,6 +144,7 @@ beforeEach(() => {
   mockServerPaused = false;
   mockServerError = null;
   mockServerFetching = false;
+  mockServerFailures = 0;
   mockServerRetry.mockReset().mockResolvedValue(undefined);
   mockLibrariesCids.clear();
   mockCaps = { podcasts: true, podcast_discovery: true, podcast_opml: true };
@@ -240,6 +243,7 @@ describe('FindShowsScreen', () => {
   it('keeps the failed check with a busy Retry while Retry asks again', async () => {
     mockCaps = {};
     mockServerError = new ApiError(502, 'bad gateway');
+    mockServerFailures = 1;
     let settle = () => {};
     mockServerRetry.mockImplementation(() => {
       mockServerError = null;
@@ -253,8 +257,10 @@ describe('FindShowsScreen', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).toBeBusy();
     // Failed again: the sentence with Retry ready.
     mockServerError = new ApiError(502, 'bad gateway');
+    mockServerFailures = 2;
     mockServerFetching = false;
     await act(async () => settle());
+    await view.rerender(<FindShowsScreen />);
     expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).not.toBeBusy();
   });
@@ -363,6 +369,13 @@ describe('FindShowsScreen', () => {
     expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
     await view.rerender(<FindShowsScreen />);
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads nothing for a listener who may not add shows', async () => {
+    signIn({ member_kind: 'kid' });
+    mockLibraries = [{ id: 3 }];
+    await mountWithPortal(<FindShowsScreen />);
+    expect(mockLibrariesRead).not.toHaveBeenCalled();
   });
 
   it('asks nothing while offline, nor again for a list read since the page opened', async () => {

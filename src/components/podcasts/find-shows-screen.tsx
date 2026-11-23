@@ -72,27 +72,26 @@ function FindShowsContent() {
   const librariesOffline = useDialogRead(librariesRead).offline;
   const linked = params?.libraryId;
   const lacksLinked = !!libraries && !libraries.some((l) => l.id === linked);
-  // A list read before the page opened on this library may predate it (a library added
-  // since, or a list fresh enough that nothing reads it again), and a list whose last read
-  // failed is read again only on a reconnect or a focus. So when the page opens on a
-  // library, or moves to another, with such a list and no read settled since, it reads the
-  // list once more, and it calls the library missing only from a read since then. Once per
-  // library: a read that fails again is not asked again.
+  // A kept list may predate the linked library, and one whose last read failed is read
+  // again only on a reconnect or a focus. So when the page opens on a library (or moves to
+  // another) with such a list and nothing settled since, it reads the list once more, and
+  // calls the library missing only from a read since then. Once per library, and only for
+  // a listener who may add shows (the other pages never use the list).
   const { dataUpdatedAt, errorUpdatedAt } = librariesRead;
   const page = `${cid}:${linked}`;
   const [opened, setOpened] = useState({ page, dataUpdatedAt, errorUpdatedAt });
   if (opened.page !== page) setOpened({ page, dataUpdatedAt, errorUpdatedAt });
-  const readSinceOpened = opened.page === page && dataUpdatedAt > opened.dataUpdatedAt;
+  const readSinceOpened = dataUpdatedAt > opened.dataUpdatedAt;
   const settledSinceOpened = readSinceOpened || errorUpdatedAt > opened.errorUpdatedAt;
   const stale = !settledSinceOpened && (!!librariesRead.error || lacksLinked);
   const askedFor = useRef<string | null>(null);
   const { isFetching: librariesFetching, refetch: readLibraries } = librariesRead;
   useEffect(() => {
-    if (linked === undefined || askedFor.current === page) return;
+    if (linked === undefined || access !== 'allowed' || askedFor.current === page) return;
     if (!stale || librariesOffline || librariesFetching) return;
     askedFor.current = page;
     void readLibraries();
-  }, [linked, page, stale, librariesOffline, librariesFetching, readLibraries]);
+  }, [linked, access, page, stale, librariesOffline, librariesFetching, readLibraries]);
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
@@ -114,13 +113,11 @@ function FindShowsContent() {
     );
   }
 
-  // Only once the libraries are known and settled, from a read since the page opened on
-  // this library (a cached list read again may hold a library added since): a library the
-  // server lacks. A books library is the server's to refuse (`not_podcast_library`). A kept
-  // list may predate the library, so while its read again waits for the network or failed,
-  // a missing one waits for an answer, and the page stays as it does for a list not read
-  // yet: each section says what became of its own reads, and replacing the page would drop
-  // a typed address, kept results or a running import with its Stop.
+  // A library the server lacks, only from a settled read since the page opened on it
+  // (above). A books library is the server's to refuse (`not_podcast_library`). While the
+  // list waits for the network or failed, the page stays as for a list not read yet: each
+  // section says what became of its own reads, and replacing the page would drop a typed
+  // address, kept results or a running import with its Stop.
   if (
     lacksLinked &&
     readSinceOpened &&
@@ -191,16 +188,11 @@ function FindShowsAccessState({ connectionId }: { connectionId: string }) {
   // `offline`: a server's failed answer (an `ApiError`) is `failed` whatever the network
   // does since, but its Retry can't work until the network is back.
   const { unread, offline } = useDialogRead(info);
-  // A Retry with nothing kept puts the read back to pending with no error, so the failure
-  // is remembered here until that read settles: the sentence stays, its Retry busy, and the
-  // page never drops to its skeleton for the whole ask.
-  const [retrying, setRetrying] = useState(false);
-  const retry = () => {
-    setRetrying(true);
-    void info.refetch().finally(() => setRetrying(false));
-  };
   if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
-  const asking = retrying && info.isFetching;
+  // Asked again after a failure: a read with nothing kept goes back to pending with no
+  // error, so only its count of failures still says so (as `failedRead` in hooks.ts). The
+  // sentence stays with its Retry busy, never the skeleton for the whole ask.
+  const asking = info.data === undefined && info.errorUpdateCount > 0 && info.isFetching;
   if (unread === 'failed' || asking) {
     const refusal = refusedServer(connectionId, info.error);
     if (refusal) return <ServerRefusal {...refusal} />;
@@ -211,7 +203,11 @@ function FindShowsAccessState({ connectionId }: { connectionId: string }) {
         action={
           offline
             ? undefined
-            : { label: t('common.retry'), onPress: retry, loading: info.isFetching }
+            : {
+                label: t('common.retry'),
+                onPress: () => void info.refetch(),
+                loading: info.isFetching,
+              }
         }
       />
     );
