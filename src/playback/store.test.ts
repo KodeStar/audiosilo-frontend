@@ -180,6 +180,7 @@ import * as readingProgress from '@/reader/reading-progress';
 
 import { bookFileSpecs } from './book-queue';
 import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
+import * as listeningOutbox from './listening-outbox';
 import { flushConnection, writeMirror } from './progress-sync';
 import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
@@ -201,6 +202,7 @@ import {
   selectIsPlaying,
   selectIsTransportLive,
   stopPlaybackForConnection,
+  flushConnectionSaves,
   teardownBeforeTokenRevoke,
   initializePlayback,
   usePlayer,
@@ -1447,6 +1449,24 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
     expect(flushConnection).toHaveBeenCalledWith('c1', { lastChance: true });
     // And gives the bookmarks waiting on the device their last send.
     expect(mockSendBookmarks).toHaveBeenCalledWith('c1');
+  });
+
+  it('sends the legacy queue after a final outbox flush can transfer a held save', async () => {
+    let transferred!: () => void;
+    const converting = jest
+      .spyOn(listeningOutbox, 'flushOutbox')
+      .mockImplementationOnce(() => new Promise<void>((r) => (transferred = r)));
+    jest.mocked(flushConnection).mockClear();
+    try {
+      const sending = flushConnectionSaves('c1');
+      expect(converting).toHaveBeenCalledWith('c1', { lastChance: true });
+      expect(flushConnection).not.toHaveBeenCalled();
+      transferred();
+      await sending;
+      expect(flushConnection).toHaveBeenCalledWith('c1', { lastChance: true });
+    } finally {
+      converting.mockRestore();
+    }
   });
 
   // Web: a tab playing through the connection sends its own while the token still works,

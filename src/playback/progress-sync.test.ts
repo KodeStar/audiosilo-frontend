@@ -89,11 +89,11 @@ const proxyOverListeners = (onProxyRefusalsOver as jest.Mock).mock.calls.map(
 );
 const proxyRefusalsOver = (cid: string) => proxyOverListeners.forEach((fn) => fn(cid));
 
-// The purge callback progress-sync registered at import (captured before any
-// clearAllMocks wipes the mock's call log).
-const removalCleanup = (onConnectionRemoved as jest.Mock).mock.calls[0]?.[0] as (
-  id: string,
-) => Promise<void>;
+// Run the removal callbacks registered at import as the session does, before a new sign-in.
+const purges = (onConnectionRemoved as jest.Mock).mock.calls.map(
+  ([fn]) => fn as (id: string) => void | Promise<void>,
+);
+const removalCleanup = (id: string) => Promise.all(purges.map((fn) => fn(id)));
 
 const save: ProgressSave = {
   connectionId: 'c1',
@@ -1923,20 +1923,20 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
     await expect(saveProgress(api, guarded)).resolves.toBe('held');
     expect(api.saveProgress).not.toHaveBeenCalled();
     expect(held).toEqual([[guarded, ahead]]);
-    expect(await readQueue()).toEqual([]);
+    expect(await readQueue()).toEqual([guarded]);
     const mirrored = await readMirrorOf('c1', 1, 'A/Book');
     expect(mirrored).toMatchObject({ position: 4.78 });
     expect(mirrored).not.toHaveProperty('guard'); // never kept in the mirror
   });
 
-  it('a listener that throws leaves the save held, not queued as a failure', async () => {
+  it('a listener that throws leaves the save held for a later choice', async () => {
     const stop = onHeldSave(() => {
       throw new Error('listener broke');
     });
     try {
       const api = serverWith(ahead);
       await expect(saveProgress(api, guarded)).resolves.toBe('held');
-      expect(await readQueue()).toEqual([]);
+      expect(await readQueue()).toEqual([guarded]);
     } finally {
       stop();
     }
@@ -1958,6 +1958,148 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
     const api = serverWith(ahead);
     await expect(saveProgress(api, guarded)).resolves.toBe('saved');
     expect(api.saveProgress).toHaveBeenCalled();
+  });
+
+  it('reuses a hold across foreground and background saves, then checks again after two minutes', async () => {
+    const session = { ...guarded, guard_session: 'still-playing' };
+    const api = serverWith(ahead);
+    const now = jest.spyOn(Date, 'now');
+    const start = Date.now();
+    try {
+      now.mockReturnValue(start);
+      await expect(saveProgress(api, session)).resolves.toBe('held');
+      now.mockReturnValue(start + 15_000);
+      const later = { ...session, position: 18 };
+      await expect(saveProgress(api, later)).resolves.toBe('held');
+      expect(api.getProgress).toHaveBeenCalledTimes(1);
+      expect(held).toEqual([
+        [session, ahead],
+        [later, ahead],
+      ]);
+      now.mockReturnValue(start + 60_000);
+      await expect(saveProgress(api, later)).resolves.toBe('held');
+      expect(api.getProgress).toHaveBeenCalledTimes(1);
+      // The other device has since restarted.
+      api.getProgress.mockResolvedValue(null);
+      now.mockReturnValue(start + 120_000);
+      await expect(saveProgress(api, later)).resolves.toBe('saved');
+      expect(api.getProgress).toHaveBeenCalledTimes(2);
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('checks again when catching up or answering: the other device may have moved on', async () => {
+    const session = { ...guarded, guard_session: 'catching-up' };
+    const api = serverWith(ahead);
+    await expect(saveProgress(api, session)).resolves.toBe('held');
+    const further = {
+      ...ahead,
+      position: ahead.position + 100,
+      updated_at: '2026-01-01T02:00:00Z',
+    };
+    api.getProgress.mockResolvedValue(further);
+    await expect(saveProgress(api, { ...session, position: ahead.position })).resolves.toBe('held');
+    expect(api.saveProgress).not.toHaveBeenCalled();
+    await answerOffer('c1', 1, 'A/Book', further, `${further.device_id}|${further.updated_at}`);
+    await expect(saveProgress(api, session)).resolves.toBe('saved');
+    expect(api.getProgress).toHaveBeenCalledTimes(3);
+  });
+
+  it('a fresh session looks up the book even while the previous session is held', async () => {
+    const api = serverWith(ahead);
+    await saveProgress(api, { ...guarded, guard_session: 'first-play' });
+    api.getProgress.mockResolvedValue(null);
+    await expect(saveProgress(api, { ...guarded, guard_session: 'next-play' })).resolves.toBe(
+      'saved',
+    );
+    expect(api.getProgress).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['held', 'clear'] as const)(
+    'drops a %s guard answer after sign-out, even for a strict rollback transfer',
+    async (answer) => {
+      const requested = Promise.withResolvers<void>();
+      const response = Promise.withResolvers<Progress | null>();
+      const api = serverWith(() => {
+        requested.resolve();
+        return response.promise;
+      });
+      setConnectionAliases({ legacy: 'c1' });
+      try {
+        const saving = saveProgress(
+          api,
+          { ...guarded, connectionId: 'legacy' },
+          { requireQueued: true },
+        );
+        await requested.promise;
+        await removalCleanup('c1');
+        const next = serverWith(null);
+        routeClients({ legacy: next, c1: next });
+        response.resolve(answer === 'held' ? ahead : null);
+        await expect(saving).resolves.toBe('dropped');
+        expect(await readQueue()).toEqual([]);
+        expect(await readMirrorOf('legacy', 1, 'A/Book')).toBeNull();
+        expect(held).toEqual([]);
+        expect(next.saveProgress).not.toHaveBeenCalled();
+        expect(api.saveProgress).not.toHaveBeenCalled();
+      } finally {
+        setConnectionAliases({});
+      }
+    },
+  );
+
+  it.each(['success', 'failure'] as const)(
+    "a late PUT %s cannot change the next sign-in's queue",
+    async (answer) => {
+      const requested = Promise.withResolvers<void>();
+      const response = Promise.withResolvers<void>();
+      const api = fakeApi(() => {
+        requested.resolve();
+        return response.promise;
+      });
+      const saving = saveProgress(api, save);
+      await requested.promise;
+      await removalCleanup('c1');
+      // The new account's clock was set back, so the old capture would replace or retire
+      // this one if the queue update were based on timestamps alone.
+      const next = { ...save, position: 95, updated_at: '2025-12-31T23:59:00Z' };
+      reachable.mockReturnValue(false);
+      await expect(saveProgress(api, next)).resolves.toBe('queued');
+      if (answer === 'success') response.resolve();
+      else response.reject(new Error('unreachable'));
+      await expect(saving).resolves.toBe('dropped');
+      expect(await readQueue()).toEqual([next]);
+      expect(reachability.noteFailure).not.toHaveBeenCalled();
+    },
+  );
+
+  it('an explicit live save retires an older held capture before replay', async () => {
+    const api = serverWith(ahead);
+    routeClients({ c1: api });
+    await expect(saveProgress(api, guarded)).resolves.toBe('held');
+    const chosen = { ...save, updated_at: '2026-01-01T00:01:00Z' };
+    await expect(saveProgress(api, chosen)).resolves.toBe('saved');
+    await flushConnection('c1', { lastChance: true });
+    expect(api.saveProgress).toHaveBeenCalledTimes(1);
+    expect(await readQueue()).toEqual([]);
+  });
+
+  it('a rollback that cannot store a held save knows to keep its events', async () => {
+    const storage = AsyncStorage.setItem as jest.Mock;
+    const write = storage.getMockImplementation()!;
+    storage.mockImplementation((key: string, value: string) => {
+      if (key === QUEUE_KEY) throw new Error('storage full');
+      return write(key, value);
+    });
+    try {
+      await expect(
+        saveProgress(serverWith(ahead), guarded, { requireQueued: true }),
+      ).rejects.toThrow('storage full');
+      expect(await readQueue()).toEqual([]);
+    } finally {
+      storage.mockImplementation(write);
+    }
   });
 
   it('an unguarded save (its start was known) is PUT without a read, as before', async () => {
@@ -1983,14 +2125,40 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
   });
 
   describe('a replay (the queue)', () => {
-    it('an unknown-start save against a far-ahead server: no PUT, it leaves the queue, the place is offered', async () => {
+    it('keeps an unknown-start save queued and offers the further place', async () => {
       await AsyncStorage.setItem(QUEUE_KEY, JSON.stringify([guarded]));
       const api = serverWith(ahead);
       routeClients({ c1: api });
       await flushQueue();
       expect(api.saveProgress).not.toHaveBeenCalled();
-      expect(await readQueue()).toEqual([]);
+      expect(await readQueue()).toEqual([guarded]);
       expect(held).toEqual([[guarded, ahead]]);
+    });
+
+    it('sends the latest held capture with its original time before the sign-out purge', async () => {
+      const api = serverWith(ahead);
+      routeClients({ c1: api });
+      const newer = { ...guarded, updated_at: '2026-01-01T00:03:00Z', position: 44 };
+      await saveProgress(api, newer);
+      // An older capture reaches the queue late. The latest one still gets the final send.
+      await saveProgress(api, guarded);
+      await flushConnection('c1');
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([newer]);
+      await flushConnection('c1', { lastChance: true });
+      await removalCleanup('c1');
+      expect(api.saveProgress).toHaveBeenCalledTimes(1);
+      expect(api.saveProgress).toHaveBeenCalledWith(
+        1,
+        'A/Book',
+        expect.objectContaining({
+          position: newer.position,
+          updated_at: newer.updated_at,
+          version: 0,
+        }),
+      );
+      expect(await readMirrorOf('c1', 1, 'A/Book')).toBeNull();
+      expect(await readQueue()).toEqual([]);
     });
 
     it('a known-start save still replays (no guard, no read)', async () => {

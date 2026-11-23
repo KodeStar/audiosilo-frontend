@@ -259,6 +259,22 @@ describe('RoutedPlaybackService', () => {
     expect(asked).toHaveBeenCalledTimes(1);
   });
 
+  it('forwards a browser media-control play only while local playback owns the route', async () => {
+    const register = jest.fn((_handler: (() => void) | null) => {});
+    const t = setup({ onRemotePlay: register });
+    const asked = jest.fn();
+    t.router.onRemotePlay(asked);
+    const press = register.mock.calls[0][0]!;
+    await playingLocally(t);
+    press();
+    expect(asked).toHaveBeenCalledTimes(1);
+    await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
+    press();
+    expect(asked).toHaveBeenCalledTimes(1);
+    t.router.onRemotePlay(null);
+    expect(register).toHaveBeenLastCalledWith(null);
+  });
+
   it('passes on the phone engine stopping wanting to play, never while casting', async () => {
     const t = setup();
     const stopped = jest.fn();

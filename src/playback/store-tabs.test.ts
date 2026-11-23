@@ -43,6 +43,12 @@ const mockMirror = {
 };
 /** How far the server's clock is ahead of the browser's (ms), for its rows in the mirror. */
 let mockSkewMs = 0;
+const mockBookSource = jest.fn<Promise<{ book: Book; chapters: ChaptersResponse }>, []>();
+jest.mock('./book-source', () => ({
+  ...jest.requireActual('./book-source'),
+  bookSourceOf: () => mockBookSource(),
+}));
+const mockLoadProgress = jest.fn(async () => ({ kind: 'empty' }));
 const mirrorKey = (connectionId: string, libraryId: number, path: string) =>
   `${connectionId}|${libraryId}|${path}`;
 
@@ -80,7 +86,7 @@ jest.mock('./progress-sync', () => ({
   flushConnection: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'), // the tabs of a browser are one device
   cachedDeviceId: () => 'dev-1',
-  loadInitialProgress: jest.fn(async () => ({ kind: 'empty' })),
+  loadInitialProgress: () => mockLoadProgress(),
   readMirror: jest.fn(async (connectionId: string, libraryId: number, path: string) =>
     mockMirror.on
       ? (mockMirror.records.get(mirrorKey(connectionId, libraryId, path)) ?? null)
@@ -166,6 +172,8 @@ function makeEngine() {
   /** The tracks of the last load: where each file ends. */
   let loaded: PlaybackTrack[] = [];
   const svc = {
+    onRemotePlay: jest.fn((_handler: () => void) => {}),
+    onPauseAsked: jest.fn((_handler: () => void) => {}),
     onRemoteSeek: jest.fn(),
     onRemoteMove: jest.fn(
       (_handler: (index: number, position: number, checkpoint?: boolean) => void) => {},
@@ -206,6 +214,14 @@ function makeEngine() {
   };
   return {
     svc: svc as typeof svc & PlaybackService,
+    remotePause: async () => {
+      svc.onPauseAsked.mock.lastCall![0]();
+      await svc.pause();
+    },
+    remotePlay: async () => {
+      svc.onRemotePlay.mock.lastCall![0]();
+      await svc.play();
+    },
     /** The engine plays on to `position` (seconds into the file). */
     at: (position: number, duration = snapshot.duration) => push({ position, duration }),
     /** The engine goes on into a later file by itself, at `position` in it (a run off the end
@@ -350,6 +366,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     removeEventListener: tab.removeEventListener,
   });
   let store!: typeof import('./store');
+  let startInPlace!: typeof import('@/components/player/start-book').startBookInPlace;
   let outbox!: typeof import('./listening-outbox');
   let jumpUndo!: typeof import('./jump-undo');
   let types!: typeof import('./types');
@@ -359,6 +376,9 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     jest.isolateModules(() => {
       /* eslint-disable @typescript-eslint/no-require-imports */
       store = require('./store') as typeof import('./store');
+      startInPlace = (
+        require('@/components/player/start-book') as typeof import('@/components/player/start-book')
+      ).startBookInPlace;
       outbox = require('./listening-outbox') as typeof import('./listening-outbox');
       jumpUndo = require('./jump-undo') as typeof import('./jump-undo');
       types = require('./types') as typeof import('./types');
@@ -377,6 +397,12 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   return {
     engine,
     outbox,
+    playAskedAt: store.localPlayAskedAt,
+    startCard: () => startInPlace({ connectionId: 'c1', libraryId: 2, path: long.book.rel_path }),
+    stay: () => {
+      store.chooseLoadedPlace();
+      store.standByPlace();
+    },
     player: () => store.usePlayer.getState(),
     /** How often the tab told its listener it gave way (the notice). */
     gaveWay: () => gaveWay,
@@ -687,10 +713,49 @@ describe.each([
     await b.start(30);
     await until(() => a.player().snapshot.state === 'paused', 'A to give way');
     await sleep(5);
-    await a.engine.svc.play(); // no press in the page: the store only sees the engine play
+    await a.engine.remotePlay();
     await until(() => b.player().snapshot.state === 'paused', 'B to give way');
     expect(a.player().snapshot.state).toBe('playing');
     expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 1]);
+  });
+
+  it('a newer play wins while an older OS Play is still waiting for audio', async () => {
+    await a.start(5);
+    await a.player().pause();
+    const release = a.engine.holdPlay();
+    const starting = a.engine.remotePlay();
+    await sleep(5);
+    await b.start(30);
+    await until(() => a.gaveWay() === 1, 'the pending OS Play to give way');
+    release();
+    await starting;
+    expect(a.player().snapshot.state).toBe('paused');
+    expect(b.player().snapshot.state).toBe('playing');
+  });
+
+  it('an OS play paused before the engine starts stays paused', async () => {
+    await a.start(5);
+    await a.player().pause();
+    const release = a.engine.holdPlay();
+    const starting = a.engine.remotePlay();
+    await a.engine.remotePause();
+    release();
+    await starting;
+    expect(a.player().snapshot.state).toBe('paused');
+  });
+
+  it('a late playing report from A leaves B playing and keeps the time of A’s press', async () => {
+    await a.start(5);
+    const askedAt = a.playAskedAt();
+    await sleep(5);
+    await b.start(30);
+    await until(() => a.gaveWay() === 1, 'A to give way');
+    await a.engine.svc.play();
+    await sleep(40);
+    expect(a.playAskedAt()).toBe(askedAt);
+    expect(a.player().snapshot.state).toBe('paused');
+    expect(b.player().snapshot.state).toBe('playing');
+    expect(b.gaveWay()).toBe(0);
   });
 
   it('a tab whose stream died is stopped, so it cannot come back and take the connection', async () => {
@@ -772,6 +837,41 @@ describe.each([
     await c.outbox.flushOutbox('c1');
   });
 
+  it('a newer tab starts while the book card waits for its item and chapters', async () => {
+    let finish!: () => void;
+    mockBookSource.mockImplementationOnce(
+      () => new Promise((resolve) => (finish = () => resolve(long))),
+    );
+    const card = a.startCard();
+    await until(() => !!finish, 'A to ask for its book');
+    await sleep(5);
+    await b.start(30, 'c1', long);
+    await sleep(40);
+    finish();
+    await card;
+    expect(a.player().nowPlaying?.path).toBe(long.book.rel_path);
+    expect(a.engine.svc.play).not.toHaveBeenCalled();
+    expect(a.playAskedAt()).toBeLessThan(b.playAskedAt());
+    expect(b.player().snapshot.state).toBe('playing');
+  });
+
+  it('a newer press wins while the first tab is still looking up its book', async () => {
+    let resume!: () => void;
+    mockLoadProgress.mockImplementationOnce(
+      () => new Promise((resolve) => (resume = () => resolve({ kind: 'empty' }))),
+    );
+    const starting = a.open(long);
+    await until(() => !!resume, 'A to look up its place');
+    await sleep(5);
+    await b.start(30, 'c1', long);
+    await sleep(40);
+    resume();
+    await starting;
+    expect(a.playAskedAt()).toBeLessThan(b.playAskedAt());
+    expect(a.engine.svc.play).not.toHaveBeenCalled();
+    expect(b.player().snapshot.state).toBe('playing');
+  });
+
   it('a start still loading when the other tab plays gives way and never plays', async () => {
     const release = a.engine.holdLoad();
     const starting = a.start(5);
@@ -790,6 +890,31 @@ describe.each([
     await a.player().toggle();
     await until(() => b.player().snapshot.state === 'paused', 'B to give way');
     expect(a.player().snapshot.state).toBe('playing');
+  });
+
+  it('only the playing tab answers when a third tab starts during another tab’s load', async () => {
+    const c = await openTab(browser);
+    const answers = answersOn(browser);
+    const release = b.engine.holdLoad();
+    try {
+      await a.start(5, 'c1', long);
+      await sleep(40);
+      a.engine.at(38);
+      const starting = b.start(12, 'c1', long);
+      await until(() => b.engine.svc.load.mock.calls.length === 1, 'B to load');
+      await c.open(long);
+      await until(() => a.gaveWay() === 1 && b.gaveWay() === 1, 'both tabs to give way');
+      release();
+      await starting;
+      await until(() => c.player().snapshot.position === 38, 'C to take A’s place');
+      await sleep(40);
+      expect(answers()).toEqual([38]);
+      expect(c.engine.svc.seekTo.mock.calls).toEqual([[38]]);
+    } finally {
+      release();
+      await c.player().stop();
+      await c.outbox.storeOpenSpan(null);
+    }
   });
 
   it('a play just asked for, not yet begun in the engine, gives way and never begins', async () => {
@@ -892,7 +1017,7 @@ describe.each([
 
     it('a play from the OS media controls takes it too', async () => {
       await aheadOfItsSave(a, b);
-      await b.engine.svc.play(); // no press in the page
+      await b.engine.remotePlay(); // no press in the page
       await until(() => a.player().snapshot.state === 'paused', 'A to give way');
       await until(() => b.player().snapshot.position === 47, "B to take A's place");
       expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [47]]);
@@ -942,7 +1067,7 @@ describe.each([
     it('a play from the OS media controls that claimed twice takes it too', async () => {
       await aheadOfItsSave(a, b);
       const release = browser.hold();
-      await b.engine.svc.play(); // no press in the page
+      await b.engine.remotePlay(); // no press in the page
       await sleep(2);
       b.engine.stall();
       release();
@@ -1068,6 +1193,21 @@ describe.each([
       await sleep(40);
       expect(b.engine.svc.seekTo.mock.calls).toEqual([[35], [300]]);
       expect(b.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
+    });
+
+    it('Stay keeps the chosen place and its next span when a takeover answer arrives', async () => {
+      await aheadOfItsSave(a, b);
+      const release = browser.hold();
+      await b.player().toggle();
+      b.stay();
+      release();
+      await until(() => a.gaveWay() === 1, 'A to give way');
+      await sleep(40);
+      expect(b.engine.svc.seekTo.mock.calls).toEqual([[35]]);
+      b.engine.at(42);
+      await b.player().pause();
+      await until(() => listens().some((e) => e.to_pos === 42), 'the listening after Stay');
+      expect(heard()).toContainEqual([35, 42, 'jump']);
     });
 
     it('ignores an answer once yet another tab plays', async () => {
@@ -1287,7 +1427,7 @@ describe.each([
       b.engine.at(90);
       await b.save();
 
-      await a.engine.svc.play(); // no press in the page: the engine plays from 30
+      await a.engine.remotePlay(); // no press in the page: the engine plays from 30
       await until(() => b.player().snapshot.state === 'paused', 'B to give way');
       await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
       expect(a.engine.svc.seekTo).toHaveBeenCalledWith(90);
@@ -1313,7 +1453,7 @@ describe.each([
       const shortened = shortenTabMoveBound();
       try {
         a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
-        await a.engine.svc.play(); // no press in the page: the engine plays from 30
+        await a.engine.remotePlay(); // no press in the page: the engine plays from 30
         await until(() => b.player().snapshot.state === 'paused', 'B to give way');
         await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
         shortened.mockRestore();
@@ -1405,7 +1545,7 @@ describe.each([
             : Promise.reject(new Error('refused'));
         seekTo.mockImplementation(move);
         skipToTrack.mockImplementation(move);
-        await a.engine.svc.play(); // no press in the page
+        await a.engine.remotePlay(); // no press in the page
         await until(() => moves() === before + 1, 'A to move');
         await until(() => warned.mock.calls.length > 0, 'A to give the move up');
         shortened.mockRestore();
@@ -1581,6 +1721,26 @@ describe.each([
       });
     });
 
+    it('a seek during the move starts the listening span at the listener’s place', async () => {
+      await playedPast(a, b);
+      b.engine.at(90);
+      await b.player().pause();
+      await until(() => listens().length === 2, 'B to save its place');
+      let settle!: () => void;
+      a.engine.svc.seekTo.mockImplementationOnce(
+        () => new Promise<void>((resolve) => (settle = resolve)),
+      );
+      await a.engine.remotePlay();
+      await until(() => !!settle, 'A to begin the move');
+      await a.player().seekBook(300);
+      settle();
+      await sleep(10);
+      a.engine.at(310);
+      await a.player().pause();
+      await until(() => listens().some((e) => e.to_pos === 310), 'the span after the seek');
+      expect(heard()).toContainEqual([300, 310, 'jump']);
+    });
+
     it('a play that buffers during that move begins its history where the move lands', async () => {
       // A server that takes no listening events: the listening is its `POST /history`.
       mockServerCaps = { listening_sync: false };
@@ -1599,7 +1759,7 @@ describe.each([
             };
           }),
       );
-      await a.engine.svc.play();
+      await a.engine.remotePlay();
       await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
       a.engine.stall(); // it buffers and comes back, still at 30 s
       land();
@@ -1635,7 +1795,7 @@ describe.each([
 
         // A plays by itself from its 30 s, and its move to B's 50 s is still out.
         a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
-        await a.engine.svc.play();
+        await a.engine.remotePlay();
         await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
         await sleep(40); // C hears A's claim
 
@@ -1661,7 +1821,7 @@ describe.each([
 
       // The engine never answers the seek (a route that went away mid-move).
       a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
-      await a.engine.svc.play();
+      await a.engine.remotePlay();
       await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to move');
       await a.start(100, 'c1', other);
       await sleep(10);
@@ -1910,6 +2070,74 @@ describe.each([
       );
       expect(a.player().snapshot.state).toBe('playing');
     });
+
+    it.each(['foreground', 'play', 'remote', 'seek'] as const)(
+      'follows the other tab once a file-changing web swap lands (%s)',
+      async (action) => {
+        mockMirror.on = true;
+        // The stream starts at file 2, the download also holds file 1 before it.
+        const listed = { ...parts.book, files: parts.chapters.files.slice(1) };
+        await a.player().playBook('c1', 2, listed, undefined, 30);
+        await sleep(5);
+        await b.start(1400, 'c1', parts);
+        await until(() => a.gaveWay() === 1, 'A to give way');
+        b.engine.at(210);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, parts.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === 1410, 'B to save');
+        // On the web the old element stays paused while the download buffers.
+        const release = Promise.withResolvers<void>();
+        type Swap = NonNullable<PlaybackService['swapTo']>;
+        const swapping = jest.fn<ReturnType<Swap>, Parameters<Swap>>(
+          async (_tracks, index, _pos, _chapters, _book, onSwitch) => {
+            await release.promise;
+            onSwitch?.();
+            a.engine.runOff(index, a.player().snapshot.position);
+            return 'swapped';
+          },
+        );
+        a.engine.svc.swapTo = swapping;
+        a.downloadLands(
+          parts,
+          parts.chapters.files.map((f) => f.rel_path),
+        );
+        let play: Promise<void> | undefined;
+        try {
+          await until(() => swapping.mock.calls.length === 1, 'the swap to start');
+          if (action === 'play') play = a.player().toggle();
+          else if (action === 'remote') play = a.engine.remotePlay();
+          else a.lookAt();
+          await sleep(10);
+          expect(a.engine.svc.seekTo).not.toHaveBeenCalled();
+          expect(a.engine.svc.skipToTrack).not.toHaveBeenCalled();
+          await a.save();
+          expect(mockMirror.records.get(key)?.position).toBe(1410);
+          if (action === 'seek') await a.player().seekBook(71);
+          if (action === 'foreground') {
+            b.engine.at(215);
+            await b.save();
+            expect(mockMirror.records.get(key)?.position).toBe(1415);
+          }
+        } finally {
+          release.resolve();
+        }
+        await play;
+        await until(() => a.player().nowPlaying?.queue.tracks.length === 3, 'the swap to land');
+        if (action === 'seek') {
+          await sleep(40);
+          expect(a.engine.svc.seekTo).toHaveBeenCalledTimes(1);
+          expect(a.player().snapshot.position).toBe(71);
+        } else {
+          const expected = action === 'foreground' ? 215 : 210;
+          await until(() => a.player().snapshot.position === expected, 'A to follow B');
+          expect(a.player().snapshot).toMatchObject({
+            trackIndex: 1,
+            state: action === 'foreground' ? 'paused' : 'playing',
+          });
+          expect(a.engine.svc.seekTo).toHaveBeenCalledTimes(1);
+        }
+      },
+    );
 
     it('a Retry onto a download in another order starts a book the other tab finished from its start', async () => {
       mockMirror.on = true;

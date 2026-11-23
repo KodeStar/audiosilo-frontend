@@ -33,6 +33,7 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { connectionGeneration } from './connection-generation';
 import { isPos, type OpenSpan, type SpanEnd, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
@@ -49,6 +50,7 @@ import { wallClockSeconds } from './rate';
 import { cutPlayingSpan } from './span-cut';
 import { provideStoredSkews } from './stored-skews';
 
+export { connectionGeneration };
 export type { OpenSpan, SpanEnd } from './open-span-doc';
 
 /**
@@ -80,7 +82,7 @@ export type { OpenSpan, SpanEnd } from './open-span-doc';
  * refused alone is moved to the list. An event older than 90 days is moved to the list
  * unsent (`too_old`, `giveUpOld`). A 404/405 that the server's own `/server` confirms (no
  * `listening_sync`) means it was rolled back to one without the route: the connection's
- * outbox becomes one legacy save per book (`legacySavesOf`) and the player saves by PUT from
+ * outbox becomes one legacy save per book (`legacySaveOf`) and the player saves by PUT from
  * then on (`usesListeningSync`).
  */
 
@@ -392,17 +394,6 @@ async function appendEntries(
     }
     await writeOutbox(next);
   });
-}
-
-/** How many times each connection was removed (signed out) this launch: an event made
- * before a removal and appended after it would outlive the purge and be sent once the same
- * account signs in again (the same connection id). A caller that awaits between making an
- * event and appending it reads this first and passes it on (`since`). */
-const removals = new Map<string, number>();
-
-/** `connectionId`'s sign-in, as the number of its removals this launch (`since`). */
-export function connectionGeneration(connectionId: string): number {
-  return removals.get(connectionId) ?? 0;
 }
 
 /**
@@ -1418,9 +1409,12 @@ async function sendChunk(
   client: ApiClient,
   chunk: OutboxEntry[],
 ): Promise<Next> {
+  const since = connectionGeneration(connectionId);
+  let attempted = chunk;
   try {
     const deviceId = await getDeviceId();
     return await sending<Next>(chunk, async (live) => {
+      attempted = live;
       if (live.length === 0) return 'more';
       const sentAt = Date.now();
       const body = syncBody(
@@ -1443,19 +1437,19 @@ async function sendChunk(
       return 'stop';
     }
     if (e.status === 404 || e.status === 405) {
-      await rollBack(connectionId, client);
+      if (connectionGeneration(connectionId) === since) await rollBack(connectionId, client, since);
       return 'stop';
     }
     if (e.status === 413 || e.code === 'too_many_events') {
-      if (chunk.length > 1) {
-        chunkSizes.set(connectionId, Math.max(1, Math.floor(chunk.length / 2)));
+      if (attempted.length > 1) {
+        chunkSizes.set(connectionId, Math.max(1, Math.floor(attempted.length / 2)));
         return 'more';
       }
       // One event alone is still too big: the server can never take it.
-      await moveToFailed(connectionId, [{ event: chunk[0].event, reason: 'too_large' }]);
+      await moveToFailed(connectionId, [{ event: attempted[0].event, reason: 'too_large' }]);
       return 'more';
     }
-    if (e.status === 400) return sendOneByOne(connectionId, client, chunk);
+    if (e.status === 400) return sendOneByOne(connectionId, client, attempted);
     // A 429 (the rate limit) is the connection's: its flushes, and the legacy queue's
     // replays and live saves, wait out its `Retry-After` (`rateLimited`). 401 (the client
     // has flagged the sign-in), 403, 5xx: keep them for a later try.
@@ -1651,47 +1645,45 @@ async function applyAnswer(
 // --- The rollback ----------------------------------------------------------------------
 
 /**
- * The outbox as legacy saves, one per book (pure): the newest listen's end as the place,
- * finished when the newest finish-state change is a `finish` that is not older than it.
+ * One book's events as a legacy save. A cut continues at the preceding span's end.
+ * It carries a deliberate move through that play, even if the spans were appended out of order.
  */
-export function legacySavesOf(
-  connectionId: string,
-  entries: OutboxEntry[],
-  deviceId: string,
-): ProgressSave[] {
-  type Book = { listen?: ListeningSpanEvent; state?: ListeningFinishEvent };
-  const books = new Map<string, Book>();
-  for (const { event } of entries) {
-    const key = `${event.library_id}\u0000${event.path}`;
-    const book = books.get(key) ?? {};
+export function legacySaveOf(entries: OutboxEntry[], deviceId: string): ProgressSave | null {
+  let listen: ListeningSpanEvent | undefined;
+  let chosen = false;
+  let state: ListeningFinishEvent | undefined;
+  const ordered = [...entries].sort((a, b) => eventTime(a.event) - eventTime(b.event));
+  for (const { event } of ordered) {
     if (event.kind === 'listen') {
-      if (!book.listen || event.ended_at >= book.listen.ended_at) book.listen = event;
-    } else if (!book.state || event.at >= book.state.at) {
-      book.state = event;
+      chosen =
+        event.start === 'continue'
+          ? chosen && listen?.to_pos === event.from_pos && listen.to_file === event.from_file
+          : MOVE_STARTS.has(event.start);
+      listen = event;
+    } else {
+      state = event;
     }
-    books.set(key, book);
   }
-  const saves: ProgressSave[] = [];
-  for (const { listen, state } of books.values()) {
-    const ref = listen ?? state;
-    if (!ref) continue;
-    const finished = state?.kind === 'finish' && (!listen || state.at >= listen.ended_at);
-    const duration = listen?.duration ?? 0;
-    const listenedAt = listen?.ended_at ?? '';
-    const at = state && state.at > listenedAt ? state.at : listenedAt;
-    saves.push({
-      connectionId,
-      libraryId: ref.library_id,
-      path: ref.path,
-      position: finished && duration > 0 ? duration : (listen?.to_pos ?? 0),
-      duration,
-      finished,
-      playback_speed: listen?.playback_speed ?? 1,
-      device_id: deviceId,
-      updated_at: at,
-    });
-  }
-  return saves.filter((s) => s.position > 0 || s.finished || !!s.updated_at);
+  const ref = listen ?? state;
+  if (!ref) return null;
+  const finished = state?.kind === 'finish' && (!listen || state.at >= listen.ended_at);
+  const duration = listen?.duration ?? 0;
+  const listenedAt = listen?.ended_at ?? '';
+  const at = state && state.at > listenedAt ? state.at : listenedAt;
+  const position = finished && duration > 0 ? duration : (listen?.to_pos ?? 0);
+  if (!at && !finished && !(position > 0)) return null;
+  return {
+    connectionId: entries[0].connectionId,
+    libraryId: ref.library_id,
+    path: ref.path,
+    position,
+    duration,
+    finished,
+    playback_speed: listen?.playback_speed ?? 1,
+    device_id: deviceId,
+    updated_at: at,
+    ...(!finished && !chosen ? { guard: true } : {}),
+  };
 }
 
 /**
@@ -1729,12 +1721,13 @@ function takeConnection(connectionId: string): Promise<OutboxEntry[]> {
  * answering without `listening_sync` (anything else answering at the address, a home
  * address another host holds on this network, keeps the outbox for a later send). The
  * events go as legacy saves, then leave the outbox (a kill between sends them again).
- * Each carries the replay guard (fe#198): no server ever resolved those spans against its
- * row, and a last-write-wins PUT of them could move another device's further place back.
+ * The replay guard checks an ordinary listen against another device's further place.
+ * A held save transfers to the legacy queue before the original events leave the outbox.
  */
-async function rollBack(connectionId: string, client: ApiClient): Promise<void> {
+async function rollBack(connectionId: string, client: ApiClient, since: number): Promise<void> {
   const info = await client.serverInfo().catch(() => null);
-  if (!info || info.capabilities?.listening_sync) return;
+  if (!info || info.capabilities?.listening_sync || connectionGeneration(connectionId) !== since)
+    return;
   // Its answer is the connection's `/server` from now on, kept for the next launch too;
   // another server's (a reset one), or one from an address the connection has left, is no
   // answer about this connection's route.
@@ -1742,14 +1735,27 @@ async function rollBack(connectionId: string, client: ApiClient): Promise<void> 
   rolledBack.add(connectionId);
   const mine = await outboxEvents(connectionId);
   const deviceId = await getDeviceId();
-  // Out as a send (`sending`): an Undo's withdrawal waits for these PUTs, or took its
-  // finish back first (fe#208).
-  await sending(mine, async (live) => {
-    for (const save of legacySavesOf(connectionId, live, deviceId)) {
-      await saveProgress(client, { ...(await withFinishedPlace(save)), guard: true });
-    }
-    await removeEvents(new Set(live.map((e) => e.event.id)));
-  });
+  const books = new Map<string, OutboxEntry[]>();
+  for (const entry of mine) {
+    const key = contentKey(connectionId, entry.event.library_id, entry.event.path);
+    const group = books.get(key);
+    if (group) group.push(entry);
+    else books.set(key, [entry]);
+  }
+  // Mark only the book about to be PUT. A later book's finish can still be withdrawn
+  // while earlier PUTs are out, and sending rechecks it before computing that book's save.
+  for (const entries of books.values()) {
+    await sending(entries, async (live) => {
+      const save = legacySaveOf(live, deviceId);
+      if (save) {
+        const place = await withFinishedPlace(save);
+        if (connectionGeneration(connectionId) !== since) return;
+        await saveProgress(client, place, { requireQueued: true });
+      }
+      if (connectionGeneration(connectionId) !== since) return;
+      await removeEvents(new Set(live.map((e) => e.event.id)));
+    });
+  }
 }
 
 // --- The web page going ------------------------------------------------------------------
@@ -1886,8 +1892,6 @@ export function onOutboxChange(listener: () => void): () => void {
 // Removing a connection orphans its listening (signing in again starts from the server's
 // record), like its queued saves: drop its events, its open span and its sync state.
 onConnectionRemoved(async (id) => {
-  // First, before any await: what was made for this sign-in is not appended from here.
-  removals.set(id, connectionGeneration(id) + 1);
   chunkSizes.delete(id);
   rolledBack.delete(id);
   await Promise.all([
@@ -1914,7 +1918,6 @@ export function resetOutboxForTests(): void {
   wentOn = null;
   queued.clear();
   appendsInTurn.clear();
-  removals.clear();
   tabId = randomUUID();
   holdOutMark = sharedWebLock(outLockName(tabId));
   if (staleCheck) clearTimeout(staleCheck);

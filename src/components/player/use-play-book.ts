@@ -1,3 +1,7 @@
+import { Platform } from 'react-native';
+
+import { contentKeyOf } from '@/lib/content-key';
+import { bookPlayPressed, rememberPlayerPress } from '@/playback/playing-claim';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import type { BookPlace } from '@/lib/paths';
@@ -64,15 +68,17 @@ export function usePlayBook() {
         await store.toggle();
         return;
       case 'player':
+        if (Platform.OS === 'web' && !loaded)
+          rememberPlayerPress(connectionId, contentKeyOf(target));
         if (route.bookPage) openBook(connectionId, libraryId, path);
         // The loaded book jumps and plays on here, so the player opens on it with no jump
         // left to apply: one paused would otherwise play from where it was before the
         // route's jump landed.
         openPlayer(connectionId, libraryId, path, loaded ? undefined : at);
-        if (loaded) await playOn(at);
+        if (loaded) await playOn(connectionId, at);
         return;
       case 'play-on':
-        await playOn(at);
+        await playOn(connectionId, at);
         return;
       case 'start':
         await startBookInPlace(target, at);
@@ -82,9 +88,11 @@ export function usePlayBook() {
 
 /** The loaded book to `at` (`seekBook`, so the Undo chip offers the way back), then
  * playing on, also when it was paused. */
-async function playOn(at: BookPlace) {
+async function playOn(connectionId: string, at: BookPlace) {
   const store = usePlayer.getState();
+  const askedAt = selectIsTransportLive(store) ? undefined : bookPlayPressed(connectionId);
   if (at.file || at.position !== undefined) await store.seekBook(at.position ?? 0, at.file);
   else if (at.track !== undefined) await store.goToTrack(at.track);
-  if (!selectIsTransportLive(usePlayer.getState())) await usePlayer.getState().toggle();
+  const player = usePlayer.getState();
+  if (askedAt !== undefined && !selectIsTransportLive(player)) await player.toggle(askedAt);
 }

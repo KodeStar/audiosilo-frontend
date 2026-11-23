@@ -16,7 +16,7 @@ let mockClient: { syncListening: jest.Mock; serverInfo: jest.Mock; saveProgress:
 /** Whether the server looks reachable (to every tab). */
 let mockReachable = true;
 /** Held open by a test, a send waits here between reading its chunk and going out. */
-let mockBeforeSend: Promise<void> | null = null;
+let mockBeforeSend: (() => Promise<void>) | null = null;
 
 jest.mock('@/lib/storage', () => {
   // The web's storage is the browser's `localStorage`: each tab's copy reads and writes its
@@ -42,6 +42,7 @@ jest.mock('@/api/hooks', () => ({
     server: (cid: string) => ['server', cid],
   },
 }));
+jest.mock('@/api/server-snapshots', () => ({ keepServerAnswer: () => true }));
 jest.mock('@/api/provider', () => ({
   queryClient: { setQueryData: jest.fn(), invalidateQueries: jest.fn(async () => {}) },
 }));
@@ -49,7 +50,7 @@ jest.mock('./progress-sync', () => ({
   ...jest.requireActual('./progress-sync'),
   // The last wait before a chunk goes out (`sendChunk`).
   getDeviceId: async () => {
-    await mockBeforeSend;
+    await mockBeforeSend?.();
     return 'dev-1';
   },
 }));
@@ -85,6 +86,7 @@ function openTab(browser: ReturnType<typeof fakeBrowser>) {
     syncListening: jest.fn(applied),
     serverInfo: jest.fn(async () => ({ capabilities: { listening_sync: true } })),
     saveProgress: jest.fn(async () => ({})),
+    getProgress: jest.fn(async () => null),
   };
   mockTab = tab;
   mockClient = client;
@@ -291,9 +293,13 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
     await a.appendEvents('c1', [listen('a'), finish('f')]);
     // B has read its chunk (both events) and is about to send it.
     const hold = gate();
-    mockBeforeSend = hold.promise;
+    const ready = gate();
+    mockBeforeSend = () => {
+      ready.resolve();
+      return hold.promise;
+    };
     const flushing = b.flushOutbox('c1');
-    await sleep(30);
+    await ready.promise;
     mockBeforeSend = null; // only B's send waits on it
     const taken = await a.withdrawFinish('c1', 3, 'Author/Book');
     expect(taken.unsent).toBe(true);
@@ -301,6 +307,70 @@ describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)
     await flushing;
     // Sent after the Undo's edit, it would have finished the book again.
     expect(b.sent()).toEqual([['a']]);
+    expect(storedIds()).toEqual([]);
+  });
+
+  it.each([
+    [413, 'too_large'],
+    [400, 'invalid'],
+  ] as const)(
+    'handles a %i for the single event left after another tab withdrew the finish',
+    async (status, reason) => {
+      await a.appendEvents('c1', [finish('f'), listen('listen')]);
+      const ready = gate();
+      const hold = gate();
+      mockBeforeSend = () => {
+        ready.resolve();
+        return hold.promise;
+      };
+      b.sync(async () => {
+        throw b.refusal(status);
+      });
+      const flushing = b.flushOutbox('c1');
+      try {
+        await ready.promise;
+        await a.withdrawFinish('c1', 3, 'Author/Book');
+      } finally {
+        hold.resolve();
+        await flushing;
+      }
+      expect(b.sent()).toEqual([['listen']]);
+      expect((await b.syncStateOf('c1')).failed?.map((f) => [f.event.id, f.reason])).toEqual([
+        ['listen', reason],
+      ]);
+      expect(storedIds()).toEqual([]);
+    },
+  );
+
+  it("rechecks a later book's withdrawn finish after a slow legacy PUT", async () => {
+    await a.appendEvents('c1', [finish('first', 'Other/Book'), listen('span'), finish('second')]);
+    b.sync(async () => {
+      throw b.refusal(405);
+    });
+    b.client.serverInfo.mockResolvedValue({ capabilities: { listening_sync: false } });
+    const hold = gate();
+    b.client.saveProgress.mockImplementationOnce(async () => {
+      await hold.promise;
+      return {};
+    });
+    const flushing = b.flushOutbox('c1');
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      await until(() => b.client.saveProgress.mock.calls.length === 1, 'the first legacy PUT');
+      clock.mockReturnValue(Date.now() + 60_000);
+      expect(stored().find((e) => e.event.id === 'second')).not.toHaveProperty('out');
+      expect((await a.withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(true);
+    } finally {
+      hold.resolve();
+      await flushing;
+      clock.mockRestore();
+    }
+    expect(b.client.saveProgress).toHaveBeenCalledTimes(2);
+    expect(b.client.saveProgress).toHaveBeenLastCalledWith(
+      3,
+      'Author/Book',
+      expect.objectContaining({ position: 40, finished: false }),
+    );
     expect(storedIds()).toEqual([]);
   });
 

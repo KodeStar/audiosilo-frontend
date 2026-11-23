@@ -1,3 +1,4 @@
+import { bookPlayPressed, newerTabPlay } from './playing-claim';
 import { create } from 'zustand';
 
 import { ApiError, PodcastFetchPendingError } from '@/api/client';
@@ -70,6 +71,8 @@ export function needsEpisodeFetch(book: Book, podcastFetch: boolean | undefined)
 }
 
 type Run = {
+  connectionId: string;
+  askedAt: number;
   abort: AbortController;
   timer: ReturnType<typeof setTimeout> | null;
   /** Failed looks in a row (a blip: no answer, the limiter, a 5xx): the wait doubles. */
@@ -161,7 +164,7 @@ export function isEpisodeFetchStarting(key: string): boolean {
  * gave up on): the fetch ends quietly and the episode never starts, or it would play later
  * (once fetched, or when the app comes back and its held poll runs) with nobody waiting. */
 function calledOff(r: Run): boolean {
-  return !!r.wanted && !r.wanted();
+  return (!!r.wanted && !r.wanted()) || !!newerTabPlay(r.connectionId, r.askedAt);
 }
 
 /** The show's title from the cached show list, else its folder. */
@@ -185,7 +188,11 @@ export function requestEpisodeFetch(
   target: PlayTarget,
   book: Book,
   opts: StartOptions = {},
-  { retry = false, wanted }: { retry?: boolean; wanted?: () => boolean } = {},
+  {
+    retry = false,
+    wanted,
+    askedAt = bookPlayPressed(target.connectionId),
+  }: { retry?: boolean; wanted?: () => boolean; askedAt?: number } = {},
 ) {
   const key = contentKeyOf(target);
   lastStart = key;
@@ -193,6 +200,7 @@ export function requestEpisodeFetch(
   if (!retry && pending?.key === key && run && !isStopped(pending.phase)) {
     // The listener's own tap stands whatever the car gives up on; the car's joins as it is.
     if (run.wanted) run.wanted = wanted;
+    run.askedAt = Math.max(run.askedAt, askedAt);
     const moved =
       pending.opts.position !== opts.position ||
       pending.opts.track !== opts.track ||
@@ -216,6 +224,7 @@ export function requestEpisodeFetch(
     },
     retry,
     wanted,
+    askedAt,
   );
 }
 
@@ -235,10 +244,13 @@ function begin(
   from: Pick<PendingEpisodeFetch, 'key' | 'target' | 'title' | 'show' | 'opts' | 'status'>,
   retry: boolean,
   wanted?: () => boolean,
+  askedAt = bookPlayPressed(from.target.connectionId),
 ) {
   cancelEpisodeFetch();
   const cid = from.target.connectionId;
   const r: Run = {
+    connectionId: cid,
+    askedAt,
     abort: new AbortController(),
     timer: null,
     blips: 0,
@@ -434,7 +446,7 @@ async function start(r: Run, client: NonNullable<ReturnType<typeof resolveClient
     markEpisodeOnServer(queryClient, cid, libraryId, book.episode.show_path, path, book);
   }
   // The asking start's check goes on with it (the store asks it again before it plays).
-  const how = r.wanted ? { fetched: true, wanted: r.wanted } : { fetched: true };
+  const how = { fetched: true, wanted: r.wanted, askedAt: r.askedAt };
   const started = await startBookInPlace(target, opts, how).catch(() => false);
   if (run !== r) return;
   // Called off since (the start refused it): over, quietly, as nothing failed.

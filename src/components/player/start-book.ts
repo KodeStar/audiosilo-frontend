@@ -7,6 +7,7 @@ import { contentKeyOf } from '@/lib/content-key';
 import type { BookPlace } from '@/lib/paths';
 import { isDeviceOnline } from '@/lib/device-online';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
+import { bookPlayPressed, newerTabPlay } from '@/playback/playing-claim';
 import { readPlaceEarly } from '@/playback/progress-sync';
 import {
   cancelEpisodeFetchOf,
@@ -123,7 +124,8 @@ export function startBookInPlace(
   const running = starting.get(key);
   if (running && latestStart === key) return running;
   latestStart = key;
-  const start: Promise<boolean> = startNow(target, opts, how).finally(() => {
+  const askedAt = how.askedAt ?? bookPlayPressed(target.connectionId);
+  const start: Promise<boolean> = startNow(target, opts, how, askedAt).finally(() => {
     // Only its own entry: a later start of the same book may have replaced it.
     if (starting.get(key) === start) starting.delete(key);
   });
@@ -133,6 +135,8 @@ export function startBookInPlace(
 
 /** How a start is made (`startBookInPlace`), beside where it starts. */
 export type StartHow = {
+  /** The original press when a fetched episode is ready to play. */
+  askedAt?: number;
   /** The episode's fetch has just finished (`episode-fetch.ts`): start it, never hand it
    * back to the fetch. */
   fetched?: boolean;
@@ -169,7 +173,12 @@ let latestStart: string | null = null;
  * the saved place (one that names a place or a speed starts as asked), and never an ended
  * or failed book, which starts again through the resume lookup like any other.
  */
-async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions): Promise<boolean> {
+async function playsOnLoaded(
+  target: PlayTarget,
+  book: Book,
+  opts: StartOptions,
+  askedAt: number,
+): Promise<boolean> {
   if (book.rel_path === target.path) return false;
   if (
     opts.position !== undefined ||
@@ -183,12 +192,17 @@ async function playsOnLoaded(target: PlayTarget, book: Book, opts: StartOptions)
   if (!selectIsLoaded({ ...target, path: book.rel_path })(player)) return false;
   const state = player.snapshot.state;
   if (state === 'ended' || state === 'error') return false;
-  if (!selectIsTransportLive(player)) await player.toggle();
+  if (!selectIsTransportLive(player)) await player.toggle(askedAt);
   dropStartedBook(target.connectionId, target.libraryId, book.rel_path, target.path);
   return true;
 }
 
-async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): Promise<boolean> {
+async function startNow(
+  target: PlayTarget,
+  opts: StartOptions,
+  how: StartHow,
+  askedAt: number,
+): Promise<boolean> {
   if (!mayActFor(target.connectionId)) return false;
   // A downloaded book from its saved place: its place is read beside its item and chapters
   // (`readPlaceEarly`), so a frozen server holds the start for one wait, not two.
@@ -200,7 +214,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
   const source = await startSourceOf(target, asked);
   if (!source) return false;
   if (how.wanted && !how.wanted()) return false;
-  if (!how.fetched && (await playsOnLoaded(target, source.book, opts))) return true;
+  if (!how.fetched && (await playsOnLoaded(target, source.book, opts, askedAt))) return true;
   const key = contentKeyOf(target);
   if (how.fetched) {
     // The fetch's own start, only while it stands: a Cancel, or a start of something else,
@@ -218,8 +232,8 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
     // downloaded book's source is its server's own when it answers, with no `local`).
     if (!isLatestStart(key)) return false;
     // With its check, when it has one: the fetch ends, and nothing starts, once it says no.
-    if (how.wanted) requestEpisodeFetch(target, source.book, opts, { wanted: how.wanted });
-    else requestEpisodeFetch(target, source.book, opts);
+    if (newerTabPlay(target.connectionId, askedAt)) return false;
+    requestEpisodeFetch(target, source.book, opts, { wanted: how.wanted, askedAt });
     return true;
   } else {
     // Played here (on its server now, or a server that does not fetch): a fetch of it still
@@ -239,6 +253,7 @@ async function startNow(target: PlayTarget, opts: StartOptions, how: StartHow): 
       opts.speed,
       how.wanted,
       how.superseded,
+      askedAt,
     );
   // The book you're on is not up next any more (Up next's own Play now does the same):
   // a queued book started from its page, a browse row or the car leaves the queue, once it

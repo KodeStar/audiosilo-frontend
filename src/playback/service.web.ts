@@ -262,6 +262,8 @@ class WebPlaybackService implements PlaybackService {
    * loads covers and handed over as an object URL (`url`, null while it loads or after it
    * failed), kept while the same cover plays on and revoked when it changes. */
   private artwork: { src: string; url: string | null } | null = null;
+  private remotePlay: (() => void) | null = null;
+  private pauseAsked: (() => void) | null = null;
   /** The store's seek, for the OS media controls (see `onRemoteSeek`). */
   private remoteSeek: ((positionInTrack: number) => void) | null = null;
   private snapshot: PlaybackSnapshot = { ...INITIAL_SNAPSHOT };
@@ -898,6 +900,14 @@ class WebPlaybackService implements PlaybackService {
     }
   }
 
+  onRemotePlay(handler: (() => void) | null) {
+    this.remotePlay = handler;
+  }
+
+  onPauseAsked(handler: (() => void) | null) {
+    this.pauseAsked = handler;
+  }
+
   onRemoteSeek(handler: ((positionInTrack: number) => void) | null) {
     this.remoteSeek = handler;
   }
@@ -924,8 +934,14 @@ class WebPlaybackService implements PlaybackService {
     if (typeof navigator === 'undefined' || !('mediaSession' in navigator)) return;
     try {
       this.writeMetadata(track, this.artworkFor(track));
-      navigator.mediaSession.setActionHandler('play', () => void this.play());
-      navigator.mediaSession.setActionHandler('pause', () => void this.pause());
+      navigator.mediaSession.setActionHandler('play', () => {
+        this.remotePlay?.();
+        void this.play().catch(() => this.pauseAsked?.());
+      });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        this.pauseAsked?.();
+        void this.pause();
+      });
       navigator.mediaSession.setActionHandler('seekbackward', () =>
         this.seekFromOs(Math.max(0, this.snapshot.position - this.config.jumpBackward)),
       );

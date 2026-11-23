@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 
 // The full player route (`src/app/player.tsx`): when it starts its book and when it jumps
@@ -83,10 +84,12 @@ jest.mock('@/playback/store', () => {
 import { ApiError } from '@/api/client';
 import PlayerScreen from '@/app/player';
 import { setConnectionAliases } from '@/lib/connection-id';
+import { rememberPlayerPress, resetTabClaimsForTests } from '@/playback/playing-claim';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { fakeBrowser } from '@/testing/fake-browser';
 /* eslint-enable import/first */
 
 type Loaded = { connectionId: string; libraryId: number; path: string } | null;
@@ -173,7 +176,7 @@ describe('the player route', () => {
   it('carries a chapter file and its in-file seconds through a cold start and a later jump', async () => {
     routeTo({ position: '87', file: 'p/2', filePos: '17.5' });
     const r = await render(<PlayerScreen />);
-    expect(mockPlayBook.mock.calls).toEqual([
+    expect(mockPlayBook.mock.calls.map((call) => call.slice(0, 6))).toEqual([
       ['c', 1, mockBook, mockChapters, 87, { path: 'p/2', pos: 17.5 }],
     ]);
     await act(async () => setNowPlaying(THIS_BOOK));
@@ -198,10 +201,40 @@ describe('the player route', () => {
     expect(mockSeekBook).not.toHaveBeenCalled();
   });
 
+  it('dates a web start from its press before the route mounts and loads its book', async () => {
+    const os = Platform.OS;
+    const Channel = globalThis.BroadcastChannel;
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      Platform.OS = 'web';
+      globalThis.BroadcastChannel = fakeBrowser({ broadcast: true }).tab()
+        .BroadcastChannel as typeof BroadcastChannel;
+      resetTabClaimsForTests();
+      clock.mockReturnValue(1000);
+      rememberPlayerPress('c', 'c:1:Author/Book');
+      clock.mockReturnValue(2000);
+      routeTo({});
+      mockBookQuery = { isLoading: true };
+      const screen = await render(<PlayerScreen />);
+      expect(mockPlayBook).not.toHaveBeenCalled();
+      mockBookQuery = null;
+      clock.mockReturnValue(3000);
+      await screen.rerender(<PlayerScreen />);
+      expect(mockPlayBook.mock.calls[0][9]).toBe(1000);
+    } finally {
+      clock.mockRestore();
+      resetTabClaimsForTests();
+      globalThis.BroadcastChannel = Channel;
+      Platform.OS = os;
+    }
+  });
+
   it('starts a book that is not playing at its position, then never jumps there again', async () => {
     routeTo({ position: '600' });
     await render(<PlayerScreen />);
-    expect(mockPlayBook.mock.calls).toEqual([['c', 1, mockBook, mockChapters, 600, undefined]]);
+    expect(mockPlayBook.mock.calls.map((call) => call.slice(0, 6))).toEqual([
+      ['c', 1, mockBook, mockChapters, 600, undefined],
+    ]);
     // The book you're on leaves Up next (PLAYER-04), once, after its start.
     await waitFor(() =>
       expect(mockDrop.mock.calls).toEqual([['c', 1, 'Author/Book', 'Author/Book']]),
@@ -253,6 +286,7 @@ describe('the player route', () => {
           { connectionId: 'c', libraryId: 1, path: 'Author/Book' },
           episodeBook,
           { position: 30, track: undefined },
+          { askedAt: undefined },
         ],
       ]);
       await act(async () =>

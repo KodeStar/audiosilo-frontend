@@ -22,7 +22,7 @@ import { tabChannel, type TabChannel } from '@/lib/tab-channel';
  * that tab gives way to its claim once it plays. Two plays asked for in the same
  * millisecond are told apart by their tab ids, so exactly one of them stands.
  *
- * A tab that gives way answers the claim with where it stopped (`GaveWay`): its last save
+ * A tab that was playing answers the claim with where it stopped (`GaveWay`): its last save
  * is up to 15 s old, so the tab that took over, which began from that save, moves on to the
  * place the listener really was (the store's `onGaveWayAnswer`). The answer is to the
  * PLAY (the claim's `tab` and `askedAt`), not to one claim message: a tab claims on every
@@ -128,8 +128,14 @@ export function givesWayTo(claim: PlayingClaim, mine: OwnPlay): boolean {
   ) {
     return false;
   }
-  if (claim.askedAt !== mine.askedAt) return claim.askedAt > mine.askedAt;
-  return claim.tab > mine.tab;
+  return laterPlay(claim, mine);
+}
+
+function laterPlay(
+  a: Pick<PlayingClaim, 'tab' | 'askedAt'>,
+  b: Pick<PlayingClaim, 'tab' | 'askedAt'>,
+) {
+  return a.askedAt === b.askedAt ? a.tab > b.tab : a.askedAt > b.askedAt;
 }
 
 export type PlayingClaims = {
@@ -184,15 +190,58 @@ export function playingClaims(
 /** The channel's name: every build that knows the rule shares it. */
 export const PLAYING_CHANNEL = 'audiosilo-playing';
 
+// One rival claim per connection this tab has asked to play. A pending book, including
+// an episode still being fetched, only carries the time of its press.
+const rivals = new Map<string, PlayingClaim | null>();
+
+export function bookPlayPressed(connectionId: string): number {
+  tabClaims();
+  if (!rivals.has(connectionId)) rivals.set(connectionId, null);
+  return Date.now();
+}
+
+export function newerTabPlay(connectionId: string, askedAt: number): PlayingClaim | null {
+  const claim = rivals.get(connectionId);
+  return claim && givesWayTo(claim, { connectionId, askedAt, tab: tabClaims().tab, live: true })
+    ? claim
+    : null;
+}
+
+// A phone-sized web player opens its route at the press. A direct link dates its play
+// from route entry. No timestamp travels in a URL.
+let openingPlayer: { key: string; askedAt: number } | null = null;
+
+export function rememberPlayerPress(connectionId: string, key: string): void {
+  openingPlayer = { key, askedAt: bookPlayPressed(connectionId) };
+}
+
+export function takePlayerPress(connectionId: string, key: string): number {
+  const opening = openingPlayer;
+  openingPlayer = null;
+  return opening?.key === key ? opening.askedAt : bookPlayPressed(connectionId);
+}
+
 let shared: PlayingClaims | null = null;
 
 /** This tab's claims, on the channel the web player's tabs share (opened on first use). */
 export function tabClaims(): PlayingClaims {
-  shared ??= playingClaims(tabChannel<unknown>(PLAYING_CHANNEL));
+  if (!shared) {
+    const claims = playingClaims(tabChannel<unknown>(PLAYING_CHANNEL));
+    claims.subscribe((claim) => {
+      for (const [cid, previous] of rivals) {
+        if (sameConnection(cid, claim.connectionId) && (!previous || laterPlay(claim, previous))) {
+          rivals.set(cid, claim);
+        }
+      }
+    });
+    shared = claims;
+  }
   return shared;
 }
 
 /** Test-only: open the channel again on the next use. */
 export function resetTabClaimsForTests(): void {
   shared = null;
+  rivals.clear();
+  openingPlayer = null;
 }

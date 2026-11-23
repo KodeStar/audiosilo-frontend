@@ -590,6 +590,14 @@ export class RoutedPlaybackService implements PlaybackService {
   async showRoutePicker() {
     return (await this.local.showRoutePicker?.()) ?? false;
   }
+  onRemotePlay(handler: (() => void) | null) {
+    this.local.onRemotePlay?.(
+      handler &&
+        (() => {
+          if (this.mode === 'local') handler();
+        }),
+    );
+  }
   onRemoteSeek(handler: ((positionInTrack: number) => void) | null) {
     this.local.onRemoteSeek?.(handler);
   }

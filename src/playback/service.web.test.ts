@@ -1130,6 +1130,33 @@ describe('WebPlaybackService Media Session (transcoded tracks)', () => {
     expect(el().src).toBe(`${STREAM}&t=700`);
   });
 
+  it('signals only a Media Session play, before the element plays', async () => {
+    const svc = createPlaybackService();
+    await svc.load(transcodedTracks, 0, 0);
+    const signalled = jest.fn(() => expect(el().paused).toBe(true));
+    svc.onRemotePlay!(signalled);
+    await svc.play();
+    expect(signalled).not.toHaveBeenCalled();
+    await svc.pause();
+    (handlers.get('play') as () => void)();
+    expect(signalled).toHaveBeenCalledTimes(1);
+    expect(el().paused).toBe(false);
+  });
+
+  it('cancels a refused OS play and a press on the OS pause control', async () => {
+    const svc = createPlaybackService();
+    await svc.load(transcodedTracks, 0, 0);
+    const cancelled = jest.fn();
+    svc.onPauseAsked!(cancelled);
+    jest.spyOn(el(), 'play').mockRejectedValueOnce({ name: 'NotAllowedError' });
+    (handlers.get('play') as () => void)();
+    await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    expect(cancelled).toHaveBeenCalledTimes(1);
+    expect(svc.getSnapshot().state).toBe('paused');
+    (handlers.get('pause') as () => void)();
+    expect(cancelled).toHaveBeenCalledTimes(2);
+  });
+
   it('sends the OS seeks through the store when it listens', async () => {
     const svc = createPlaybackService();
     const storeSeek = jest.fn();

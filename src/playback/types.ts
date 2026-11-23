@@ -240,6 +240,8 @@ export interface PlaybackService {
    * return true; web checks for the AirPlay picker.
    */
   canShowRoutePicker?(): boolean;
+  /** A play pressed on the OS media controls, before the engine starts it (web Media Session). */
+  onRemotePlay?(handler: (() => void) | null): void;
   /**
    * Route the seeks the OS media controls make on the engine itself (web: the Media
    * Session's seekto, seekbackward and seekforward) through `handler`, a track-absolute
@@ -306,7 +308,8 @@ export interface PlaybackService {
    * Native (Android): the engine stopped wanting to play (its playWhenReady turned off), told
    * before the state that comes with it. A pause the store sent has reached the engine, so a
    * `playing` it reports from here is a new play (the stall watchdog's fence ends,
-   * `stallPauseUntil`). Optional, as `onPlayAsked`.
+   * `stallPauseUntil`). Web Media Session also tells of its Pause or a refused Play, which
+   * cancels that remote play request before a playing report. Optional.
    */
   onPauseAsked?(handler: (() => void) | null): void;
   /**
