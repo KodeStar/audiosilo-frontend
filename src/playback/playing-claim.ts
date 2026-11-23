@@ -200,13 +200,21 @@ export function bookPlayPressed(connectionId: string): number {
   return Date.now();
 }
 
+/** A claim sent more than this far ahead of this tab's clock (ms) is from before the clock
+ * was set back: the tabs share one clock, so no claim made since can be. */
+const CLOCK_STEP_MS = 60_000;
+
 export function newerTabPlay(connectionId: string, askedAt: number): PlayingClaim | null {
   const mine = { connectionId, askedAt, tab: tabClaims().tab, live: true };
+  // Kept until a newer one comes: after the clock was set back, one of then would win over
+  // every press here until the clock passed it, though that tab may have stopped long since.
+  const latest = Date.now() + CLOCK_STEP_MS;
   // Under whichever id the press was noted: the identity migration can name one connection
   // by two ids (the target's and the loaded book's).
   let newest: PlayingClaim | null = null;
   for (const [cid, claim] of rivals) {
-    if (!claim || !sameConnection(cid, connectionId) || !givesWayTo(claim, mine)) continue;
+    if (!claim || claim.sentAt > latest) continue;
+    if (!sameConnection(cid, connectionId) || !givesWayTo(claim, mine)) continue;
     if (!newest || laterPlay(claim, newest)) newest = claim;
   }
   return newest;
@@ -233,8 +241,13 @@ export function tabClaims(): PlayingClaims {
   if (!shared) {
     const claims = playingClaims(tabChannel<unknown>(PLAYING_CHANNEL));
     claims.subscribe((claim) => {
+      // One from before the clock was set back gives way to any claim made since.
+      const stale = (previous: PlayingClaim) => previous.sentAt > claim.sentAt + CLOCK_STEP_MS;
       for (const [cid, previous] of rivals) {
-        if (sameConnection(cid, claim.connectionId) && (!previous || laterPlay(claim, previous))) {
+        if (
+          sameConnection(cid, claim.connectionId) &&
+          (!previous || laterPlay(claim, previous) || stale(previous))
+        ) {
           rivals.set(cid, claim);
         }
       }

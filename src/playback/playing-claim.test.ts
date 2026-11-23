@@ -263,4 +263,31 @@ describe('playingClaims', () => {
       setConnectionAliases({});
     }
   });
+
+  it('a claim from before the clock was set back holds no press since, nor a newer claim off', async () => {
+    const browser = fakeBrowser();
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.BroadcastChannel;
+    g.BroadcastChannel = browser.tab().BroadcastChannel;
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      const hour = 60 * 60_000;
+      const then = Date.now();
+      clock.mockReturnValue(then);
+      bookPlayPressed('c1');
+      const other = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-z');
+      other.announce('c1', then);
+      await settle();
+      // The clock is set back an hour: that claim is "newer" than every press for an hour.
+      clock.mockReturnValue(then - hour);
+      expect(newerTabPlay('c1', bookPlayPressed('c1'))).toBeNull();
+      // A claim made since is still found.
+      const made = other.announce('c1', then - hour + 10);
+      await settle();
+      expect(newerTabPlay('c1', then - hour + 5)).toEqual(made);
+    } finally {
+      clock.mockRestore();
+      g.BroadcastChannel = saved;
+    }
+  });
 });
