@@ -178,7 +178,7 @@ import { useSession } from '@/stores/session';
 import { useSettings } from '@/stores/settings';
 import * as readingProgress from '@/reader/reading-progress';
 
-import { bookFileSpecs } from './book-queue';
+import { bookFileSpecs, queueEndsBook } from './book-queue';
 import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
 import * as listeningOutbox from './listening-outbox';
 import { flushConnection, writeMirror } from './progress-sync';
@@ -197,7 +197,6 @@ import {
   selectBookKey,
   selectBookPosition,
   selectCurrentChapter,
-  selectEndsPartial,
   selectIsEnded,
   selectIsPlaying,
   selectIsTransportLive,
@@ -2295,8 +2294,8 @@ describe('a downloaded book re-ordered on its server', () => {
     pushSnapshot(snap('ended', 50, { trackIndex: 1, duration: 50 }));
     await flushMicrotasks();
     const s = usePlayer.getState();
-    expect(selectEndsPartial(s)).toBe(false);
     expect(selectBookPosition(s)).toBe(100);
+    expect(queueEndsBook(s.nowPlaying!.queue, selectBookPosition(s))).toBe(true);
     expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
       position: 100,
       duration: 100,

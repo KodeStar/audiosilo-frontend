@@ -3796,7 +3796,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     `duration_mismatch` over such a download goes back to the outbox at that length (or none)
     on every `flushAllOutboxes` (`resendMismatched`, through `downloadBookLength` in
     `kept-offline.ts`), once per length, so one refused again stays on the list. The end
-    credits' Play now never finishes such a book by its place (`selectEndsPartial`): it
+    credits' Play now never finishes such a book by its place (`queueEndsBook`): it
     stops, unfinished. Regression tests: `store-adopt.test.ts`, `store-listening.test.ts`
     (its length), `end-credits.test.tsx`, `listening-outbox.test.ts` (span recovery, the
     resend), `downloads/store.test.ts` (`endsBefore`, `bookDuration`).

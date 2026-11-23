@@ -6548,9 +6548,6 @@ export const selectIsTransportLive = (s: PlayerState): boolean =>
  * UI-layer end-of-book flow; nowPlaying stays populated in this state. */
 export const selectIsEnded = (s: PlayerState): boolean => s.snapshot.state === 'ended';
 
-/** The loaded book's queue ends where its download does, short of the book's end (an
- * adoption offline, D3, fe#185): reaching that end is never the book's end. */
-export const selectEndsPartial = (s: PlayerState): boolean => endsPartial(s.nowPlaying);
 /** The loaded book's length for a percent heard: the queue's, but a partial queue's is the
  * book's on its server when known, as its saves send, so the player's
  * percent is Home's. */
