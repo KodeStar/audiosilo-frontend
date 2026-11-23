@@ -33,13 +33,9 @@ import { usePageTitle } from '@/lib/use-page-title';
 import { useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { navigateWhenActive } from '@/lib/when-active';
+import { queueEndsBook } from '@/playback/book-queue';
 import { wallClockSeconds } from '@/playback/rate';
-import {
-  FINISHED_TOLERANCE,
-  selectBookPosition,
-  selectEndsPartial,
-  usePlayer,
-} from '@/playback/store';
+import { selectBookPosition, usePlayer } from '@/playback/store';
 import { resolveUpNext, type UpNextAnswer, type UpNextBook } from '@/playback/up-next-resolver';
 import { upNextSources } from '@/playback/up-next-sources';
 import { useSettings } from '@/stores/settings';
@@ -206,10 +202,7 @@ function EndCreditsBody({
     const over =
       ended ||
       player.snapshot.state === 'ended' ||
-      (!!np &&
-        np.queue.total > 0 &&
-        !selectEndsPartial(player) &&
-        selectBookPosition(player) >= np.queue.total - FINISHED_TOLERANCE);
+      (!!np && queueEndsBook(np.queue, selectBookPosition(player)));
     let stopped: Promise<unknown> = Promise.resolve();
     if (loaded && over) {
       player.finishBook();

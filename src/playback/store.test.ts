@@ -197,7 +197,6 @@ import {
   selectBookKey,
   selectBookPosition,
   selectCurrentChapter,
-  selectEndsPartial,
   selectIsEnded,
   selectIsPlaying,
   selectIsTransportLive,
@@ -2295,7 +2294,7 @@ describe('a downloaded book re-ordered on its server', () => {
     pushSnapshot(snap('ended', 50, { trackIndex: 1, duration: 50 }));
     await flushMicrotasks();
     const s = usePlayer.getState();
-    expect(selectEndsPartial(s)).toBe(false);
+    expect(s.nowPlaying?.queue.partial).toBeUndefined();
     expect(selectBookPosition(s)).toBe(100);
     expect(mockSaveProgress.mock.calls.at(-1)?.[1]).toMatchObject({
       position: 100,

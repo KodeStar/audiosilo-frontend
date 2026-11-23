@@ -237,12 +237,15 @@ describe('the store, casting through the route switch', () => {
     const loads: CastQueueLoad[] = [];
     const answers: (() => void)[] = [];
     const rateAnswers: (() => void)[] = [];
+    let loaded!: () => void;
+    const firstLoad = new Promise<void>((resolve) => (loaded = resolve));
     let landed = false;
     const remote: CastRemote = {
       load: jest.fn(
         (r: CastQueueLoad) =>
           new Promise<void>((resolve) => {
             loads.push(r);
+            loaded();
             landed = false;
             answers.push(resolve);
           }),
@@ -292,7 +295,7 @@ describe('the store, casting through the route switch', () => {
       progress: { position: 120, finished: false, version: 0, playback_speed: 1 },
     });
     const resume = usePlayer.getState().playBook('c1', 2, book, chapters);
-    await flush();
+    await firstLoad;
     expect(loads[0]).toMatchObject({ startIndex: 1, startTime: 20 });
     const old = loads[0].items.map((i) => i.url);
     status({ playerState: 'idle', idleReason: null, contentId: old[1] });

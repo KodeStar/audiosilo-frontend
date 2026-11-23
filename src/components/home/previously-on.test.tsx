@@ -21,6 +21,8 @@ const mockClient = { name: 'the book’s own client' };
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (id: string) => (id === 'c' ? mockClient : null),
 }));
+const mockRecover = jest.fn(async () => {});
+jest.mock('@/playback/listening-outbox', () => ({ recoverOpenSpan: () => mockRecover() }));
 const mockLookup = jest.fn();
 jest.mock('@/playback/progress-sync', () => ({
   loadInitialProgress: (...a: unknown[]) => mockLookup(...a),
@@ -54,6 +56,7 @@ jest.mock('@/components/library/use-book-community', () => ({
 }));
 
 /* eslint-disable import/first */
+import { SPAN_RECOVERY_WAIT_MS } from '@/playback/span-recovery';
 import { colors } from '@/theme/tokens';
 
 import { PreviouslyOnCard, resumeWithOverlap } from './previously-on';
@@ -89,10 +92,13 @@ beforeEach(() => {
 
 describe('resumeWithOverlap', () => {
   it('starts 30 s before a newer place this device holds, at its speed', async () => {
-    // Listened offline since: the newer place waits in the offline queue.
-    mockLookup.mockResolvedValue(
-      found({ position: 5000, playback_speed: 1.5, updated_at: ago(13) }),
-    );
+    // Launch recovery brings the mirror up to this device's newer offline place.
+    mockRecover.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      mockLookup.mockResolvedValue(
+        found({ position: 5000, playback_speed: 1.5, updated_at: ago(13) }),
+      );
+    });
     await expect(resumeWithOverlap(at, saved)).resolves.toBe(true);
     expect(mockLookup).toHaveBeenCalledWith(mockClient, 'c', 1, at.path);
     expect(mockStart).toHaveBeenCalledWith(at, { position: 4970, speed: 1.5 });
@@ -108,6 +114,20 @@ describe('resumeWithOverlap', () => {
       mockLookup.mockResolvedValue(lookup);
       await resumeWithOverlap(at, saved);
       expect(mockStart).toHaveBeenCalledWith(at, { position: 3540, speed: 1.25 });
+    }
+  });
+
+  it('waits for a recovery that never ends for a while only', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRecover.mockImplementationOnce(() => new Promise<void>(() => {}));
+      mockLookup.mockResolvedValue({ kind: 'empty' });
+      const resuming = resumeWithOverlap(at, saved);
+      await jest.advanceTimersByTimeAsync(SPAN_RECOVERY_WAIT_MS);
+      await expect(resuming).resolves.toBe(true);
+      expect(mockStart).toHaveBeenCalledWith(at, { position: 3540, speed: 1.25 });
+    } finally {
+      jest.useRealTimers();
     }
   });
 

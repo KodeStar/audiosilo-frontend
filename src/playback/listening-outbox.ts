@@ -24,7 +24,7 @@ import { contentKey } from '@/lib/content-key';
 import { randomUUID } from '@/lib/random';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { onStoredChange } from '@/lib/tab-channel';
-import { hasWebLocks, queryWebLocks, sharedWebLock, tabLock } from '@/lib/tab-lock';
+import { hasWebLocks, holdWebLock, queryWebLocks, sharedWebLock, tabLock } from '@/lib/tab-lock';
 import {
   isRecord,
   LISTENING_OPEN_SPAN_KEY as OPEN_SPAN_KEY,
@@ -33,7 +33,7 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
-import { connectionGeneration } from './connection-generation';
+import { captureConnectionGenerations, connectionGeneration } from './connection-generation';
 import { isPos, type OpenSpan, type SpanEnd, type StoredSpan, storedSpans } from './open-span-doc';
 import {
   ackVersion,
@@ -490,10 +490,42 @@ async function removeEvents(ids: Set<string>): Promise<void> {
  * span's write never cross, and two tabs never write over each other's span. */
 const spanOps = tabLock(OPEN_SPAN_KEY);
 let recovery: Promise<void> | null = null;
-/** Whether this tab (the app: this launch) has a span of its own stored: a close clears it. */
-let openSpanStored = false;
 /** Who this tab is (the app: this launch), for the spans it stores. */
 let tabId = randomUUID();
+const OWNER_KEY = 'audiosilo.openSpanOwner';
+const spanOwnerLock = (id: string) => `audiosilo-open-span:${id}`;
+/** Set while this document has a stored span. A close releases its Web Lock. */
+let releaseSpanOwner: (() => void) | null = null;
+
+function clearSpanOwner() {
+  releaseSpanOwner?.();
+  releaseSpanOwner = null;
+}
+
+function tabSession(): Storage | null {
+  try {
+    return Platform.OS === 'web' ? (globalThis.sessionStorage ?? null) : null;
+  } catch {
+    return null;
+  }
+}
+const ownerSession = tabSession();
+
+/** A new or duplicated tab may inherit sessionStorage. A live document keeps its own
+ * span lock. On plain HTTP only a reload can claim the previous document's span. */
+async function previousOwner(spans: StoredSpan[]): Promise<string | null> {
+  try {
+    const owner = ownerSession?.getItem(OWNER_KEY);
+    if (!owner || !spans.some((s) => s.owner === owner)) return null;
+    const locks = await queryWebLocks();
+    if (locks) return locks.has(spanOwnerLock(owner)) ? null : owner;
+    const [nav] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+    return nav?.type === 'reload' ? owner : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A span stored by another tab within this long is that tab's, still playing (it stores
  * its span every 5 s while it plays); one older was left by a tab that closed or crashed. */
 export const LIVE_SPAN_MS = 30_000;
@@ -537,20 +569,35 @@ function leftBehind(span: StoredSpan, now: number): boolean {
  * one's book up to where it ended (`mirrorSpanEnd`). Run inside `spanOps`. Returns whether a
  * live span of another tab is still stored (`live`), and the connections whose spans were
  * closed (`swept`). */
-async function closeLeftBehind(): Promise<{ live: boolean; swept: string[] }> {
+async function closeLeftBehind(
+  launch: boolean,
+  generationAt: (connectionId: string) => number,
+): Promise<{ live: boolean; swept: string[] }> {
   const spans = await readSpans();
   const now = Date.now();
-  const left = spans.filter((s) => leftBehind(s, now));
+  const previous = launch ? await previousOwner(spans) : null;
+  const left = spans.filter(
+    (s) => (previous !== null && s.owner === previous) || leftBehind(s, now),
+  );
   for (const s of left) {
     const closed = bare(s);
-    await appendClosed(closed);
+    const since = generationAt(s.connectionId);
+    await appendClosed(closed, undefined, since);
     // The mirror is written less often than the span is kept: its record of the book is
     // brought up to where the span ended (never back, never over a newer record).
-    await mirrorSpanEnd(closed).catch(() => undefined);
+    await mirrorSpanEnd(closed, since, spanSaysSomething(closed)).catch(() => undefined);
   }
   if (left.length > 0) {
     await writeSpans(spans.filter((s) => !left.includes(s)));
     notify(); // an offline span counted while stored is now an event
+  }
+  if (launch) {
+    // Rotate only after recovery, so a second reload during the sweep can still finish it.
+    try {
+      ownerSession?.setItem(OWNER_KEY, tabId);
+    } catch {
+      // Storage unavailable: the usual stale-span sweep still applies.
+    }
   }
   return {
     live: spans.some((s) => s.owner !== tabId && !left.includes(s)),
@@ -562,8 +609,9 @@ async function closeLeftBehind(): Promise<{ live: boolean; swept: string[] }> {
  * the tab that left them is gone, so no send of its own follows (fe#211: the events waited
  * for this tab's next span to close). While another tab's live span is still stored, look
  * again once it would be stale. */
-function sweepLeftBehind(): Promise<void> {
-  return spanOps(closeLeftBehind).then(({ live, swept }) => {
+function sweepLeftBehind(launch = false): Promise<void> {
+  const generations = captureConnectionGenerations();
+  return spanOps(() => closeLeftBehind(launch, generations)).then(({ live, swept }) => {
     if (live) checkAgainLater();
     // Not waited for: a flush waits on the launch's recovery, which is this sweep. The web
     // only: the app's one sweep is its launch's, which sends every outbox next.
@@ -587,7 +635,7 @@ function checkAgainLater(): void {
  * again once it would be stale).
  */
 export function recoverOpenSpan(): Promise<void> {
-  recovery ??= sweepLeftBehind().catch((e: unknown) =>
+  recovery ??= sweepLeftBehind(true).catch((e: unknown) =>
     console.warn('[listening] could not recover the open span', e),
   );
   return recovery;
@@ -611,7 +659,7 @@ function asStored(span: OpenSpan): OpenSpan {
  * (this tab's keeps stood still for `LIVE_SPAN_MS`: the computer slept, the tab was frozen)
  * and closed it into an event at the copy's values, under its id. */
 function takenFrom(spans: StoredSpan[], span: OpenSpan): OpenSpan | null {
-  if (!openSpanStored || span.id === undefined || lastStored?.id !== span.id) return null;
+  if (!releaseSpanOwner || span.id === undefined || lastStored?.id !== span.id) return null;
   return spans.some((s) => s.owner === tabId) ? null : lastStored;
 }
 
@@ -642,9 +690,10 @@ export async function storeOpenSpan(span: OpenSpan | null): Promise<OpenSpan | n
     await writeSpans(kept ? [...others, { ...kept, owner: tabId, keptAt: Date.now() }] : others);
     lastStored = kept;
     // The pending count changes only when a span comes or goes, not with each rewrite.
-    const was = openSpanStored;
-    openSpanStored = kept !== null;
-    if (was !== openSpanStored) notify();
+    const wasStored = !!releaseSpanOwner;
+    if (kept) releaseSpanOwner ??= holdWebLock(spanOwnerLock(tabId));
+    else clearSpanOwner();
+    if (wasStored !== !!kept) notify();
     return taken ? kept : null;
   });
 }
@@ -683,13 +732,13 @@ async function closeInto(
   since?: number,
 ): Promise<void> {
   const current = asStored(span);
-  const taken = openSpanStored ? takenFrom(await readSpans(), current) : null;
+  const taken = releaseSpanOwner ? takenFrom(await readSpans(), current) : null;
   const closing = taken ? goingOnFrom(current, taken) : current;
   await appendClosed(closing, closing === span ? event : undefined, since);
   if (wentOn && (wentOn.from === span.id || wentOn.span.id === span.id)) wentOn = null;
-  if (!openSpanStored) return;
+  if (!releaseSpanOwner) return;
   await writeSpans((await readSpans()).filter((s) => s.owner !== tabId));
-  openSpanStored = false;
+  clearSpanOwner();
   lastStored = null;
   notify();
 }
@@ -1625,7 +1674,11 @@ async function applyAnswer(
   const deviceId = await getDeviceId();
   for (const row of rows) {
     if (keptMine(row, deviceId, events, results)) {
-      await ackVersion(connectionId, row.library_id, row.path, row.version, row);
+      // A mirror that could not be read is left as it is (`updateMirror` rejects); the rest
+      // of the answer still lands.
+      await ackVersion(connectionId, row.library_id, row.path, row.version, row).catch(
+        () => undefined,
+      );
     }
     // The book's cached progress is the place Resume plays (`bookPlace`, fe#211), as its
     // own read answers (`fetchBookProgress`): a row the server kept over this device's
@@ -1900,7 +1953,7 @@ onConnectionRemoved(async (id) => {
       const kept = spans.filter((s) => s.connectionId !== id);
       if (kept.length === spans.length) return;
       await writeSpans(kept);
-      if (!kept.some((s) => s.owner === tabId)) openSpanStored = false;
+      if (!kept.some((s) => s.owner === tabId)) clearSpanOwner();
     }),
     updateState(id, () => null),
   ]);
@@ -1912,7 +1965,7 @@ export function resetOutboxForTests(): void {
   outboxRead = false;
   outboxUnsaved = false;
   recovery = null;
-  openSpanStored = false;
+  clearSpanOwner();
   lastStored = null;
   wentOn = null;
   queued.clear();
