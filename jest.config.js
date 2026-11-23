@@ -44,5 +44,10 @@ module.exports = {
     'node_modules/(?!((jest-)?react-native|@react-native(-community)?|expo(nent)?|@expo(nent)?/.*|@expo-google-fonts/.*|@rn-primitives/.*|@react-navigation/.*|react-native-.*|uniwind|@tanstack/.*|zustand|standard-navigation|@shopify/flash-list))',
   ],
   collectCoverageFrom: ['src/**/*.{ts,tsx}', '!src/**/*.d.ts', '!src/app/**'],
+  // V8 counts coverage without touching the code. Babel's istanbul counters would run
+  // before the React Compiler and wrap every default parameter or prop in a sequence
+  // expression it can't build, so `--coverage` (CI's run) would test those components
+  // and hooks uncompiled, unlike the app.
+  coverageProvider: 'v8',
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
 };

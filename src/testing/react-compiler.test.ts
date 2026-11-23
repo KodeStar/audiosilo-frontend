@@ -1,14 +1,20 @@
 import { join, resolve } from 'path';
 
 import { IdentityCard } from '@/components/account/identity-card';
+import { GhostCovers } from '@/components/ui/ghost-art';
 
 import { builtByCompiler } from './react-compiler';
 
 // Jest builds the app's code as the app ships it, with the React Compiler on (the transform
 // in jest.config.js): a component's body opens with the compiler's memo cache. Without it, a
 // render read the compiler memoises (fe#280) would pass here and go stale in the app.
-it('builds app components with the React Compiler', () => {
-  expect(builtByCompiler(IdentityCard)).toBe(true);
+// GhostCovers' default prop checks it holds under CI's `--coverage` run too, where istanbul's
+// counters would stop the compiler (`coverageProvider` in jest.config.js).
+it.each([
+  ['IdentityCard', IdentityCard],
+  ['GhostCovers, a default prop', GhostCovers],
+])('builds %s with the React Compiler', (_, component) => {
+  expect(builtByCompiler(component)).toBe(true);
 });
 
 // Which files that transform takes: the app's code, never the tests, their helpers or a
