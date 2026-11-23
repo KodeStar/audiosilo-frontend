@@ -4,17 +4,11 @@ import { ApiError } from '@/api/client';
 import { mocksChanged } from '@/testing/mock-hooks';
 import { mountWithPortal } from '@/testing/render-overlay';
 
-// Every mocked hook below re-renders its caller when a test changes what it answers
-// (`mocksChanged`), as the real one does.
 let mockParams: Record<string, string | undefined> = {};
 const mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockParams;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useLocalSearchParams: require('@/testing/mock-hooks').mockedHook(() => mockParams),
   router: { setParams: (p: unknown) => mockSetParams(p) },
 }));
 jest.mock('@/components/layout/content-scope', () => ({
@@ -23,12 +17,8 @@ jest.mock('@/components/layout/content-scope', () => ({
 // The page's connection: the route's scope, else the default one (a link without it).
 let mockCid = 'c1';
 jest.mock('@/api/provider', () => ({
-  useCid: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockCid;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useCid: require('@/testing/mock-hooks').mockedHook(() => mockCid),
 }));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 const mockTitles: (string | undefined)[] = [];
@@ -39,12 +29,8 @@ jest.mock('@/lib/use-page-title', () => ({
 let mockOnline = true;
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
-  useDeviceOnline: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockOnline;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useDeviceOnline: require('@/testing/mock-hooks').mockedHook(() => mockOnline),
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};
@@ -66,11 +52,10 @@ let mockServerFailures = 0;
 const mockServerRetry = jest.fn();
 const mockLibrariesCids = new Set<string>();
 jest.mock('@/api/hooks', () => {
-  const { useMockedHook } =
-    jest.requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mockedHook } = require('@/testing/mock-hooks');
   return {
-    useServerInfo: () => {
-      useMockedHook();
+    useServerInfo: mockedHook(() => {
       return {
         isPaused: mockServerPaused,
         error: mockServerError,
@@ -78,14 +63,12 @@ jest.mock('@/api/hooks', () => {
         errorUpdateCount: mockServerFailures,
         refetch: mockServerRetry,
       };
-    },
-    useCapability: (flag: string, cid?: string) => {
-      useMockedHook();
+    }),
+    useCapability: mockedHook((flag: string, cid?: string) => {
       mockCapCids.add(cid);
       return mockCaps[flag];
-    },
-    useLibrariesOf: (cid: string) => {
-      useMockedHook();
+    }),
+    useLibrariesOf: mockedHook((cid: string) => {
       mockLibrariesCids.add(cid);
       return {
         data: mockLibraries,
@@ -96,7 +79,7 @@ jest.mock('@/api/hooks', () => {
         errorUpdatedAt: mockLibrariesFailedAt,
         refetch: mockLibrariesRead,
       };
-    },
+    }),
   };
 });
 

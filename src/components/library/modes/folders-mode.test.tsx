@@ -20,15 +20,9 @@ jest.mock('@/lib/device-online', () => ({
 let mockFavourites: { favourites: object[]; error?: unknown; unreadError?: unknown } = {
   favourites: [],
 };
-// Favourites re-render their reader when a test changes them (`mocksChanged`), as the
-// real query does.
 jest.mock('@/api/hooks', () => ({
-  useFavouritesAll: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockFavourites;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useFavouritesAll: require('@/testing/mock-hooks').mockedHook(() => mockFavourites),
   useLibrariesAll: () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),

@@ -2,15 +2,15 @@ import { render, screen } from '@testing-library/react-native';
 import { memo } from 'react';
 import { Text } from 'react-native';
 
-import { mocksChanged, useMockedHook } from './mock-hooks';
+import { mockedHook, mocksChanged } from './mock-hooks';
 
 let answer = 'first';
+const useAnswer = mockedHook(() => answer);
 let plainAnswer = 'first';
 
 // A child memoised against its props, as the React Compiler builds every element.
 const Reader = memo(function Reader() {
-  useMockedHook();
-  return <Text testID="reader">{answer}</Text>;
+  return <Text testID="reader">{useAnswer()}</Text>;
 });
 const PlainReader = memo(function PlainReader() {
   return <Text testID="plain">{plainAnswer}</Text>;

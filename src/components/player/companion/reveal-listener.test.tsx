@@ -9,16 +9,11 @@ jest.mock('@/playback/store', () =>
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 const mockPush = jest.fn();
-// The route re-renders its reader when a test moves it (`mocksChanged`), as expo-router's does.
 let mockSegments = ['(app)'];
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h) },
-  useSegments: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockSegments;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useSegments: require('@/testing/mock-hooks').mockedHook(() => mockSegments),
 }));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,

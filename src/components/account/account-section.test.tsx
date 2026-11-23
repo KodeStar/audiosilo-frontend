@@ -21,15 +21,13 @@ jest.mock('@/lib/device-online', () => ({
 }));
 const mockServerError = new Error('Network request failed');
 const mockRevoke = jest.fn();
-// The /server reads re-render their callers when a test changes them, as the queries do.
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
-  const { useMockedHook } =
-    jest.requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mockedHook } = require('@/testing/mock-hooks');
   return {
     CapabilityError,
-    useServerInfo: (cid: string) => {
-      useMockedHook();
+    useServerInfo: mockedHook((cid: string) => {
       const read = mockCaps[cid] ? null : mockServerRead;
       return {
         data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
@@ -38,11 +36,10 @@ jest.mock('@/api/hooks', () => {
         // Asked again after it failed: the count stays, the error is cleared.
         errorUpdateCount: read === 'failed' || read === 'asking' ? 1 : 0,
       };
-    },
+    }),
     // The real hook never asks a server without the flag: its query stays pending.
     // While /server is held, it takes that read's state (`useCapabilityQuery`).
-    useMyDevices: (cid: string) => {
-      useMockedHook();
+    useMyDevices: mockedHook((cid: string) => {
       if (mockCaps[cid]?.my_devices)
         return { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true };
       const read = mockCaps[cid] ? null : mockServerRead;
@@ -54,23 +51,21 @@ jest.mock('@/api/hooks', () => {
         isError: read === 'failed',
         isSuccess: false,
       };
-    },
+    }),
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
     useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
-    useServerAddresses: (cid: string) => {
-      useMockedHook();
+    useServerAddresses: mockedHook((cid: string) => {
       return { data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined };
-    },
-    useApiKeys: (enabled: boolean, cid: string) => {
-      useMockedHook();
+    }),
+    useApiKeys: mockedHook((enabled: boolean, cid: string) => {
       return {
         data: enabled && mockCaps[cid]?.api_keys ? mockKeys : undefined,
         isPending: !mockCaps[cid]?.api_keys,
         isPaused: mockServerRead === 'held',
         error: mockServerRead === 'failed' ? mockServerError : null,
       };
-    },
+    }),
     useCreateApiKey: () => ({ mutateAsync: jest.fn(), isPending: false }),
     useRevokeApiKey: () => ({ mutate: jest.fn() }),
   };

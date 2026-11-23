@@ -197,20 +197,18 @@ jest.mock('@/components/upcoming/upcoming-rail', () => ({
   },
 }));
 
-// Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite. It
-// re-renders its caller when a test turns one on (`mocksChanged`), as the real one does.
+// Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite.
 let mockModulesOn: Record<string, boolean> = {};
 const mockUseActiveModules = jest.fn();
 jest.mock('@/modules/registry', () => {
-  const { useMockedHook } =
-    jest.requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks');
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mockedHook } = require('@/testing/mock-hooks');
   return {
     ...jest.requireActual('@/modules/registry'),
-    useActiveModules: (list: readonly { id: string }[]) => {
-      useMockedHook();
+    useActiveModules: mockedHook((list: readonly { id: string }[]) => {
       mockUseActiveModules();
       return list.filter((m) => mockModulesOn[m.id]);
-    },
+    }),
   };
 });
 

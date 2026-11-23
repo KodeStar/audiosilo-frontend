@@ -2,17 +2,11 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 
 import type { OpmlImportRow, PodcastRequest } from '@/api/types';
 
-// The mocked hooks re-render their callers when a test changes them (`mocksChanged`), as
-// the real ones do.
 let mockOnline = true;
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
-  useDeviceOnline: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockOnline;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useDeviceOnline: require('@/testing/mock-hooks').mockedHook(() => mockOnline),
   isDeviceOnline: () => mockOnline,
 }));
 
@@ -22,12 +16,8 @@ jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 // The follow requests the queued rows are read against (live, by request id).
 let mockRequests: Partial<PodcastRequest>[] = [];
 jest.mock('@/api/hooks', () => ({
-  useFollowRequests: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return { data: mockRequests };
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useFollowRequests: require('@/testing/mock-hooks').mockedHook(() => ({ data: mockRequests })),
 }));
 
 /* eslint-disable import/first */

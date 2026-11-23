@@ -1,17 +1,11 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
-// The route's params re-render their reader when a test moves them (`mocksChanged`), as
-// expo-router's do.
 let mockParams: Record<string, string> = {};
 const mockSetOptions = jest.fn();
 const mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => {
-    jest
-      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
-      .useMockedHook();
-    return mockParams;
-  },
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useLocalSearchParams: require('@/testing/mock-hooks').mockedHook(() => mockParams),
   useNavigation: () => ({ setOptions: mockSetOptions }),
   router: { setParams: (p: object) => mockSetParams(p) },
 }));
