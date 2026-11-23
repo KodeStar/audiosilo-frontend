@@ -18,6 +18,7 @@ import {
 } from '@/api/hooks';
 import type { Collection, HouseholdMember } from '@/api/types';
 import { readRefusalState } from '@/components/layout/server-refusal-state';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { CheckRow } from '@/components/ui/check-row';
 import { collectionsMembers } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
@@ -312,6 +313,9 @@ export function AddToCollectionDialog({
   const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
   const close = () => onOpenChange(false);
+  // Signed out (a 401 on any read): one sign-in row in place of the list, not one per
+  // collection as each row's own read is refused in turn.
+  const signedOut = useSignedOutConnection(connectionId);
   // Held from the first submit until the book is in the new collection (or that failed):
   // `form.save` is free again once the collection is stored, while the book is still being
   // added, and a keyboard submit then would store a second one. (Offline, the form's
@@ -355,7 +359,9 @@ export function AddToCollectionDialog({
           />
         ) : (
           <>
-            {unread === 'failed' ? (
+            {signedOut ? (
+              <SignInAgainState connection={signedOut} compact onReconnect={close} />
+            ) : unread === 'failed' ? (
               (readRefusalState(error, connectionId, close) ?? (
                 <ErrorNote
                   message={t('library.collections.error')}

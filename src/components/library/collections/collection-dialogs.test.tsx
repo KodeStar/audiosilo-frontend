@@ -433,6 +433,15 @@ describe("collection dialogs: Reconnect from the server's 401 on the dialog's ow
     expect(mockReconnect).toHaveBeenCalledWith(signedOut);
   });
 
+  it('shows one sign-in row over a kept list, not one per collection', async () => {
+    mockCollections = [road, comfort];
+    mockCollectionsError = revoked();
+    mockDetails = {};
+    mockDetailError = revoked();
+    await mount();
+    expect(screen.getAllByText('Sign in again to Hearthside')).toHaveLength(1);
+  });
+
   it.each([false, true])('closes Share from its 401 (kept people: %s)', async (kept) => {
     mockTargetsError = revoked();
     mockTargets = kept ? [{ id: 12, username: 'evie' }] : undefined;
@@ -447,6 +456,7 @@ describe("collection dialogs: Reconnect from the server's 401 on the dialog's ow
   });
 
   it("keeps Retry for a proxy's own 401", async () => {
+    useSession.setState({ connections: [{ ...signedOut, needsReconnect: undefined }] });
     mockCollectionsError = new ApiError(401, 'proxy', undefined, undefined, true);
     mockCollections = undefined;
     await mount();
