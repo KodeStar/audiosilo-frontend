@@ -616,10 +616,12 @@ let placeGuard: { key: string; id: string } | null = null;
  * queued one PUT later lifts it (`guardSettled`, fe#198). */
 const guardFor = (key: string) => ({ key, id: newEventId() });
 /** The last place `persist` captured on the legacy PUT path, of the book `key` (`contentKey`),
- * with the stamp it went with: a paused book's stop saves that place again under that stamp
+ * with the stamp it went with, or the place a resume loaded with its record's stamp
+ * (`playBook`): a paused book's stop saves that place again under that stamp
  * (`stampOfPausedPlace`). Held here, not read from the mirror: a sign-out's list refetch can
  * write another device's newer row there before the stop's save reads it. */
-let lastCapture: { key: string; position: number; updated_at: string } | null = null;
+let lastCapture: { key: string; position: number; updated_at: string; resumed?: true } | null =
+  null;
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -1206,8 +1208,14 @@ async function persist(opts?: {
   // queued or PUT: dated now, it would win (last write by `updated_at`) over another device's
   // move made since, which a guard read lets through when that move went back. A playing
   // book's stop keeps its fresh stamp, a rebuffering one's too (`isTransportLiveState`): the
-  // listener was there until now.
-  if (opts?.leaving && !forceFinished && !isTransportLiveState(snapshot.state)) {
+  // listener was there until now. So does the first capture after a resume when the book has
+  // not played (`resumed`: the engine's first pause or a refused autoplay), whose place is the
+  // resumed record's; any later one, a Stay or a speed set while paused, is dated now.
+  if (
+    (opts?.leaving || lastCapture?.resumed) &&
+    !forceFinished &&
+    !isTransportLiveState(snapshot.state)
+  ) {
     save.updated_at = stampOfPausedPlace(key, position) ?? save.updated_at;
   }
   lastCapture = { key, position, updated_at: save.updated_at };
@@ -4762,6 +4770,8 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       let speed = clampRate(askedSpeed ? startSpeed : defaultRate);
       // The replay guard (fe#198): set below when the resume could not be checked.
       let unchecked = false;
+      // The stamp of the record a resume loaded its place from (`lastCapture`, below).
+      let resumedStamp: string | undefined;
       // The server's place still to come for a downloaded book that stopped waiting for it.
       let late: Promise<LatePlace | null> | undefined;
       if (startBookPosition === undefined && startTrack === undefined) {
@@ -4789,6 +4799,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
           // (`resumeStart`). resumeFloor is derived from startAt below, so a restart's floor
           // is 0 and the slip guard won't block its early low-position saves.
           startAt = resumeStart(r.progress);
+          if (!r.progress.finished) resumedStamp = r.progress.updated_at;
           if (!askedSpeed) speed = bookSpeed(r.progress.playback_speed, defaultRate);
           if (r.progress.finished) {
             // Starting a finished book again: unfinished first, then a span from 0.
@@ -4884,6 +4895,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // An explicit place is the listener's own: unguarded, like a resume checked against
       // the server.
       placeGuard = unchecked ? guardFor(key) : null;
+      // A resumed place is its record's, taken when that record was stamped: a stop before
+      // anything of it is captured (a book left paused, then a sign-out) saves it again
+      // under that stamp, as the stop of a captured paused place does (`stampOfPausedPlace`).
+      // An explicit place, or a finished book started again, is a move made now.
+      lastCapture = resumedStamp
+        ? { key, position: resumeFloor.position, updated_at: resumedStamp, resumed: true }
+        : null;
       nextStart = start;
       // A resume is the place the book was left at; an explicit place is the listener's own.
       placeChosen = startBookPosition !== undefined || startTrack !== undefined;

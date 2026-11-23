@@ -470,6 +470,43 @@ describe('the replay guard on the PUT path', () => {
     });
   });
 
+  it("a book resumed and left paused, never captured, saves and signs out under its resume row's stamp", async () => {
+    const resumed = '2026-11-20T15:23:18.591Z';
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 51, updated_at: resumed }),
+      unchecked: true,
+    });
+    await start();
+    // The engine's first report is a pause (a refused autoplay): its capture is the resume's
+    // place, not a new one.
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    jest.advanceTimersByTime(18_000);
+    await teardownBeforeTokenRevoke('c1');
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    for (const [, save] of mockSaveProgress.mock.calls) {
+      expect(save).toMatchObject({ position: 51, guard: true, updated_at: resumed });
+    }
+  });
+
+  it("a resumed book's speed set while paused, after its first capture, is dated now", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 51, updated_at: '2026-11-20T15:23:18.591Z' }),
+      unchecked: true,
+    });
+    await start();
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    jest.advanceTimersByTime(5_000);
+    const setAt = new Date().toISOString();
+    await usePlayer.getState().setRate(1.5);
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    expect(stamps()[1]).toBe(setAt);
+  });
+
   it("a paused book's sign-out save away from its last capture is dated the stop", async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
