@@ -68,13 +68,13 @@ function useCollectionForm(connectionId: string, collection?: Collection) {
   const create = useCreateCollection(connectionId);
   const update = useUpdateCollection(connectionId);
   const pending = create.isPending || update.isPending;
-  // `pending` is read from the render: two keyboard submits before React renders again
-  // would both pass it and store two collections. This one is set before the write starts.
+  // A ref, not `pending`: two keyboard submits before React renders again would both read
+  // `pending` false and store two collections.
   const saving = useRef(false);
   /** The stored collection, or null when there was nothing to save (or a save is on its
    * way); rejects on a failed write. */
   const save = async (): Promise<Collection | null> => {
-    if (!validName(name) || pending || saving.current) return null;
+    if (!validName(name) || saving.current) return null;
     saving.current = true;
     const fields = { name: name.trim(), description: description.trim() };
     try {
@@ -312,15 +312,14 @@ export function AddToCollectionDialog({
   const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
   const close = () => onOpenChange(false);
-  // Set from the first submit until the book is in the new collection (or it failed):
-  // `add.isPending`, read from the render, lets a second keyboard submit through before
-  // React renders again, and once the new collection is stored `form.save` is free again
-  // while the book is still being added, so either would store a second collection.
-  // (Offline, the form's `disabled` holds it.)
+  // Held from the first submit until the book is in the new collection (or that failed):
+  // `form.save` is free again once the collection is stored, while the book is still being
+  // added, and a keyboard submit then would store a second one. (Offline, the form's
+  // `disabled` holds it.)
   const submitting = useRef(false);
 
   const submit = async () => {
-    if (add.isPending || submitting.current) return;
+    if (submitting.current) return;
     submitting.current = true;
     try {
       const c = await form.save();

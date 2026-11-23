@@ -23,7 +23,6 @@ jest.mock('@/lib/device-online', () => ({
 beforeEach(() => {
   mockOnline = true;
   mockPaused = false;
-  mockAddPending = false;
   mockCollectionsError = null;
   mockTargetsError = null;
   mockTargetsRetry.mockReset();
@@ -38,7 +37,6 @@ const mockDetailRetry = jest.fn();
 let mockDetailPaused = false;
 let mockDetails: Record<number, CollectionDetail> = {};
 const mockAdd = jest.fn();
-let mockAddPending = false;
 const mockRemove = jest.fn();
 const mockCreate = jest.fn();
 let mockTargets: { id: number; username: string }[] | undefined = [];
@@ -61,7 +59,7 @@ jest.mock('@/api/hooks', () => {
       isPaused: mockDetailPaused,
       refetch: mockDetailRetry,
     }),
-    useAddCollectionItem: () => ({ mutateAsync: mockAdd, isPending: mockAddPending }),
+    useAddCollectionItem: () => mutation(mockAdd),
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
@@ -151,25 +149,14 @@ describe('AddToCollectionDialog', () => {
   });
 
   it('never creates a second collection from the keyboard while the book is being added', async () => {
-    await mount();
-    await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
-    const name = screen.getByLabelText('Name');
-    await fireEvent.changeText(name, 'Winter');
-    mockAddPending = true;
-    await fireEvent.changeText(name, 'Winter reads');
-    await fireEvent(name, 'submitEditing');
-    expect(mockCreate).not.toHaveBeenCalled();
-  });
-
-  // Two Enters about 15 ms apart arrive before React renders again, so the mutation's
-  // `isPending` still reads false for the second.
-  it('creates one collection from two keyboard submits before a render', async () => {
-    mockCreate.mockReturnValue(new Promise(() => {}));
+    mockCreate.mockResolvedValue(collection(4, 'Winter'));
+    mockAdd.mockReturnValue(new Promise(() => {}));
     await mount();
     await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
     const name = screen.getByLabelText('Name');
     await fireEvent.changeText(name, 'Winter');
     await fireEvent(name, 'submitEditing');
+    expect(mockAdd).toHaveBeenCalledTimes(1);
     await fireEvent(name, 'submitEditing');
     expect(mockCreate).toHaveBeenCalledTimes(1);
   });
@@ -485,16 +472,6 @@ describe('CollectionFormDialog', () => {
     expect(mockCreate).not.toHaveBeenCalled();
   });
 
-  it('creates one collection from two keyboard submits before a render', async () => {
-    mockCreate.mockReturnValue(new Promise(() => {}));
-    await mountForm();
-    const name = screen.getByLabelText('Name');
-    await fireEvent.changeText(name, 'Winter');
-    await fireEvent(name, 'submitEditing');
-    await fireEvent(name, 'submitEditing');
-    expect(mockCreate).toHaveBeenCalledTimes(1);
-  });
-
   it('creates online', async () => {
     mockCreate.mockResolvedValue(collection(9, 'Winter'));
     await mountForm();
@@ -502,5 +479,32 @@ describe('CollectionFormDialog', () => {
     await fireEvent.changeText(screen.getByLabelText('Name'), 'Winter');
     await fireEvent.press(screen.getByRole('button', { name: 'Create' }));
     expect(mockCreate).toHaveBeenCalledWith({ name: 'Winter', description: '' });
+  });
+});
+
+// Two Enters about 15 ms apart arrive before React renders again, so a mutation's
+// `isPending` still reads false for the second.
+describe('collection forms: two keyboard submits before a render', () => {
+  it.each([
+    [
+      'Add to collection',
+      async () => {
+        await mount();
+        await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+      },
+    ],
+    [
+      'New collection',
+      () =>
+        mountWithPortal(<CollectionFormDialog open onOpenChange={jest.fn()} connectionId="c" />),
+    ],
+  ])('create one collection (%s)', async (_, open) => {
+    mockCreate.mockReset().mockReturnValue(new Promise(() => {}));
+    await open();
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    await fireEvent(name, 'submitEditing');
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });
