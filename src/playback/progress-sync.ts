@@ -1112,8 +1112,12 @@ function changeMirror(
  */
 export async function mirrorSpanEnd(span: OpenSpan, since: number, create: boolean): Promise<void> {
   const { pos, file, filePos } = span.to;
-  const endedAt = Date.parse(span.endedAt);
-  if (!Number.isFinite(pos) || pos < 0 || !Number.isFinite(endedAt)) return;
+  const keptAt = Date.parse(span.endedAt);
+  if (!Number.isFinite(pos) || pos < 0 || !Number.isFinite(keptAt)) return;
+  // Never later than now (the clock set back since the keep): a record stamped ahead
+  // outranks every place saved after it, here and on other devices, until the clock passes.
+  const endedAt = Math.min(keptAt, Date.now());
+  const stamp = endedAt === keptAt ? span.endedAt : new Date(endedAt).toISOString();
   const removed = () => connectionGeneration(span.connectionId) !== since;
   if (removed()) return;
   const [deviceId, shortEnd, skew] = await Promise.all([
@@ -1143,7 +1147,7 @@ export async function mirrorSpanEnd(span: OpenSpan, since: number, create: boole
       finished: !!record && placeEndsBook(pos, duration, !!record.partial || shortEnd),
       playback_speed: span.speed > 0 ? span.speed : (record?.playback_speed ?? 1),
       device_id: deviceId,
-      updated_at: span.endedAt,
+      updated_at: stamp,
       ...(file && Number.isFinite(filePos) ? { file, file_pos: filePos } : {}),
     };
   });

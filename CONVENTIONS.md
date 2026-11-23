@@ -2728,8 +2728,9 @@ media GETs only.
     a span that says something (`spanSaysSomething`), with its last file, offset, speed and
     capture time, never finished (the span's length is the audio's, not the book's); an
     existing one moves only when it is older than the span's end, only forward, and never
-    when it is finished, so a place written since stands. The mirror's changes read it
-    strictly, once more before they give up (`readMirrorMapStrict`). While a reconcile
+    when it is finished, so a place written since stands. A record is never stamped later
+    than now (a keep's time ahead of the clock, set back since). The mirror's changes read
+    it strictly, once more before they give up (`readMirrorMapStrict`). While a reconcile
     holds saves, the keeper leaves the span at its previous place and time, and the save
     loop, the background, a reconnect and the web's `hidden` leave it uncut (`savesHeld`):
     the hold ending with no move makes the cut they asked for (`holdSaves`), a move cuts it

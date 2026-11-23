@@ -577,6 +577,15 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await outboxEvents('c1')).toEqual([]);
   });
 
+  it('never stamps the record later than now (the clock set back since the keep)', async () => {
+    await writeMirror(capture());
+    const ahead = new Date(Date.now() + 3_600_000).toISOString();
+    await relaunch(span({ endedAt: ahead }));
+    const moved = await record();
+    expect(moved).toMatchObject({ position: 16800 });
+    expect(Date.parse(moved!.updated_at)).toBeLessThanOrEqual(Date.now());
+  });
+
   it('reads the mirror once more when a read fails, so the recovered place still lands', async () => {
     await writeMirror(capture());
     const getItem = AsyncStorage.getItem as jest.Mock;
