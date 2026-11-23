@@ -1214,8 +1214,8 @@ export async function readMirror(
 // a live PUT or replay, the guard checks the server's row. An unanswered place further on
 // holds the capture in the queue. The loaded book offers that place through `onHeldSave`.
 // The capture goes after an answer or when a fresh check permits it; one still held at the
-// final flush before sign-out, checked afresh there, is dropped, never PUT. Sync v2 resolves each span on its
-// `base_version`.
+// final flush before sign-out, checked afresh there, is dropped, never PUT. Sync v2 resolves
+// each span on its `base_version`.
 
 /** How much further on (s) another device's place must be to hold a guarded save; the
  * place reconcile's threshold too (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
@@ -1259,19 +1259,17 @@ export function onHeldSave(listener: HeldListener): () => void {
 const HELD_RECHECK_MS = 2 * 60_000;
 /** A sign-out's last flush takes only a hold read this recently (ms; the stop's own save
  * just before it): the other device may have gone back below the save since an older one,
- * and the save is dropped if held. */
+ * and the save is dropped if held (`flushConnection`). */
 const LAST_CHANCE_RECHECK_MS = 5_000;
 let lastHeld: { session: string; connectionId: string; row: Progress; at: number } | null = null;
 
 /** Whether `save` may be PUT. Tell the player even on a cached hold so a fresh play or move
  * can offer that place again. An answered or nearly reached place is checked afresh before
- * a PUT, since the other device may have moved further meanwhile. A sign-out's last flush
- * (`lastChance`) reuses only a hold read moments ago (`LAST_CHANCE_RECHECK_MS`). */
+ * a PUT, since the other device may have moved further meanwhile. */
 async function guardPasses(
   client: ApiClient,
   save: ProgressSave,
   current: () => boolean,
-  lastChance: boolean,
 ): Promise<boolean> {
   if (!save.guard) return true;
   const now = Date.now();
@@ -1283,7 +1281,7 @@ async function guardPasses(
     cached.row.library_id === save.libraryId &&
     cached.row.path === save.path &&
     now >= cached.at &&
-    now - cached.at < (lastChance ? LAST_CHANCE_RECHECK_MS : HELD_RECHECK_MS)
+    now - cached.at < HELD_RECHECK_MS
       ? cached.row
       : null;
   // Only a cached hold needs the mirror's answer before deciding; otherwise the mirror and
@@ -1355,9 +1353,8 @@ async function putSave(
   client: ApiClient,
   save: ProgressSave,
   current: () => boolean,
-  lastChance = false,
 ): Promise<'held' | 'saved' | 'dropped'> {
-  const allowed = await guardPasses(client, save, current, lastChance);
+  const allowed = await guardPasses(client, save, current);
   if (!current()) return 'dropped';
   if (!allowed) return 'held';
   await client.saveProgress(save.libraryId, save.path, putBody(save));
@@ -1500,7 +1497,7 @@ async function flushGroup(
       // legacy PUT is last-write-wins by `updated_at`, so it would move the other device's
       // further place back (fe#198). Sync v2 never queues one here: its listens reach the
       // server as events, which the server resolves against that place.
-      const outcome = await putSave(client, save, current, lastChance);
+      const outcome = await putSave(client, save, current);
       if (outcome === 'held' && !lastChance) remaining.push(save);
     } catch (e) {
       if (!current() || isRefusedForGood(e)) continue;
@@ -1639,6 +1636,10 @@ export async function flushConnection(
   if (!sessionReady()) return;
   const client = resolveClient(connectionId);
   if (!client) return; // already gone - nothing routable to flush
+  // Its held saves are checked on a fresh read, unless the stop's own save just read it.
+  if (opts.lastChance && lastHeld && Date.now() - lastHeld.at >= LAST_CHANCE_RECHECK_MS) {
+    lastHeld = null;
+  }
   await replaySaves(onlyConnection(connectionId, client), opts.lastChance === true);
 }
 
