@@ -2720,11 +2720,12 @@ media GETs only.
     for book seconds, the range is 0.5x to 2x). On this device, any server, online or
     not: the mirror, **15 s**. On the sync path the open span is nearer, **5 s**: the
     next launch closes it into the outbox (`recoverOpenSpan`) and brings the mirror's
-    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). Every reader
-    of the place (`playBook`'s lookup, Previously on's `resumeWithOverlap`, the book page's
-    `fetchBookProgress`, the car's play specs) waits for that local recovery, including when
-    the server is offline, for 2 s at most (`spanRecovered`): past it, it reads the places
-    as they are and the recovery lands later. A book with no record gets its first one from
+    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). The readers
+    of the place a play starts from (`playBook`'s lookup, Previously on's
+    `resumeWithOverlap`, the book page's `fetchBookProgress`, the car's play specs) wait
+    for that local recovery, including when the server is offline, for 2 s at most
+    (`spanRecovered`): past it, it reads the places as they are and the recovery lands
+    later. A book with no record gets its first one from
     a span that says something (`spanSaysSomething`), with its last file, offset, speed and
     capture time, never finished (the span's length is the audio's, not the book's); an
     existing one moves only when it is older than the span's end, only forward, and never
