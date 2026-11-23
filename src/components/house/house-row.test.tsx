@@ -80,7 +80,10 @@ describe('HouseRow', () => {
   it('asks for no art when the holding book is outside the grant', async () => {
     share('a', [row({ path: 'Book/CD1', title: 'CD1', cover_unavailable: true })]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
-    expect(mockBookCover).toHaveBeenCalledWith(expect.objectContaining({ noArt: true }));
+    // The row's own path still goes along: a downloaded copy is looked up by it.
+    expect(mockBookCover).toHaveBeenCalledWith(
+      expect.objectContaining({ noArt: true, libraryId: 1, path: 'Book/CD1' }),
+    );
   });
 
   it('shows each housemate with the book, a state line and a spoken sentence', async () => {
@@ -98,7 +101,9 @@ describe('HouseRow', () => {
     ]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
 
-    expect(mockBookCover).toHaveBeenCalledWith(expect.objectContaining({ noArt: undefined }));
+    // Rows without `cover_unavailable` (every row from an older server) ask for the art.
+    expect(mockBookCover).toHaveBeenCalled();
+    expect(mockBookCover.mock.calls.filter(([p]) => p.noArt)).toEqual([]);
     expect(screen.getByText('Listening in the house')).toBeTruthy();
     expect(screen.getByText('Hearthside · shared by choice')).toBeTruthy();
     const list = screen.getByLabelText('Listening in the house on Hearthside');

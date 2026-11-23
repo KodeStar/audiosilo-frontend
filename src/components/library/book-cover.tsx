@@ -82,6 +82,7 @@ export type BookCoverProps = {
  * thumbnail 404 means the server can't make one). `cover_version` rides along as the
  * cache buster. With no art at all it shows the title and author. While the server's
  * flags are unknown it shows an empty frame rather than fetching the full art first.
+ * With `noArt` it asks the server for nothing: the downloaded copy, else the title at once.
  *
  * A cover URL carries the media token (`?token=`), so the web hands the browser the plain
  * URL: it caches it like any image, and a story card's share (html-to-image, which inlines
