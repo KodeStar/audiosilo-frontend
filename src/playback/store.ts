@@ -1205,8 +1205,9 @@ async function persist(opts?: {
   // nothing was heard since the capture that took it. It keeps that capture's stamp, held or
   // queued or PUT: dated now, it would win (last write by `updated_at`) over another device's
   // move made since, which a guard read lets through when that move went back. A playing
-  // book's stop keeps its fresh stamp: the listener was there until now.
-  if (opts?.leaving && !forceFinished && !isPlayingState(snapshot.state)) {
+  // book's stop keeps its fresh stamp, a rebuffering one's too (`isTransportLiveState`): the
+  // listener was there until now.
+  if (opts?.leaving && !forceFinished && !isTransportLiveState(snapshot.state)) {
     save.updated_at = stampOfPausedPlace(key, position) ?? save.updated_at;
   }
   lastCapture = { key, position, updated_at: save.updated_at };

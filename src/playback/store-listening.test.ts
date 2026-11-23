@@ -470,6 +470,40 @@ describe('the replay guard on the PUT path', () => {
     });
   });
 
+  it("a paused book's sign-out save away from its last capture is dated the stop", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(10_000);
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    // The engine reports another place while paused, with no capture of it.
+    pushSnapshot(snap('paused', 0, 80));
+    await settle();
+    jest.advanceTimersByTime(18_000);
+    const stoppedAt = new Date().toISOString();
+    await teardownBeforeTokenRevoke('c1');
+    const last = mockSaveProgress.mock.calls.at(-1)?.[1] as { position: number };
+    expect(last.position).toBe(80);
+    expect(stamps().at(-1)).toBe(stoppedAt);
+  });
+
+  it("a rebuffering book's sign-out save at its last capture is dated the stop", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    pushSnapshot(snap('loading', 0, 5.3));
+    await settle();
+    jest.advanceTimersByTime(2_000);
+    const stoppedAt = new Date().toISOString();
+    await teardownBeforeTokenRevoke('c1');
+    expect(stamps().at(-1)).toBe(stoppedAt);
+  });
+
   it("a playing book's sign-out save is dated the stop: the listener was there until then", async () => {
     await start();
     pushSnapshot(snap('playing', 0, 5));
