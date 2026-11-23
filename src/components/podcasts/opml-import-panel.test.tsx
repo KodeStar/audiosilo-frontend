@@ -2,10 +2,17 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 
 import type { OpmlImportRow, PodcastRequest } from '@/api/types';
 
+// The mocked hooks re-render their callers when a test changes them (`mocksChanged`), as
+// the real ones do.
 let mockOnline = true;
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
-  useDeviceOnline: () => mockOnline,
+  useDeviceOnline: () => {
+    jest
+      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
+      .useMockedHook();
+    return mockOnline;
+  },
   isDeviceOnline: () => mockOnline,
 }));
 
@@ -15,10 +22,17 @@ jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 // The follow requests the queued rows are read against (live, by request id).
 let mockRequests: Partial<PodcastRequest>[] = [];
 jest.mock('@/api/hooks', () => ({
-  useFollowRequests: () => ({ data: mockRequests }),
+  useFollowRequests: () => {
+    jest
+      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
+      .useMockedHook();
+    return { data: mockRequests };
+  },
 }));
 
 /* eslint-disable import/first */
+import { mocksChanged } from '@/testing/mock-hooks';
+
 import { OpmlImportPanel } from './opml-import-panel';
 import type { WaveState } from './opml-waves';
 import type { OpmlImport } from './use-opml-import';
@@ -96,11 +110,11 @@ describe('OpmlImportPanel', () => {
     const picked = { name: 'subs.opml', size: 10, body: new Uint8Array(10) };
     let choose: (f: typeof picked) => void = () => {};
     mockPick.mockReturnValue(new Promise((resolve) => (choose = resolve)));
-    const view = await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
     await fireEvent.press(screen.getByTestId('opml-choose'));
     mockOnline = false;
     await act(async () => choose(picked));
-    await view.rerender(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await mocksChanged();
     expect(opml.start).not.toHaveBeenCalled();
     expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
   });
@@ -263,7 +277,7 @@ describe('OpmlImportPanel', () => {
       { id: 6, state: 'queued' },
     ];
     const opml = importer({ state: state({ kind: 'done' }, rows) });
-    const view = await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
     expect(screen.getByTestId('opml-status').props.children).toBe(
       'The last shows are still being added.',
     );
@@ -273,7 +287,7 @@ describe('OpmlImportPanel', () => {
       { id: 5, state: 'done', library_id: 7, show_path: 'Daily News' },
       { id: 6, state: 'failed', library_id: 7, show_path: null },
     ];
-    await view.rerender(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await mocksChanged();
     expect(within(screen.getByTestId('opml-row-2')).getByText('Following')).toBeTruthy();
     expect(within(screen.getByTestId('opml-row-2')).getByText('Daily News')).toBeTruthy();
     expect(within(screen.getByTestId('opml-row-3')).getByText("Couldn't add")).toBeTruthy();
@@ -316,7 +330,7 @@ describe('OpmlImportPanel', () => {
       canRetryRow: (r) => r.outline_index !== 2,
       retryRow,
     });
-    const view = await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
     expect(screen.getByTestId('opml-row-reason-1').props.children).toBe(
       "It couldn't be added a short while ago.",
     );
@@ -327,7 +341,7 @@ describe('OpmlImportPanel', () => {
 
     // Its request's own reason, once the list holds it.
     mockRequests = [{ id: 9, state: 'failed', error: { code: 'not_a_feed', message: 'x' } }];
-    await view.rerender(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await mocksChanged();
     expect(screen.getByTestId('opml-row-reason-1').props.children).toBe(
       "That address isn't a podcast feed.",
     );

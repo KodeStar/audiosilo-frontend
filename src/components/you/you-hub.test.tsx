@@ -1,10 +1,17 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+// The route's params re-render their reader when a test moves them (`mocksChanged`), as
+// expo-router's do.
 let mockParams: Record<string, string> = {};
 const mockSetOptions = jest.fn();
 const mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => mockParams,
+  useLocalSearchParams: () => {
+    jest
+      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
+      .useMockedHook();
+    return mockParams;
+  },
   useNavigation: () => ({ setOptions: mockSetOptions }),
   router: { setParams: (p: object) => mockSetParams(p) },
 }));
@@ -103,6 +110,7 @@ import { Text } from 'react-native';
 
 import { useSubNav } from '@/components/shell/sub-nav-store';
 import type { PlayerModule } from '@/modules/registry';
+import { mocksChanged } from '@/testing/mock-hooks';
 
 import { YouHub } from './you-hub';
 /* eslint-enable import/first */
@@ -213,7 +221,7 @@ describe('YouHub scrolling', () => {
     await screen.rerender(<YouHub />);
     expect(screen.getByTestId('you-hub-scroll')).toBe(first);
     mockParams = { section: 'stats' };
-    await screen.rerender(<YouHub />);
+    await mocksChanged();
     expect(screen.getByTestId('you-hub-scroll')).not.toBe(first);
   });
 });

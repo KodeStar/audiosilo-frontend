@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { ApiKey, Capabilities, MyDevice, ServerAddresses, User } from '@/api/types';
+import { mocksChanged } from '@/testing/mock-hooks';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 // Each server's /server answer, by connection id (undefined: not known yet).
@@ -20,11 +21,15 @@ jest.mock('@/lib/device-online', () => ({
 }));
 const mockServerError = new Error('Network request failed');
 const mockRevoke = jest.fn();
+// The /server reads re-render their callers when a test changes them, as the queries do.
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
+  const { useMockedHook } =
+    jest.requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks');
   return {
     CapabilityError,
     useServerInfo: (cid: string) => {
+      useMockedHook();
       const read = mockCaps[cid] ? null : mockServerRead;
       return {
         data: mockCaps[cid] ? { version: mockVersion, capabilities: mockCaps[cid] } : undefined,
@@ -37,6 +42,7 @@ jest.mock('@/api/hooks', () => {
     // The real hook never asks a server without the flag: its query stays pending.
     // While /server is held, it takes that read's state (`useCapabilityQuery`).
     useMyDevices: (cid: string) => {
+      useMockedHook();
       if (mockCaps[cid]?.my_devices)
         return { data: mockDevices[cid], isPending: false, isError: false, isSuccess: true };
       const read = mockCaps[cid] ? null : mockServerRead;
@@ -52,15 +58,19 @@ jest.mock('@/api/hooks', () => {
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
     useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
-    useServerAddresses: (cid: string) => ({
-      data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined,
-    }),
-    useApiKeys: (enabled: boolean, cid: string) => ({
-      data: enabled && mockCaps[cid]?.api_keys ? mockKeys : undefined,
-      isPending: !mockCaps[cid]?.api_keys,
-      isPaused: mockServerRead === 'held',
-      error: mockServerRead === 'failed' ? mockServerError : null,
-    }),
+    useServerAddresses: (cid: string) => {
+      useMockedHook();
+      return { data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined };
+    },
+    useApiKeys: (enabled: boolean, cid: string) => {
+      useMockedHook();
+      return {
+        data: enabled && mockCaps[cid]?.api_keys ? mockKeys : undefined,
+        isPending: !mockCaps[cid]?.api_keys,
+        isPaused: mockServerRead === 'held',
+        error: mockServerRead === 'failed' ? mockServerError : null,
+      };
+    },
     useCreateApiKey: () => ({ mutateAsync: jest.fn(), isPending: false }),
     useRevokeApiKey: () => ({ mutate: jest.fn() }),
   };
@@ -308,12 +318,12 @@ describe('AccountSection', () => {
     ['Revoke Dashboard', 'Revoke Dashboard?'],
   ])('dismisses %s when /server loses its confirmed capability', async (button, title) => {
     mockKeys = [{ id: 1, label: 'Dashboard', created_at: '2026-11-01', last_seen: null }];
-    const view = await mountWithPortal(<AccountSection connectionId="c1" />);
+    await mountWithPortal(<AccountSection connectionId="c1" />);
     await fireEvent.press(screen.getByRole('button', { name: button }));
     expect(screen.getByText(title)).toBeTruthy();
     mockCaps.c1 = undefined;
     mockServerRead = 'held';
-    await view.rerender(<AccountSection connectionId="c1" />);
+    await mocksChanged();
     expect(screen.queryByText(title)).toBeNull();
     expect(screen.queryByRole('button', { name: 'Create API key' })).toBeNull();
   });
@@ -343,16 +353,16 @@ describe('AccountSection', () => {
   it('keeps the devices section while a failed /server is asked again', async () => {
     mockCaps.c1 = undefined;
     mockServerRead = 'failed';
-    // A plain render, so a rerender keeps the page mounted (and its state).
-    const view = await render(<AccountSection connectionId="c1" />);
+    // The page stays mounted (and keeps its state) while the read changes under it.
+    await render(<AccountSection connectionId="c1" />);
     expect(screen.getByText('Signed-in devices')).toBeTruthy();
     mockServerRead = 'asking';
-    await view.rerender(<AccountSection connectionId="c1" />);
+    await mocksChanged();
     expect(screen.getByText('Signed-in devices')).toBeTruthy();
     // It answers: the section follows the flag from then on.
     mockServerRead = null;
     mockCaps.c1 = { my_devices: false };
-    await view.rerender(<AccountSection connectionId="c1" />);
+    await mocksChanged();
     expect(screen.queryByText('Signed-in devices')).toBeNull();
   });
 

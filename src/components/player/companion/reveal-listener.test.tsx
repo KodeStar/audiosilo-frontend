@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
 import type { PlayerStoreMock } from '@/testing/player-store-mock';
 
@@ -9,10 +9,16 @@ jest.mock('@/playback/store', () =>
 jest.mock('@/components/ui/toast', () => ({ toast: jest.fn() }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 const mockPush = jest.fn();
+// The route re-renders its reader when a test moves it (`mocksChanged`), as expo-router's does.
 let mockSegments = ['(app)'];
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h) },
-  useSegments: () => mockSegments,
+  useSegments: () => {
+    jest
+      .requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks')
+      .useMockedHook();
+    return mockSegments;
+  },
 }));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,
@@ -53,6 +59,7 @@ jest.mock('@/api/hooks', () => ({
 
 /* eslint-disable import/first */
 import { toast } from '@/components/ui/toast';
+import { mocksChanged } from '@/testing/mock-hooks';
 import { playerStoreMock } from '@/testing/player-store-mock';
 
 import { usePlayerSheets } from '../player-sheets';
@@ -211,9 +218,7 @@ describe('CompanionRevealListener', () => {
     const show = (toast as jest.Mock).mock.calls[0][0].action.onPress as () => void;
     // The full player opened while the toast was up.
     mockSegments = ['player'];
-    await act(async () => {
-      await screen.rerender(<CompanionRevealListener />);
-    });
+    await mocksChanged();
     show();
     expect(mockPush).not.toHaveBeenCalled();
     expect(usePlayerSheets.getState().open).toBe('companion');

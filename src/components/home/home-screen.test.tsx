@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { settleFlashList } from '@/testing/flash-list';
+import { mocksChanged } from '@/testing/mock-hooks';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
@@ -196,16 +197,22 @@ jest.mock('@/components/upcoming/upcoming-rail', () => ({
   },
 }));
 
-// Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite.
+// Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite. It
+// re-renders its caller when a test turns one on (`mocksChanged`), as the real one does.
 let mockModulesOn: Record<string, boolean> = {};
 const mockUseActiveModules = jest.fn();
-jest.mock('@/modules/registry', () => ({
-  ...jest.requireActual('@/modules/registry'),
-  useActiveModules: (list: readonly { id: string }[]) => {
-    mockUseActiveModules();
-    return list.filter((m) => mockModulesOn[m.id]);
-  },
-}));
+jest.mock('@/modules/registry', () => {
+  const { useMockedHook } =
+    jest.requireActual<typeof import('@/testing/mock-hooks')>('@/testing/mock-hooks');
+  return {
+    ...jest.requireActual('@/modules/registry'),
+    useActiveModules: (list: readonly { id: string }[]) => {
+      useMockedHook();
+      mockUseActiveModules();
+      return list.filter((m) => mockModulesOn[m.id]);
+    },
+  };
+});
 
 /* eslint-disable import/first */
 import { useState } from 'react';
@@ -674,19 +681,17 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
       homeRails: () => HookedRail({ name: '2' }),
     } as unknown as PlayerModule;
     const modules = [one, two];
-    const client = new QueryClient();
-    const tree = () => (
-      <QueryClientProvider client={client}>
-        <HomeScreen modules={modules} />
-      </QueryClientProvider>
-    );
     mockModulesOn = { contributions: true };
-    await render(tree());
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <HomeScreen modules={modules} />
+      </QueryClientProvider>,
+    );
     await settleFlashList();
     expect(screen.getByText('Hooked rail 1')).toBeTruthy();
     expect(screen.queryByText('Hooked rail 2')).toBeNull();
     mockModulesOn = { contributions: true, other: true };
-    await screen.rerender(tree());
+    await mocksChanged();
     expect(screen.getByText('Hooked rail 2')).toBeTruthy();
   });
 });

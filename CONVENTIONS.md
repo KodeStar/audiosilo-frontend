@@ -4724,7 +4724,11 @@ direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
 of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo 58 (Jest 30)
 + @testing-library/react-native 14** - matchers are built in (no `jest-native`);
 `jest.setup.ts` provides in-memory mocks for `expo-secure-store` + AsyncStorage,
-and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
+and tests mock `fetch` / `@/api/reachability` as needed. A mocked hook whose answer a test
+changes mid-test calls `useMockedHook()` and the test then calls `await mocksChanged()`
+(`src/testing/mock-hooks.ts`), never a `rerender` with the same props: the real hook (a query,
+a store, the route) re-renders its caller, and under the React Compiler a same-props rerender
+reaches only the root, every child's element being memoised (fe#355). Flip `Platform.OS` at
 runtime to cover web-vs-native branches. A suite that needs a real DOM names
 `@jest-environment ./src/testing/jsdom-environment.js`, never plain `jsdom`: on Jest 30 the
 stock environment breaks under React Native's jest setup (it redefines `window`) and when
