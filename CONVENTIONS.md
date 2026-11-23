@@ -238,7 +238,10 @@ callbacks, effects and framework-free code. One render read is held on purpose: 
 button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
 cache collects them with only the docked player showing. Jest builds the app's code with the
 compiler on too (the `src/` transform in `jest.config.js`; test files and `src/testing/` stay
-as written; `src/testing/react-compiler.test.ts` guards it), so a test renders what ships.
+as written; `src/testing/react-compiler.test.ts` guards it), so a test renders what ships. The
+compiler skips a component or hook it can't build without a word (a condition inside a `try`
+is enough), so a test of what it memoises first asserts `builtByCompiler(subject)`
+(`src/testing/react-compiler.ts`; the fe#280 guard in `book-actions.test.tsx` does).
 
 **Client identification.** `ApiClient.request()` sends
 `X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call

@@ -102,6 +102,7 @@ import { fetchStatus } from '@/testing/podcast-fixtures';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { mountWithPortal } from '@/testing/render-overlay';
+import { builtByCompiler } from '@/testing/react-compiler';
 
 import { BookActionsButton, BookActionsMenu, useBookActions } from './book-actions';
 /* eslint-enable import/first */
@@ -732,6 +733,8 @@ describe('useBookActions, a podcast episode', () => {
   // The React Compiler memoised a read at render against the row's props, so a menu
   // opened again offered what it read the first time.
   it("reads the live fetch status again at each opening of a row's menu (fe#280)", async () => {
+    // Only a hook the compiler builds can go stale this way.
+    expect(builtByCompiler(useBookActions)).toBe(true);
     mockCaps = { ...ALL, podcast_fetch: true };
     const b = book({ episode: info(false) });
     const key = qk.podcastFetch('c', 1, b.rel_path);
