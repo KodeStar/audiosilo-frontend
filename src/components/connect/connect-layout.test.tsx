@@ -4,7 +4,6 @@ import { Platform } from 'react-native';
 
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
-import { withReactCompiler } from '@/testing/react-compiler';
 import { seedProfile } from '@/testing/seed-profile';
 
 // The flow's screens, as the layout's Stack: whatever renders here would run (a pairing
@@ -58,12 +57,6 @@ import {
   setConnectForNewProfile,
 } from '@/components/profiles/connect-intent';
 /* eslint-enable import/first */
-
-// The layout as the app builds it (the React Compiler), built once for the file.
-const compiled = withReactCompiler<typeof import('@/app/connect/_layout')>(
-  require,
-  '../../app/connect/_layout',
-);
 
 beforeEach(() => {
   mockReturning = false;
@@ -187,22 +180,6 @@ describe("a page restored from the browser's cache", () => {
     expect(store.size).toBe(0);
   });
 
-  // As the app builds it: the React Compiler memoises what the render reads against its
-  // inputs, so the gate must change with something the render holds (Jest leaves it off).
-  it('takes the flow back in the built app too, compiled', async () => {
-    const { default: Compiled } = compiled();
-    seedProfile({ kids: true });
-    openAddSomeone();
-    const view = await render(<Compiled />);
-    expect(screen.getByText('connect flow')).toBeTruthy();
-    await show(true);
-    expect(kidsConnectAllowed()).toBe(false);
-    expect(screen.queryByText('connect flow')).toBeNull();
-    expect(mockDismissTo).toHaveBeenCalledWith('/kids');
-    await view.unmount();
-    expect(shown).toHaveLength(0);
-  });
-
   it("keeps a grown-up's flow running", async () => {
     seedProfile();
     setConnectForNewProfile(true);
@@ -298,15 +275,15 @@ describe("a single sign-on's return (a page load, fe#310)", () => {
     expect(mockDismissTo).toHaveBeenCalledWith('/kids');
   });
 
-  // As the app builds it (the React Compiler): the gate follows the pass as it is settled.
+  // The gate follows the pass as it is settled: the React Compiler memoises what the
+  // render reads against its inputs, so it must change with something the render holds.
   it.each([
     ['given', true],
     ['refused', false],
-  ])('follows a pass %s in the built app too, compiled', async (_, given) => {
-    const { default: Compiled } = compiled();
+  ])('follows a pass %s', async (_, given) => {
     leaveForProvider();
     mockReturning = true;
-    await render(<Compiled />);
+    await render(<ConnectLayout />);
     expect(screen.getByText('connect flow')).toBeTruthy();
     await act(async () => void settleOidcPass(given ? { intent: tag } : {}));
     expect(kidsConnectAllowed()).toBe(given);

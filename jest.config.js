@@ -1,6 +1,8 @@
 // Jest config for the Expo SDK 58 app. The jest-expo preset (jest 30 runtime)
 // resolves and transforms React Native / Expo modules; jest.setup.ts installs
 // in-memory mocks for the native storage modules. Run with `npm test`.
+const [babelJest, babelOptions] = require('jest-expo/jest-preset').transform['\\.[jt]sx?$'];
+
 module.exports = {
   preset: 'jest-expo',
   // gesture-handler's own mocks of its native module (gesture-handler 3 calls it on
@@ -10,6 +12,18 @@ module.exports = {
   moduleNameMapper: {
     '^@/assets/(.*)$': '<rootDir>/assets/$1',
     '^@/(.*)$': '<rootDir>/src/$1',
+  },
+  // The app's own code is built as the app ships it: with the React Compiler on (`app.json`
+  // `experiments.reactCompiler`, babel-preset-expo's `supportsReactCompiler` caller flag),
+  // which memoises what a render computes against its inputs. The tests and their helpers
+  // (`src/testing/`) are not the app's and stay as written; node_modules takes the preset's
+  // own transform (babel-preset-expo never compiles a package anyway).
+  transform: {
+    [String.raw`^(?!.*[/\\]node_modules[/\\]).*[/\\]src[/\\](?!testing[/\\]|.*\.test\.).*\.[jt]sx?$`]:
+      [
+        babelJest,
+        { ...babelOptions, caller: { ...babelOptions.caller, supportsReactCompiler: true } },
+      ],
   },
   // jest-expo excludes node_modules from transform; re-include the ESM packages
   // this app imports so they're transpiled rather than failing on `import`.
