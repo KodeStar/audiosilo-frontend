@@ -5672,10 +5672,12 @@ async function switchCurrentBookToLocal() {
       if (wantsPlayback && usePlayer.getState().nowPlaying === committed) await svc.play();
     }
   } finally {
-    // A refused swap or a failed load: the hold must not outlive it.
-    releaseSwapHold(nowPlaying);
-    // A later swap of the same book may have replaced this hold (and been released in its
-    // place): a tab read waiting on this one is told it is over too, not left to time out.
+    // A refused swap or a failed load: the hold must not outlive it. Only this swap's own:
+    // a later swap of the same book that replaced it still moves the engine, and its hold
+    // keeps the reports of the download's index off the stream's queue until it ends.
+    if (hold && swapHold === hold) releaseSwapHold(nowPlaying);
+    // Replaced by that later swap: a tab read waiting on this one is told it is over too,
+    // not left to time out (it waits on the later hold next, `otherTabsPlace`).
     if (hold) for (const resume of hold.waiting) resume(true);
   }
   // Again from where the listener moved to (the download is read again there, so one
