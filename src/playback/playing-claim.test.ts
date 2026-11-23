@@ -5,8 +5,10 @@ import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser } from '@/testing/fake-browser';
 
 import {
+  bookPlayPressed,
   type GaveWay,
   givesWayTo,
+  newerTabPlay,
   type OwnPlay,
   PLAYING_CHANNEL,
   type PlayingClaim,
@@ -238,5 +240,27 @@ describe('playingClaims', () => {
     for (const t of tabs) t.claims.announce('c1', t.play.askedAt);
     await settle();
     expect(tabs.map((t) => t.play.live)).toEqual([false, true]); // the later ask stands
+  });
+
+  it('a newer claim found under the id the press was noted by, the other id of one connection', async () => {
+    const browser = fakeBrowser();
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.BroadcastChannel;
+    g.BroadcastChannel = browser.tab().BroadcastChannel;
+    setConnectionAliases({ c1: 'c1.7' });
+    try {
+      // The press noted under the target's (legacy) id, the claim made under the new one.
+      const pressed = bookPlayPressed('c1');
+      const other = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-z');
+      const made = other.announce('c1.7', pressed + 1);
+      await settle();
+      // Checked against the loaded book's (new) id.
+      expect(newerTabPlay('c1.7', pressed)).toEqual(made);
+      expect(newerTabPlay('c1', pressed)).toEqual(made);
+      expect(newerTabPlay('c1.7', pressed + 2)).toBeNull();
+    } finally {
+      g.BroadcastChannel = saved;
+      setConnectionAliases({});
+    }
   });
 });

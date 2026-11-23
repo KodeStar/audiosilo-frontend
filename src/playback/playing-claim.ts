@@ -201,10 +201,15 @@ export function bookPlayPressed(connectionId: string): number {
 }
 
 export function newerTabPlay(connectionId: string, askedAt: number): PlayingClaim | null {
-  const claim = rivals.get(connectionId);
-  return claim && givesWayTo(claim, { connectionId, askedAt, tab: tabClaims().tab, live: true })
-    ? claim
-    : null;
+  const mine = { connectionId, askedAt, tab: tabClaims().tab, live: true };
+  // Under whichever id the press was noted: the identity migration can name one connection
+  // by two ids (the target's and the loaded book's).
+  let newest: PlayingClaim | null = null;
+  for (const [cid, claim] of rivals) {
+    if (!claim || !sameConnection(cid, connectionId) || !givesWayTo(claim, mine)) continue;
+    if (!newest || laterPlay(claim, newest)) newest = claim;
+  }
+  return newest;
 }
 
 // A phone-sized web player opens its route at the press. A direct link dates its play
