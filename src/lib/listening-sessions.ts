@@ -1,6 +1,5 @@
 import type { Book, HistoryEntry } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
-import { placeEndsBook } from '@/playback/book-queue';
 
 /**
  * Listening history as sessions (the Journal's Diary and a book's History tab read the
@@ -64,7 +63,7 @@ const FINISH_SLACK_S = 30;
 /** Whether the span reached the end of its book (only knowable with the book's length). */
 export function reachedEnd(span: Pick<ListeningSpan, 'to' | 'book'>): boolean {
   const duration = span.book?.duration ?? 0;
-  return placeEndsBook(span.to, duration, false, FINISH_SLACK_S);
+  return duration > 0 && span.to >= duration - FINISH_SLACK_S;
 }
 
 // --- Days --------------------------------------------------------------------------

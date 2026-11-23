@@ -2723,10 +2723,9 @@ media GETs only.
     record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). Resume waits
     for that local recovery before reading the place, including when the server is offline.
     A book with no record gets its first one from the span, with its last file, offset,
-    speed and capture time. An existing record advances only when it is older, behind and
-    unfinished. While a reconcile holds saves, the keeper leaves the span at its previous
-    place and time. On the web it runs for a span another tab left
-    behind too, dated when that tab kept it, never now. The legacy path has no span: 15 s
+    speed and capture time; an existing one moves by `mirrorSpanEnd`'s rules. While a
+    reconcile holds saves, the keeper leaves the span at its previous place and time. On
+    the web it runs for a span another tab left behind too, dated when that tab kept it, never now. The legacy path has no span: 15 s
     here, and the server (so every other device) holds the last PUT, up to 60 s back,
     until this device saves again.
   - The pace is **read at every check**, not set by an event (`engineTicker`'s `period`):
@@ -3776,10 +3775,10 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     (`queue.partial.bookDuration` comes from `DownloadManifest.bookDuration`, kept from the chapters answer
     that set `endsBefore`, else a server answer the start was given naming that end, else 0):
     a span sends it as its `duration` (0 sends none, and the server checks none) and a save
-    as its `duration`, so a percent read from the mirror is of the book. A forced finish
-    records the known whole-book length as both position and duration. Normal captures,
-    handoffs, recovered spans and the credits check the place with `placeEndsBook`.
-    A listen refused
+    as its `duration` (`bookLengthOf`), so a percent read from the mirror is of the book. A
+    forced finish records that length as both position and duration. Every check of whether
+    a place ends the book goes through `placeEndsBook` (`queueEndsBook` for a queue). A
+    listen refused
     `duration_mismatch` over such a download goes back to the outbox at that length (or none)
     on every `flushAllOutboxes` (`resendMismatched`, through `downloadBookLength` in
     `kept-offline.ts`), once per length, so one refused again stays on the list. The end

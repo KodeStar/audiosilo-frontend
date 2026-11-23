@@ -156,6 +156,11 @@ async function readMirrorMap(): Promise<Record<string, ProgressSave>> {
   return (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
 }
 
+/** `readMirrorMap` that rejects when storage could not be read. */
+async function readMirrorMapStrict(): Promise<Record<string, ProgressSave>> {
+  return (await getItemStrict<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
+}
+
 /** The offline replay queue. */
 async function readQueue(): Promise<ProgressSave[]> {
   return (await getItem<ProgressSave[]>(QUEUE_KEY)) ?? [];
@@ -1070,7 +1075,7 @@ function changeMirror(
   change: (existing: ProgressSave | null) => ProgressSave | null,
 ): Promise<void> {
   return withMirrorLock(async () => {
-    const map = (await getItemStrict<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
+    const map = await readMirrorMapStrict();
     const existing = map[key] ?? null;
     const next = change(existing);
     if (next === existing) return;
@@ -1104,15 +1109,19 @@ export async function mirrorSpanEnd(span: OpenSpan, since: number): Promise<void
   const { pos, file, filePos } = span.to;
   const endedAt = Date.parse(span.endedAt);
   if (!Number.isFinite(pos) || pos < 0 || !Number.isFinite(endedAt)) return;
-  const deviceId = await getDeviceId();
-  // Not known (the downloads registry not read): never finished there either (fe#273).
-  const shortEnd = await downloadEndsBefore(span.connectionId, span.libraryId, span.path).then(
-    (endsBefore) => endsBefore !== undefined && file !== endsBefore,
-    () => true,
-  );
-  const skew = await knownSkew(span.connectionId);
+  const removed = () => connectionGeneration(span.connectionId) !== since;
+  if (removed()) return;
+  const [deviceId, shortEnd, skew] = await Promise.all([
+    getDeviceId(),
+    // Not known (the downloads registry not read): never finished there either (fe#273).
+    downloadEndsBefore(span.connectionId, span.libraryId, span.path).then(
+      (endsBefore) => endsBefore !== undefined && file !== endsBefore,
+      () => true,
+    ),
+    knownSkew(span.connectionId),
+  ]);
   await changeMirror(contentKey(span.connectionId, span.libraryId, span.path), (record) => {
-    if (connectionGeneration(span.connectionId) !== since) return record;
+    if (removed()) return record;
     if (
       record &&
       (record.finished || pos <= record.position || !(endedAt > localTimeOf(record, skew)))

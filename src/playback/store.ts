@@ -35,6 +35,7 @@ import type { LoadedBook } from '../../modules/audiosilo-player/src/AudiosiloPla
 import { sendBookmarksBeforeRemoval } from './annotation-outbox';
 import {
   bookFileSpecs,
+  bookLengthOf,
   buildBookQueue,
   chapterAt,
   fileOf,
@@ -44,7 +45,7 @@ import {
   FINISHED_TOLERANCE,
   locate,
   locateBookPlace,
-  placeEndsBook,
+  queueEndsBook,
   restreamQueue,
   shortOfFileEnd,
   toBookPosition,
@@ -1133,13 +1134,13 @@ async function persist(opts?: {
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
   // JS timers in the background): end it here, and this save is the flush it owed.
-  if (saveHold && Date.now() >= saveHold.expiresAt) {
+  if (saveHold && !savesHeld()) {
     clearTimeout(saveHold.timer);
     saveHold = null;
   }
   if (saveHold && !forceFinished) return;
-  const { total, partial } = nowPlaying.queue;
-  const duration = partial?.bookDuration || total;
+  const { partial } = nowPlaying.queue;
+  const duration = bookLengthOf(nowPlaying.queue);
   const seeking = seekOf(nowPlaying);
   // A seek the engine could still refuse is no periodic save. A stop or a Mark as finished
   // saves the listener's chosen place before unloading (where the span closed, and the one
@@ -1180,7 +1181,7 @@ async function persist(opts?: {
     path: nowPlaying.path,
     position,
     duration,
-    finished: forceFinished || placeEndsBook(position, total, !!partial),
+    finished: forceFinished || queueEndsBook(nowPlaying.queue, position),
     playback_speed: rate,
     device_id: deviceId || cachedDeviceId(),
     updated_at: new Date().toISOString(),
@@ -2441,7 +2442,6 @@ function giveWayTo(claim: PlayingClaim) {
   if (np && heard && !startingPlayback && !wasBehind && !noted) {
     // Where its span ended, so the other tab's begins there: one chain, no gap.
     const at = closed && sameBook(closed, np) ? closed.to : engineEnd();
-    const { total } = np.queue;
     if (at) {
       tabClaims().answer(claim, {
         connectionId: np.connectionId,
@@ -2449,7 +2449,7 @@ function giveWayTo(claim: PlayingClaim) {
         path: np.path,
         position: at.pos,
         ...(at.file !== undefined ? { file: at.file, filePos: at.filePos } : {}),
-        finished: placeEndsBook(at.pos, total, endsPartial(np)),
+        finished: queueEndsBook(np.queue, at.pos),
       });
     }
   }
@@ -3275,7 +3275,7 @@ function tabPlaceOf(
   if (swapHold?.nowPlaying === np) return null;
   const { offsets, total } = np.queue;
   if (stopped.finished) {
-    if (!finished || placeEndsBook(here, total, endsPartial(np))) return null;
+    if (!finished || queueEndsBook(np.queue, here)) return null;
     return { index: 0, positionInTrack: 0, pos: 0, finished: true };
   }
   const saved = Math.max(0, total > 0 ? Math.min(stopped.position, total) : stopped.position);
@@ -4422,7 +4422,7 @@ async function createService(): Promise<PlaybackService> {
         if (wantsPlayback) armStallWatchdog();
       } else if (snapshot.state === 'ended') {
         // The book reached its natural end. Behave like a pause: clear intent and run a
-        // final persist (which records finished:true via the FINISHED_TOLERANCE), halting
+        // final persist (which records finished:true via `queueEndsBook`), halting
         // the save loop. But deliberately KEEP nowPlaying populated and the `ended`
         // snapshot visible so a UI-layer listener can drive the end-of-book flow (end
         // credits, auto-play next). Do NOT navigate or clear state here.
@@ -6511,4 +6511,4 @@ export const selectEndsPartial = (s: PlayerState): boolean => endsPartial(s.nowP
  * book's on its server when known, as its saves send, so the player's
  * percent is Home's. */
 export const selectBookLength = (s: PlayerState): number =>
-  s.nowPlaying ? s.nowPlaying.queue.partial?.bookDuration || s.nowPlaying.queue.total : 0;
+  s.nowPlaying ? bookLengthOf(s.nowPlaying.queue) : 0;

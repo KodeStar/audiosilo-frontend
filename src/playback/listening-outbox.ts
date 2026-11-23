@@ -571,7 +571,7 @@ function leftBehind(span: StoredSpan, now: number): boolean {
  * closed (`swept`). */
 async function closeLeftBehind(
   launch: boolean,
-  generations: ReadonlyMap<string, number>,
+  generationAt: (connectionId: string) => number,
 ): Promise<{ live: boolean; swept: string[] }> {
   const spans = await readSpans();
   const now = Date.now();
@@ -581,7 +581,7 @@ async function closeLeftBehind(
   );
   for (const s of left) {
     const closed = bare(s);
-    const since = connectionGeneration(s.connectionId, generations);
+    const since = generationAt(s.connectionId);
     await appendClosed(closed, undefined, since);
     // The mirror is written less often than the span is kept: its record of the book is
     // brought up to where the span ended (never back, never over a newer record).

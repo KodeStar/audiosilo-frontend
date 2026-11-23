@@ -52,15 +52,21 @@ export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
  * `scrubGuard`). */
 export const FINISHED_TOLERANCE = 5;
 
-/** Whether a place is within the finish tolerance of the whole book. History uses its own allowance. */
-export function placeEndsBook(
-  position: number,
-  duration: number,
-  partial: boolean,
-  tolerance = FINISHED_TOLERANCE,
-): boolean {
-  return !partial && duration > 0 && position >= duration - tolerance;
+/** Whether a place is within `FINISHED_TOLERANCE` of the whole book's end. Never at the end of
+ * a queue that ends before its book (`partial`, D3). */
+export function placeEndsBook(position: number, duration: number, partial: boolean): boolean {
+  return !partial && duration > 0 && position >= duration - FINISHED_TOLERANCE;
 }
+
+/** `placeEndsBook` for a place in `queue`. */
+export function queueEndsBook(queue: Pick<BookQueue, 'total' | 'partial'>, position: number) {
+  return placeEndsBook(position, queue.total, !!queue.partial);
+}
+
+/** The book's length for a percent heard: the queue's, but a partial queue's is the book's on
+ * its server when known (0 there is unknown, so the queue's). */
+export const bookLengthOf = (queue: Pick<BookQueue, 'total' | 'partial'>): number =>
+  queue.partial?.bookDuration || queue.total;
 
 /** A queue's files' lengths as the server measured them (`PlaybackTrack.duration`). */
 type FileLengths = { tracks: readonly { duration?: number }[] };
