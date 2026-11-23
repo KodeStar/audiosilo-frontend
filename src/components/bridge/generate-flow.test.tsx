@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 
@@ -173,6 +173,36 @@ describe('the covered line', () => {
 });
 
 describe('the confirmation', () => {
+  it.each([false, true])(
+    'holds confirmation offline and recovers on reconnect (cached estimate: %s)',
+    async (cached) => {
+      await mount();
+      const action = await screen.findByTestId('generate-action');
+      if (cached) {
+        await fireEvent.press(action);
+        await screen.findByTestId('generate-estimate');
+        await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+      }
+      try {
+        await act(() => onlineManager.setOnline(false));
+        await fireEvent.press(screen.getByTestId('generate-action'));
+        expect(
+          await screen.findByText("You're offline. Reconnect to queue this job."),
+        ).toBeTruthy();
+        expect(!!screen.queryByTestId('generate-estimate')).toBe(cached);
+        const confirm = screen.getByTestId('generate-confirm');
+        expect(confirm).toBeDisabled();
+        expect(screen.queryByText('Retry')).toBeNull();
+        expect(mockQueue).not.toHaveBeenCalled();
+        await act(() => onlineManager.setOnline(true));
+        await waitFor(() => expect(screen.getByTestId('generate-confirm')).toBeEnabled());
+        expect(mockQueue).not.toHaveBeenCalled();
+      } finally {
+        await act(() => onlineManager.setOnline(true));
+      }
+    },
+  );
+
   it('shows the estimate, then queues the earlier books first, in order, then this one', async () => {
     await mount();
     await fireEvent.press(await screen.findByTestId('generate-action'));

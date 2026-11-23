@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useOpen } from '@/lib/open';
 
 import { feedAddressProblem, followByUrlErrorKey } from './find-shows-model';
@@ -34,6 +35,7 @@ export function FollowByUrl({
 }) {
   const { t } = useTranslation();
   const { openPodcastShow } = useOpen();
+  const online = useDeviceOnline();
   const follow = useFollowPodcastByUrl(connectionId);
   const [address, setAddress] = useState('');
   const [isPrivate, setPrivate] = useState(false);
@@ -42,7 +44,7 @@ export function FollowByUrl({
 
   const submit = () => {
     // The keyboard's Go submits too, so a follow on its way holds both.
-    if (follow.isPending) return;
+    if (!online || follow.isPending) return;
     const problem = feedAddressProblem(address);
     if (problem) {
       setError(t(`podcasts.find.address.${problem}`));
@@ -107,10 +109,12 @@ export function FollowByUrl({
           accessibilityLabel={t('podcasts.find.address.private')}
         />
       </View>
+      {!online ? <Text variant="muted">{t('podcasts.find.offline')}</Text> : null}
       <Button
         icon="plus"
         title={t('podcasts.find.address.submit')}
-        loading={follow.isPending}
+        disabled={!online}
+        loading={online && follow.isPending}
         onPress={submit}
         className="self-start"
         testID="follow-by-url-submit"

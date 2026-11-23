@@ -3,7 +3,10 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCapability, useLibrariesOf } from '@/api/hooks';
+import { useCapability, useLibrariesOf, useServerInfo } from '@/api/hooks';
+import { refusedServer } from '@/api/server-read-error';
+import { OfflineState } from '@/components/layout/offline-state';
+import { ServerRefusal } from '@/components/layout/server-refusal-state';
 import { useCid } from '@/api/provider';
 import { pageGutter } from '@/components/library/cover-layout';
 import { ContentScope } from '@/components/layout/content-scope';
@@ -13,6 +16,8 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { useUnreadQuery } from '@/lib/offline-state';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useLayout } from '@/lib/layout';
 import { type FindShowsSection, parseFindShowsParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -65,14 +70,12 @@ function FindShowsContent() {
   const importer = useOpmlImport(cid, params?.libraryId ?? 0);
   const librariesRead = useLibrariesOf(cid);
   const libraries = librariesRead.data;
+  const librariesUnread = useUnreadQuery(librariesRead);
+  const online = useDeviceOnline();
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
-    return (
-      <View className="p-4">
-        <RowSkeletonList />
-      </View>
-    );
+    return <FindShowsAccessState connectionId={cid} />;
   }
   if (access !== 'allowed') {
     return (
@@ -93,7 +96,9 @@ function FindShowsContent() {
   // Only once the libraries are known and settled (a cached list read again may hold a
   // library added since): a library the server lacks. A books library is the server's to
   // refuse (`not_podcast_library`).
+  if (librariesUnread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   if (libraries && !librariesRead.isFetching && !libraries.some((l) => l.id === params.libraryId)) {
+    if (!online || librariesRead.isPaused) return <OfflineState hint={t('common.offlinePage')} />;
     return (
       <View testID="find-shows-library-missing">
         <EmptyState icon="microphone" title={t('library.detail.badLink')} />
@@ -148,6 +153,30 @@ function FindShowsContent() {
         </FindShowsScroll>
       );
   }
+}
+
+/** The capability check has no answer yet. A held or failed read needs its own state. */
+function FindShowsAccessState({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
+  const info = useServerInfo(connectionId);
+  const unread = useUnreadQuery(info);
+  if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
+  if (unread === 'failed') {
+    const refusal = refusedServer(connectionId, info.error);
+    if (refusal) return <ServerRefusal {...refusal} />;
+    return (
+      <EmptyState
+        icon="server"
+        title={t('podcasts.find.accessFailed')}
+        action={{ label: t('common.retry'), onPress: () => void info.refetch() }}
+      />
+    );
+  }
+  return (
+    <View className="p-4">
+      <RowSkeletonList />
+    </View>
+  );
 }
 
 /** The page's scroller for a section without a long list (a feed address, an import):

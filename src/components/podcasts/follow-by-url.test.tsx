@@ -5,6 +5,12 @@ import type { PodcastFollowResult } from '@/api/types';
 import { podcastShow } from '@/testing/podcast-fixtures';
 import { mountWithPortal } from '@/testing/render-overlay';
 
+let mockOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+}));
+
 const mockOpenShow = jest.fn();
 jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openPodcastShow: (...a: unknown[]) => mockOpenShow(...a) }),
@@ -32,11 +38,23 @@ async function follow(address: string) {
 }
 
 beforeEach(() => {
+  mockOnline = true;
   mockFollow.mockReset();
   mockOpenShow.mockReset();
 });
 
 describe('FollowByUrl', () => {
+  it('keeps a feed address editable and blocks submitting it offline', async () => {
+    mockOnline = false;
+    await mount();
+    await follow(FEED);
+    await fireEvent(screen.getByTestId('feed-address'), 'submitEditing');
+    expect(mockFollow).not.toHaveBeenCalled();
+    expect(screen.getByTestId('follow-by-url-submit')).toBeDisabled();
+    expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
+    expect(screen.getByTestId('feed-address').props.value).toBe(FEED);
+  });
+
   it.each([
     ['', 'Paste a feed address.'],
     ['example.com/feed.xml', 'Use an address starting with http:// or https://.'],

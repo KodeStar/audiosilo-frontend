@@ -17,6 +17,8 @@ import {
   useUpdateCollection,
 } from '@/api/hooks';
 import type { Collection, HouseholdMember } from '@/api/types';
+import { useDialogRead } from '@/components/layout/use-dialog-read';
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { CheckRow } from '@/components/ui/check-row';
 import { collectionsMembers } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
@@ -82,12 +84,14 @@ function CollectionForm({
   form,
   submitLabel,
   loading,
+  disabled,
   onSubmit,
   onCancel,
 }: {
   form: ReturnType<typeof useCollectionForm>;
   submitLabel: string;
   loading: boolean;
+  disabled?: boolean;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
@@ -115,7 +119,7 @@ function CollectionForm({
         <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
         <Button
           title={submitLabel}
-          disabled={!validName(form.name)}
+          disabled={disabled || !validName(form.name)}
           loading={loading}
           onPress={onSubmit}
         />
@@ -195,22 +199,27 @@ export function CollectionFormDialog({
  * the book or takes it out (by the item's own path: a remove is exact). */
 function CollectionToggle({
   collection,
+  offline,
   connectionId,
   libraryId,
   path,
 }: {
   collection: Collection;
+  offline: boolean;
   connectionId: string;
   libraryId: number;
   path: string;
 }) {
   const { t } = useTranslation();
-  const { data } = useCollection(collection.id, connectionId);
+  const detail = useCollection(collection.id, connectionId);
+  const { data } = detail;
+  const read = useDialogRead(detail);
+  const disabled = offline || read.offline;
   const add = useAddCollectionItem(connectionId);
   const remove = useRemoveCollectionItem(connectionId);
   const item = data ? (findQueued(data.items, libraryId, path) ?? null) : undefined;
   const toggle = () => {
-    if (item === undefined) return;
+    if (disabled || item === undefined) return;
     if (item) {
       remove.mutateAsync({ id: collection.id, libraryId, path: item.path }).then(
         () => toast({ title: t('library.collection.removed', { name: collection.name }) }),
@@ -223,12 +232,31 @@ function CollectionToggle({
       );
     }
   };
+  if (read.unread === 'failed') {
+    return (
+      serverRefusalState(detail.error, connectionId) ?? (
+        <ErrorNote
+          message={t('library.collection.addTo.readFailed', { name: collection.name })}
+          onRetry={disabled ? undefined : () => void detail.refetch()}
+        />
+      )
+    );
+  }
+  if (disabled && !data) {
+    return (
+      <View className="gap-1 px-3 py-2">
+        <Text variant="label">{collection.name}</Text>
+        {offline ? null : <Text variant="caption">{t('common.offlineTitle')}</Text>}
+      </View>
+    );
+  }
   return (
     <CheckRow
       label={collection.name}
       detail={t('library.collections.itemCount', { count: collection.item_count })}
       checked={item === undefined ? undefined : !!item}
-      busy={add.isPending || remove.isPending}
+      disabled={disabled}
+      busy={!disabled && (add.isPending || remove.isPending)}
       onPress={toggle}
     />
   );
@@ -255,13 +283,16 @@ export function AddToCollectionDialog({
   title: string;
 }) {
   const { t } = useTranslation();
-  const { data, isLoading, error, refetch } = useCollections(connectionId);
+  const collections = useCollections(connectionId);
+  const { data, error, refetch } = collections;
+  const { unread, offline } = useDialogRead(collections);
   const own = ownCollections(data);
   const [creating, setCreating] = useState(false);
   const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
 
   const submit = async () => {
+    if (offline) return;
     try {
       const c = await form.save();
       if (!c) return;
@@ -282,19 +313,26 @@ export function AddToCollectionDialog({
           </DialogTitle>
           <DialogDescription numberOfLines={2}>{title}</DialogDescription>
         </DialogHeader>
+        {offline ? <Text variant="muted">{t('library.collection.offline')}</Text> : null}
         {creating ? (
           <CollectionForm
             form={form}
             submitLabel={t('library.collection.form.createAndAdd')}
-            loading={form.pending || add.isPending}
+            disabled={offline}
+            loading={!offline && (form.pending || add.isPending)}
             onSubmit={() => void submit()}
             onCancel={() => setCreating(false)}
           />
         ) : (
           <>
-            {error && !data ? (
-              <ErrorNote message={t('library.collections.error')} onRetry={() => refetch()} />
-            ) : isLoading ? (
+            {unread === 'failed' ? (
+              (serverRefusalState(error, connectionId) ?? (
+                <ErrorNote
+                  message={t('library.collections.error')}
+                  onRetry={offline ? undefined : () => void refetch()}
+                />
+              ))
+            ) : !data && offline ? null : collections.isLoading ? (
               <ListSkeleton />
             ) : own.length === 0 ? (
               <Text variant="muted">{t('library.collection.addTo.none')}</Text>
@@ -304,6 +342,7 @@ export function AddToCollectionDialog({
                   <CollectionToggle
                     key={c.id}
                     collection={c}
+                    offline={offline}
                     connectionId={connectionId}
                     libraryId={libraryId}
                     path={path}
@@ -316,6 +355,7 @@ export function AddToCollectionDialog({
                 title={t('library.collections.new')}
                 icon="plus"
                 variant="outline"
+                disabled={offline}
                 onPress={() => setCreating(true)}
               />
               <Button title={t('common.done')} onPress={() => onOpenChange(false)} />
@@ -372,6 +412,7 @@ export function ShareCollectionDialog({
 }) {
   const { t } = useTranslation();
   const targets = useShareTargets(open, connectionId);
+  const { unread, offline } = useDialogRead(targets);
   const save = useSetCollectionShares(connectionId);
   const [ids, setIds] = useState(() => sharedIds(collection));
 
@@ -393,12 +434,15 @@ export function ShareCollectionDialog({
           </DialogTitle>
           <DialogDescription>{t('library.collection.share.hint')}</DialogDescription>
         </DialogHeader>
-        {targets.error ? (
-          <ErrorNote
-            message={t('library.collection.share.error')}
-            onRetry={() => targets.refetch()}
-          />
-        ) : !targets.data ? (
+        {offline ? <Text variant="muted">{t('library.collection.share.offline')}</Text> : null}
+        {unread === 'failed' ? (
+          (serverRefusalState(targets.error, connectionId) ?? (
+            <ErrorNote
+              message={t('library.collection.share.error')}
+              onRetry={offline ? undefined : () => void targets.refetch()}
+            />
+          ))
+        ) : !targets.data && offline ? null : !targets.data ? (
           <ListSkeleton />
         ) : targets.data.length === 0 ? (
           <Text variant="muted">{t('library.collection.share.none')}</Text>
@@ -419,8 +463,8 @@ export function ShareCollectionDialog({
           <Button title={t('common.cancel')} variant="ghost" onPress={() => onOpenChange(false)} />
           <Button
             title={t('common.save')}
-            loading={save.isPending}
-            disabled={!targets.data}
+            loading={!offline && save.isPending}
+            disabled={offline || !targets.data}
             onPress={() => void submit()}
           />
         </DialogFooter>

@@ -2,6 +2,12 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 
 import type { OpmlImportRow, PodcastRequest } from '@/api/types';
 
+let mockOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+}));
+
 const mockPick = jest.fn();
 jest.mock('./opml-pick', () => ({ pickOpml: () => mockPick() }));
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
@@ -51,11 +57,29 @@ const state = (status: WaveState['status'], rows: OpmlImportRow[] = []): WaveSta
 });
 
 beforeEach(() => {
+  mockOnline = true;
   mockPick.mockReset();
   mockRequests = [];
 });
 
 describe('OpmlImportPanel', () => {
+  it('keeps the import visible and holds new uploads and retries while offline', async () => {
+    mockOnline = false;
+    const opml = importer({
+      fileName: 'subs.opml',
+      state: state({ kind: 'failed', code: null }, [row(1, { status: 'cancelled' })]),
+      canRetryRow: () => true,
+    });
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
+    expect(screen.getByText('subs.opml')).toBeTruthy();
+    expect(screen.getByTestId('opml-choose')).toBeDisabled();
+    expect(screen.queryByTestId('opml-retry')).toBeNull();
+    expect(screen.queryByTestId('opml-row-retry-1')).toBeNull();
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    expect(mockPick).not.toHaveBeenCalled();
+  });
+
   it('starts an import with the chosen file', async () => {
     const opml = importer();
     const picked = { name: 'subs.opml', size: 10, body: new Uint8Array(10) };

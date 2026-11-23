@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { useEffect, useState } from 'react';
 
@@ -151,6 +151,36 @@ describe('who sees "Make read-along"', () => {
 });
 
 describe('the confirmation', () => {
+  it.each([false, true])(
+    'holds confirmation offline and recovers on reconnect (cached estimate: %s)',
+    async (cached) => {
+      await mount();
+      const action = await screen.findByTestId('readalong-make');
+      if (cached) {
+        await fireEvent.press(action);
+        await screen.findByTestId('readalong-estimate');
+        await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+      }
+      try {
+        await act(() => onlineManager.setOnline(false));
+        await fireEvent.press(screen.getByTestId('readalong-make'));
+        expect(
+          await screen.findByText("You're offline. Reconnect to queue this job."),
+        ).toBeTruthy();
+        expect(!!screen.queryByTestId('readalong-estimate')).toBe(cached);
+        const confirm = screen.getByTestId('readalong-confirm');
+        expect(confirm).toBeDisabled();
+        expect(screen.queryByText('Retry')).toBeNull();
+        expect(mockQueue).not.toHaveBeenCalled();
+        await act(() => onlineManager.setOnline(true));
+        await waitFor(() => expect(screen.getByTestId('readalong-confirm')).toBeEnabled());
+        expect(mockQueue).not.toHaveBeenCalled();
+      } finally {
+        await act(() => onlineManager.setOnline(true));
+      }
+    },
+  );
+
   const open = async () => {
     await mount();
     await fireEvent.press(await screen.findByTestId('readalong-make'));

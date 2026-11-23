@@ -3,6 +3,8 @@ import { View } from 'react-native';
 
 import { useReadalongEstimate } from '@/api/hooks';
 import type { ReadalongEstimate } from '@/api/types';
+import { useDialogRead } from '@/components/layout/use-dialog-read';
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -104,6 +106,7 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
   const { t } = useTranslation();
   const { connectionId, libraryId, path } = model.target;
   const estimate = useReadalongEstimate(libraryId, path, connectionId);
+  const { unread, offline } = useDialogRead(estimate);
   const data = estimate.data;
   const blocked = data ? readalongBlockKey(data) : null;
   const transcription = data ? transcriptionKey(data) : null;
@@ -148,17 +151,20 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
             </Text>
           ) : null}
         </View>
-      ) : estimate.isError ? (
-        <View testID="readalong-estimate-failed">
-          <ErrorNote
-            message={t(readalongRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
-            onRetry={() => void estimate.refetch()}
-          />
-        </View>
-      ) : (
+      ) : unread === 'failed' ? (
+        (serverRefusalState(estimate.error, connectionId) ?? (
+          <View testID="readalong-estimate-failed">
+            <ErrorNote
+              message={t(readalongRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
+              onRetry={offline ? undefined : () => void estimate.refetch()}
+            />
+          </View>
+        ))
+      ) : offline ? null : (
         <SkeletonText lines={4} className="py-1" />
       )}
 
+      {offline ? <Text variant="muted">{t('bridge.generate.offline')}</Text> : null}
       <DialogFooter>
         <Button
           title={t('common.cancel')}
@@ -169,8 +175,8 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
           testID="readalong-confirm"
           title={t('bridge.readalong.confirm')}
           icon="sparkles"
-          disabled={!data || !!blocked}
-          loading={model.queueing}
+          disabled={offline || !data || !!blocked}
+          loading={!offline && model.queueing}
           onPress={() => void confirm()}
         />
       </DialogFooter>

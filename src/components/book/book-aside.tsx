@@ -24,6 +24,7 @@ export function BookAside({
   book,
   connectionId,
   meta,
+  metaOffline,
   work,
   listening,
   className,
@@ -31,6 +32,7 @@ export function BookAside({
   book: Book;
   connectionId: string;
   meta?: MatchedBookMeta;
+  metaOffline: boolean;
   /** The `bookMetaWork` value, About's every work-level field (the matched work, or an
    * unmatched book's generated one). */
   work: BookMetaWork | undefined;
@@ -42,6 +44,7 @@ export function BookAside({
       <BookAbout
         book={book}
         meta={meta}
+        metaOffline={metaOffline}
         work={work}
         onOpenLabel={(kind, name) => openLabelBooks(connectionId, book.library_id, kind, name)}
       />

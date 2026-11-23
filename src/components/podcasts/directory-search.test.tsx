@@ -22,7 +22,14 @@ jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openPodcastShow: (...a: unknown[]) => mockOpenShow(...a) }),
 }));
 
+let mockOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+}));
+
 type SearchState = {
+  isPaused?: boolean;
   data?: { provider: string; query: string; country: string | null; results: unknown[] };
   isError?: boolean;
   error?: unknown;
@@ -102,6 +109,7 @@ async function search(text: string) {
 }
 
 beforeEach(() => {
+  mockOnline = true;
   mockIndex = false;
   mockCanFollow = true;
   mockSearch = {};
@@ -198,7 +206,7 @@ describe('DirectorySearch', () => {
     expect(mockRefetch).toHaveBeenCalledTimes(2);
   });
 
-  it('keeps the results when reading the same search again fails (fe#293)', async () => {
+  it('shows the last results, the refresh failure and a working retry (fe#299)', async () => {
     mockSearch = {
       isError: true,
       error: new ApiError(502, 'no'),
@@ -207,7 +215,53 @@ describe('DirectorySearch', () => {
     await mount();
     await search('history');
     expect(screen.getAllByTestId('discovery-result')).toHaveLength(1);
-    expect(screen.queryByTestId('directory-search-error')).toBeNull();
+    expect(screen.getByText('Showing the last results for “history”.')).toBeTruthy();
+    await fireEvent.press(screen.getByText('Search again'));
+    expect(mockRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([false, true])(
+    'replaces a held search spinner with the offline reason (cached results: %s)',
+    async (cached) => {
+      mockSearch = {
+        isPaused: true,
+        isPending: !cached,
+        data: cached
+          ? { provider: 'itunes', query: 'history', country: 'GB', results: [result()] }
+          : undefined,
+      };
+      await mount();
+      await search('history');
+      expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
+      expect(screen.queryByLabelText('Searching...')).toBeNull();
+      expect(!!screen.queryByText('History Hour')).toBe(cached);
+      expect(screen.queryByText('No shows found')).toBeNull();
+      expect(screen.getByTestId('directory-search-submit')).toBeDisabled();
+      expect(screen.queryByRole('button', { name: 'Follow History Hour' })).toBeNull();
+    },
+  );
+
+  it('blocks submitting a new search with the keyboard while offline', async () => {
+    mockOnline = false;
+    await mount();
+    const input = screen.getByTestId('directory-search-input');
+    await fireEvent.changeText(input, 'history');
+    await fireEvent(input, 'submitEditing');
+    expect(lastAsked()).toBeNull();
+    expect(screen.getByTestId('directory-search-submit')).toBeDisabled();
+  });
+
+  it('announces a refresh of the displayed results and clears the notice when it succeeds', async () => {
+    const data = { provider: 'itunes', query: 'history', country: 'GB', results: [result()] };
+    mockSearch = { data, isFetching: true };
+    await mount();
+    await search('history');
+    expect(screen.getByText('Searching...')).toBeTruthy();
+    expect(screen.getByText('History Hour')).toBeTruthy();
+    mockSearch = { data };
+    await fireEvent.changeText(screen.getByTestId('directory-search-input'), 'history ');
+    expect(screen.queryByText('Searching...')).toBeNull();
+    expect(screen.queryByText(/Showing the last results/)).toBeNull();
   });
 
   it('maps a refusal of the provider to its own copy', async () => {

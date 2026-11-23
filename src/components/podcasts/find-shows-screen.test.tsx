@@ -26,15 +26,28 @@ const mockCapCids = new Set<string | undefined>();
 // The connection's libraries; undefined while they load.
 let mockLibraries: { id: number; kind?: string }[] | undefined;
 let mockLibrariesFetching = false;
+let mockLibrariesPaused = false;
+let mockServerPaused = false;
+let mockServerError: Error | null = null;
+const mockServerRetry = jest.fn();
 const mockLibrariesCids = new Set<string>();
 jest.mock('@/api/hooks', () => ({
+  useServerInfo: () => ({
+    isPaused: mockServerPaused,
+    error: mockServerError,
+    refetch: mockServerRetry,
+  }),
   useCapability: (flag: string, cid?: string) => {
     mockCapCids.add(cid);
     return mockCaps[flag];
   },
   useLibrariesOf: (cid: string) => {
     mockLibrariesCids.add(cid);
-    return { data: mockLibraries, isFetching: mockLibrariesFetching };
+    return {
+      data: mockLibraries,
+      isFetching: mockLibrariesFetching,
+      isPaused: mockLibrariesPaused,
+    };
   },
 }));
 
@@ -102,6 +115,10 @@ beforeEach(() => {
   mockCapCids.clear();
   mockLibraries = [{ id: 7, kind: 'podcasts' }];
   mockLibrariesFetching = false;
+  mockLibrariesPaused = false;
+  mockServerPaused = false;
+  mockServerError = null;
+  mockServerRetry.mockReset();
   mockLibrariesCids.clear();
   mockCaps = { podcasts: true, podcast_discovery: true, podcast_opml: true };
   mockSetParams.mockReset();
@@ -174,6 +191,32 @@ describe('FindShowsScreen', () => {
     expect(screen.queryByTestId('section-search')).toBeNull();
     expect(screen.queryAllByRole('radio')).toHaveLength(0);
     expect(screen.getByText("Adding shows isn't available right now")).toBeTruthy();
+  });
+
+  it('explains a held capability check before showing a loading state', async () => {
+    mockCaps = {};
+    mockServerPaused = true;
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
+    expect(screen.queryByTestId('section-search')).toBeNull();
+  });
+
+  it('retries a failed capability check when online', async () => {
+    mockCaps = {};
+    mockServerError = new Error('unavailable');
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
+    await fireEvent.press(screen.getByText('Retry'));
+    expect(mockServerRetry).toHaveBeenCalled();
+  });
+
+  it('explains a paused library check before declaring the library missing', async () => {
+    mockLibraries = [{ id: 3 }];
+    mockLibrariesPaused = true;
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
   });
 
   it('waits for the server before deciding', async () => {

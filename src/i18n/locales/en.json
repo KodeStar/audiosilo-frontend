@@ -1087,7 +1087,8 @@
         "title": "Share {{name}}",
         "hint": "They can see it but not change it, and each person sees only the books they can open.",
         "none": "There's no one else on this server to share with yet.",
-        "error": "Couldn't load the people on this server"
+        "error": "Couldn't load the people on this server",
+        "offline": "You're offline. Reconnect to save sharing changes."
       },
       "deleteConfirm": {
         "title": "Delete {{name}}?",
@@ -1109,8 +1110,10 @@
       },
       "addTo": {
         "title": "Add to collection",
-        "none": "You have no collections yet. Make one here."
-      }
+        "none": "You have no collections yet. Make one here.",
+        "readFailed": "Couldn't load {{name}}."
+      },
+      "offline": "You're offline. Reconnect to change collections."
     }
   },
   "downloads": {
@@ -1402,7 +1405,8 @@
         "antagonist": "Antagonist",
         "supporting": "Supporting",
         "minor": "Minor"
-      }
+      },
+      "offline": "You're offline. Community details for this book will load when you reconnect."
     },
     "page": {
       "crumbs": "Where this book is",
@@ -1556,7 +1560,8 @@
       "queuedSome_one": "Queued {{count}} of {{total}} books. The rest couldn't be queued.",
       "queuedSome_other": "Queued {{count}} of {{total}} books. The rest couldn't be queued.",
       "queuedRestFailed": "This book isn't queued yet. Press Generate again to queue the rest.",
-      "queueFailed": "Couldn't queue it. Nothing was started."
+      "queueFailed": "Couldn't queue it. Nothing was started.",
+      "offline": "You're offline. Reconnect to queue this job."
     },
     "readalong": {
       "make": "Make read-along",
@@ -3118,7 +3123,8 @@
         "following": "Following",
         "openShow": "Open show",
         "searchAgain": "Search again",
-        "loading": "Searching..."
+        "loading": "Searching...",
+        "lastResults": "Showing the last results for “{{query}}”."
       },
       "provider": {
         "itunes": "Apple Podcasts",
@@ -3168,7 +3174,9 @@
         "following": "You follow {{title}}.",
         "adding": "Adding the show. It appears in Shows once it's ready.",
         "followingPublic": "You follow {{title}}. It was already in this library as a public feed, so it isn't private."
-      }
+      },
+      "offline": "You're offline. Reconnect to find or add shows.",
+      "accessFailed": "Couldn't check whether you can add shows."
     },
     "requests": {
       "title": "Shows being added",

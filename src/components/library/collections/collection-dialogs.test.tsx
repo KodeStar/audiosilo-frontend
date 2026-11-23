@@ -8,12 +8,25 @@ const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 
-let mockCollections: Collection[] = [];
+let mockOnline = true;
+let mockPaused = false;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+}));
+beforeEach(() => {
+  mockOnline = true;
+  mockPaused = false;
+});
+let mockCollections: Collection[] | undefined = [];
+let mockDetailError: Error | null = null;
+const mockDetailRetry = jest.fn();
+let mockDetailPaused = false;
 let mockDetails: Record<number, CollectionDetail> = {};
 const mockAdd = jest.fn();
 const mockRemove = jest.fn();
 const mockCreate = jest.fn();
-let mockTargets: { id: number; username: string }[] = [];
+let mockTargets: { id: number; username: string }[] | undefined = [];
 let mockMembers: HouseholdMembers | undefined;
 const mockSetShares = jest.fn();
 jest.mock('@/api/hooks', () => {
@@ -21,13 +34,23 @@ jest.mock('@/api/hooks', () => {
   const mutation = (fn: jest.Mock) => ({ mutateAsync: fn, isPending: false });
   return {
     CapabilityError,
-    useCollections: () => ({ data: mockCollections, isLoading: false, error: null }),
-    useCollection: (id: number) => ({ data: mockDetails[id] }),
+    useCollections: () => ({
+      data: mockCollections,
+      isPaused: mockPaused,
+      isLoading: false,
+      error: null,
+    }),
+    useCollection: (id: number) => ({
+      data: mockDetails[id],
+      error: mockDetailError,
+      isPaused: mockDetailPaused,
+      refetch: mockDetailRetry,
+    }),
     useAddCollectionItem: () => mutation(mockAdd),
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
-    useShareTargets: () => ({ data: mockTargets, error: null }),
+    useShareTargets: () => ({ data: mockTargets, isPaused: mockPaused, error: null }),
     useSetCollectionShares: () => mutation(mockSetShares),
     // A server without household_members hands back no data.
     useHouseholdMembers: () => ({ data: mockMembers }),
@@ -76,9 +99,63 @@ function mount() {
 describe('AddToCollectionDialog', () => {
   beforeEach(() => {
     mockCollections = [road, comfort, shared];
+    mockDetailError = null;
+    mockDetailPaused = false;
+    mockDetailRetry.mockClear();
     // The book is in Road trip under its book path (an add resolves a part path).
     mockDetails = { 1: detail(road, ['Author/Book']), 2: detail(comfort, ['Other']) };
     [mockToast, mockAdd, mockRemove, mockCreate].forEach((m) => m.mockReset());
+  });
+
+  it('explains a held collection list and keeps New collection disabled', async () => {
+    mockCollections = undefined;
+    mockPaused = true;
+    await mount();
+    expect(screen.getByText("You're offline. Reconnect to change collections.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New collection' })).toBeDisabled();
+    expect(screen.queryByText('Retry')).toBeNull();
+    expect(screen.queryByText(/no collections/i)).toBeNull();
+  });
+
+  it('names a collection whose membership is held without offering a toggle', async () => {
+    mockCollections = [road];
+    mockDetails = {};
+    mockDetailPaused = true;
+    await mount();
+    expect(screen.getByText('Road trip')).toBeTruthy();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('can retry the collection whose membership failed online', async () => {
+    mockCollections = [road];
+    mockDetails = {};
+    mockDetailError = new Error('unavailable');
+    await mount();
+    expect(screen.getByText("Couldn't load Road trip.")).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockDetailRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps known membership visible without sending changes offline', async () => {
+    mockOnline = false;
+    await mount();
+    const checked = screen.getByRole('checkbox', { name: /^Road trip/ });
+    expect(checked).toBeChecked();
+    expect(checked).toBeDisabled();
+    await fireEvent.press(checked);
+    expect(mockRemove).not.toHaveBeenCalled();
+  });
+
+  it('keeps an open create form and blocks keyboard submission when the connection drops', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+    mockOnline = false;
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    expect(screen.getByRole('button', { name: 'Create and add' })).toBeDisabled();
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it("lists only the listener's own collections, checked where the book is", async () => {
@@ -153,6 +230,22 @@ describe('ShareCollectionDialog: household members (8b-1)', () => {
       members: [member(12, 'Evie', 'collections'), member(13, 'Ellis', 'all')],
     };
   });
+
+  it.each([false, true])(
+    'explains why sharing cannot be saved offline (cached people: %s)',
+    async (cached) => {
+      if (!cached) mockTargets = undefined;
+      mockPaused = true;
+      await mountShare();
+      expect(screen.getByText("You're offline. Reconnect to save sharing changes.")).toBeTruthy();
+      expect(!!screen.queryByRole('checkbox', { name: 'evie' })).toBe(cached);
+      const save = screen.getByRole('button', { name: 'Save' });
+      expect(save).toBeDisabled();
+      await fireEvent.press(save);
+      expect(mockSetShares).not.toHaveBeenCalled();
+      expect(screen.queryByText('Retry')).toBeNull();
+    },
+  );
 
   it('says a picked member on "Only collections I share" can listen to all of it', async () => {
     await mountShare();

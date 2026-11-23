@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useBridgeEstimate } from '@/api/hooks';
+import { useDialogRead } from '@/components/layout/use-dialog-read';
+import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -49,6 +51,7 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
   const { connectionId, libraryId, path } = model.target;
   const estimate = useBridgeEstimate(libraryId, path, connectionId);
   const [withEarlier, setWithEarlier] = useState(true);
+  const { unread, offline } = useDialogRead(estimate);
   const data = estimate.data;
   const earlier = data?.earlier ?? [];
   const blocked = data ? blockedReason(data) : null;
@@ -133,18 +136,21 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
             </Text>
           ) : null}
         </View>
-      ) : estimate.isError ? (
-        // No automatic retry (`useBridgeEstimate`): the admin asks again from here.
-        <View testID="generate-estimate-failed">
-          <ErrorNote
-            message={t(bridgeRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
-            onRetry={() => void estimate.refetch()}
-          />
-        </View>
-      ) : (
+      ) : unread === 'failed' ? (
+        (serverRefusalState(estimate.error, connectionId) ?? (
+          // No automatic retry (`useBridgeEstimate`): the admin asks again from here.
+          <View testID="generate-estimate-failed">
+            <ErrorNote
+              message={t(bridgeRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
+              onRetry={offline ? undefined : () => void estimate.refetch()}
+            />
+          </View>
+        ))
+      ) : offline ? null : (
         <SkeletonText lines={4} className="py-1" />
       )}
 
+      {offline ? <Text variant="muted">{t('bridge.generate.offline')}</Text> : null}
       <DialogFooter>
         <Button
           title={t('common.cancel')}
@@ -159,8 +165,8 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
               : t('bridge.generate.confirm')
           }
           icon="sparkles"
-          disabled={!data || !!blocked}
-          loading={model.queueing}
+          disabled={offline || !data || !!blocked}
+          loading={!offline && model.queueing}
           onPress={() => void confirm()}
         />
       </DialogFooter>
