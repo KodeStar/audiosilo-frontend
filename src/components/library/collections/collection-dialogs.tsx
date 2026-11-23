@@ -332,8 +332,11 @@ export function AddToCollectionDialog({
                   onRetry={offline ? undefined : () => void refetch()}
                 />
               ))
-            ) : !data && offline ? null : collections.isLoading ? (
-              <ListSkeleton />
+            ) : !data ? (
+              // Not `isLoading`: a list not asked yet (or held) is not "no collections".
+              offline ? null : (
+                <ListSkeleton />
+              )
             ) : own.length === 0 ? (
               <Text variant="muted">{t('library.collection.addTo.none')}</Text>
             ) : (

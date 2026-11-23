@@ -117,6 +117,13 @@ describe('AddToCollectionDialog', () => {
     expect(screen.queryByText(/no collections/i)).toBeNull();
   });
 
+  it('shows a list not read yet as loading, never as "no collections"', async () => {
+    mockCollections = undefined;
+    await mount();
+    expect(screen.queryByText(/no collections/i)).toBeNull();
+    expect(screen.queryByText("You're offline. Reconnect to change collections.")).toBeNull();
+  });
+
   it('names a collection whose membership is held without offering a toggle', async () => {
     mockCollections = [road];
     mockDetails = {};
