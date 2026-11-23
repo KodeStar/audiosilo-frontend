@@ -16,8 +16,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { useUnreadQuery } from '@/lib/offline-state';
-import { useDeviceOnline } from '@/lib/device-online';
+import { useDialogRead, useUnreadQuery } from '@/lib/offline-state';
 import { useLayout } from '@/lib/layout';
 import { type FindShowsSection, parseFindShowsParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -70,8 +69,7 @@ function FindShowsContent() {
   const importer = useOpmlImport(cid, params?.libraryId ?? 0);
   const librariesRead = useLibrariesOf(cid);
   const libraries = librariesRead.data;
-  const librariesUnread = useUnreadQuery(librariesRead);
-  const online = useDeviceOnline();
+  const librariesState = useDialogRead(librariesRead);
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
@@ -95,10 +93,14 @@ function FindShowsContent() {
 
   // Only once the libraries are known and settled (a cached list read again may hold a
   // library added since): a library the server lacks. A books library is the server's to
-  // refuse (`not_podcast_library`).
-  if (librariesUnread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
-  if (libraries && !librariesRead.isFetching && !libraries.some((l) => l.id === params.libraryId)) {
-    if (!online || librariesRead.isPaused) return <OfflineState hint={t('common.offlinePage')} />;
+  // refuse (`not_podcast_library`). Offline, a kept list may predate the library, so a
+  // missing one waits for the network too.
+  const missing =
+    !!libraries && !librariesRead.isFetching && !libraries.some((l) => l.id === params.libraryId);
+  if (librariesState.unread === 'offline' || (missing && librariesState.offline)) {
+    return <OfflineState hint={t('common.offlinePage')} />;
+  }
+  if (missing) {
     return (
       <View testID="find-shows-library-missing">
         <EmptyState icon="microphone" title={t('library.detail.badLink')} />

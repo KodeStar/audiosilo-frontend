@@ -70,6 +70,17 @@ export function useKeptOffline(query: { data: unknown; isPaused: boolean; error:
 }
 
 /**
+ * A read behind a surface with server actions (a dialog's estimate, a list to add to): the
+ * kept answer shows offline, but the actions still need a connection. `unread` is
+ * `useUnreadQuery`; `offline` is true while the device has no network or the read waits
+ * for one, so the surface disables its actions and says why (fe#271).
+ */
+export function useDialogRead(query: Parameters<typeof useUnreadQuery>[0]) {
+  const online = useDeviceOnline();
+  return { unread: useUnreadQuery(query), offline: !online || query.isPaused };
+}
+
+/**
  * `useUnreadQuery` of ONE list read from every server (`useFavouritesAll`, `useRecentAll`,
  * `useAllProgressAll`: `offline` when a server's list waits for the network, `error` their
  * `unreadError`, the first one that failed with nothing kept), with no row in. A list that

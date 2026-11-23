@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useBridgeEstimate } from '@/api/hooks';
-import { useDialogRead } from '@/components/layout/use-dialog-read';
 import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
@@ -20,6 +19,7 @@ import { SkeletonText } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Text } from '@/components/ui/text';
 import { formatDuration, formatUsd } from '@/lib/format';
+import { useDialogRead } from '@/lib/offline-state';
 import { pathLeaf } from '@/lib/paths';
 
 import { blockedReason, bridgeRefusalKey, queueOrder, runEstimate } from './bridge-model';

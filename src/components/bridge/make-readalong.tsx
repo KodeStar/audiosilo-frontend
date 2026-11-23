@@ -3,7 +3,6 @@ import { View } from 'react-native';
 
 import { useReadalongEstimate } from '@/api/hooks';
 import type { ReadalongEstimate } from '@/api/types';
-import { useDialogRead } from '@/components/layout/use-dialog-read';
 import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +18,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
+import { useDialogRead } from '@/lib/offline-state';
 import { pathLeaf } from '@/lib/paths';
 
 import { Fact } from './generate-dialog';

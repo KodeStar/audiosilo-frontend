@@ -14,8 +14,7 @@ import {
   usePodcastShows,
 } from '@/api/hooks';
 import type { PodcastDiscoveryProvider, PodcastDiscoveryResult } from '@/api/types';
-import { useDialogRead } from '@/components/layout/use-dialog-read';
-import { useKeptOffline } from '@/lib/offline-state';
+import { useDialogRead, useKeptOffline } from '@/lib/offline-state';
 import { pageGutter } from '@/components/library/cover-layout';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
@@ -242,9 +241,9 @@ export function DirectorySearch({
     </View>
   );
 
+  const searching = !answered && (search.isPending || search.isFetching);
   const empty =
-    !params || (!answered && (failure || offline)) ? null : search.isPending ||
-      (search.isFetching && !answered) ? (
+    !params || (!answered && (failure || offline)) ? null : searching ? (
       <View
         className="items-center gap-2 py-6"
         accessibilityLabel={t('podcasts.find.search.loading')}

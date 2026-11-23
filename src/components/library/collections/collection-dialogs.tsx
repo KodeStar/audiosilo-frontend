@@ -17,7 +17,6 @@ import {
   useUpdateCollection,
 } from '@/api/hooks';
 import type { Collection, HouseholdMember } from '@/api/types';
-import { useDialogRead } from '@/components/layout/use-dialog-read';
 import { serverRefusalState } from '@/components/layout/server-refusal-state';
 import { CheckRow } from '@/components/ui/check-row';
 import { collectionsMembers } from '@/components/household/household-model';
@@ -35,6 +34,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useDialogRead } from '@/lib/offline-state';
 
 import { findQueued } from '../use-queue-actions';
 import {
@@ -219,7 +219,7 @@ function CollectionToggle({
   const remove = useRemoveCollectionItem(connectionId);
   const item = data ? (findQueued(data.items, libraryId, path) ?? null) : undefined;
   const toggle = () => {
-    if (disabled || item === undefined) return;
+    if (item === undefined) return;
     if (item) {
       remove.mutateAsync({ id: collection.id, libraryId, path: item.path }).then(
         () => toast({ title: t('library.collection.removed', { name: collection.name }) }),
@@ -442,8 +442,10 @@ export function ShareCollectionDialog({
               onRetry={offline ? undefined : () => void targets.refetch()}
             />
           ))
-        ) : !targets.data && offline ? null : !targets.data ? (
-          <ListSkeleton />
+        ) : !targets.data ? (
+          offline ? null : (
+            <ListSkeleton />
+          )
         ) : targets.data.length === 0 ? (
           <Text variant="muted">{t('library.collection.share.none')}</Text>
         ) : (
