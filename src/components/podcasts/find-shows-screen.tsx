@@ -16,7 +16,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { useDialogRead, useUnreadQuery } from '@/lib/offline-state';
+import { useDialogRead } from '@/lib/offline-state';
 import { useLayout } from '@/lib/layout';
 import { type FindShowsSection, parseFindShowsParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -159,7 +159,9 @@ function FindShowsContent() {
 function FindShowsAccessState({ connectionId }: { connectionId: string }) {
   const { t } = useTranslation();
   const info = useServerInfo(connectionId);
-  const unread = useUnreadQuery(info);
+  // `offline`: a server's failed answer (an `ApiError`) is `failed` whatever the network
+  // does since, but its Retry can't work until the network is back.
+  const { unread, offline } = useDialogRead(info);
   if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   if (unread === 'failed') {
     const refusal = refusedServer(connectionId, info.error);
@@ -168,7 +170,15 @@ function FindShowsAccessState({ connectionId }: { connectionId: string }) {
       <EmptyState
         icon="server"
         title={t('podcasts.find.accessFailed')}
-        action={{ label: t('common.retry'), onPress: () => void info.refetch() }}
+        action={
+          offline
+            ? undefined
+            : {
+                label: t('common.retry'),
+                onPress: () => void info.refetch(),
+                loading: info.isFetching,
+              }
+        }
       />
     );
   }

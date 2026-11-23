@@ -1,5 +1,6 @@
 import { fireEvent, screen } from '@testing-library/react-native';
 
+import { ApiError } from '@/api/client';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 let mockParams: Record<string, string | undefined> = {};
@@ -18,6 +19,12 @@ jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 
 const mockTitles: (string | undefined)[] = [];
 jest.mock('@/lib/use-page-title', () => ({
   usePageTitle: (t: string | undefined) => mockTitles.push(t),
+}));
+
+let mockOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};
@@ -110,6 +117,7 @@ const signIn = (user: object = {}, id = 'c1') =>
   });
 
 beforeEach(() => {
+  mockOnline = true;
   mockParams = { connection: 'c1', library: '7' };
   mockCid = 'c1';
   mockCapCids.clear();
@@ -209,6 +217,15 @@ describe('FindShowsScreen', () => {
     expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
     await fireEvent.press(screen.getByText('Retry'));
     expect(mockServerRetry).toHaveBeenCalled();
+  });
+
+  it("offers no Retry for a server's failed answer while the device is offline", async () => {
+    mockCaps = {};
+    mockOnline = false;
+    mockServerError = new ApiError(502, 'bad gateway');
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
   });
 
   it('explains a paused library check before declaring the library missing', async () => {
