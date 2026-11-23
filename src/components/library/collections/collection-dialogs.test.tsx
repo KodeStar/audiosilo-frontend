@@ -1,12 +1,18 @@
 import { fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
+import { ServerReadError } from '@/api/server-read-error';
 import type { Collection, CollectionDetail, HouseholdMember, HouseholdMembers } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+const mockReconnect = jest.fn();
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (c: unknown) => mockReconnect(c),
+}));
 
 let mockOnline = true;
 let mockPaused = false;
@@ -18,7 +24,12 @@ beforeEach(() => {
   mockOnline = true;
   mockPaused = false;
   mockAddPending = false;
+  mockCollectionsError = null;
+  mockTargetsError = null;
+  mockReconnect.mockReset();
 });
+let mockCollectionsError: Error | null = null;
+let mockTargetsError: Error | null = null;
 let mockCollections: Collection[] | undefined = [];
 let mockDetailError: Error | null = null;
 const mockDetailRetry = jest.fn();
@@ -40,7 +51,7 @@ jest.mock('@/api/hooks', () => {
       data: mockCollections,
       isPaused: mockPaused,
       isLoading: false,
-      error: null,
+      error: mockCollectionsError,
     }),
     useCollection: (id: number) => ({
       data: mockDetails[id],
@@ -52,7 +63,7 @@ jest.mock('@/api/hooks', () => {
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
-    useShareTargets: () => ({ data: mockTargets, isPaused: mockPaused, error: null }),
+    useShareTargets: () => ({ data: mockTargets, isPaused: mockPaused, error: mockTargetsError }),
     useSetCollectionShares: () => mutation(mockSetShares),
     // A server without household_members hands back no data.
     useHouseholdMembers: () => ({ data: mockMembers }),
@@ -60,6 +71,8 @@ jest.mock('@/api/hooks', () => {
 });
 
 /* eslint-disable import/first */
+import { type Connection, useSession } from '@/stores/session';
+
 import { AddToCollectionDialog, ShareCollectionDialog } from './collection-dialogs';
 /* eslint-enable import/first */
 
@@ -290,5 +303,72 @@ describe('ShareCollectionDialog: household members (8b-1)', () => {
     mockMembers = undefined;
     await mountShare(collection(4, 'Bedtime', { shared_with: [{ id: 12, username: 'evie' }] }));
     expect(screen.queryByTestId('share-member-note')).toBeNull();
+  });
+});
+
+// A refused /server read shows Reconnect inside the open dialog: pressing it closes the
+// dialog first, so the sign-in page it opens is not left under a modal.
+describe('collection dialogs: Reconnect from a refused server', () => {
+  const signedOut = { id: 'c', name: 'Hearthside', needsReconnect: 'auth' } as Connection;
+  const refused = () => new ServerReadError(new ApiError(401, 'signed out'));
+  beforeEach(() => {
+    useSession.setState({ connections: [signedOut] });
+    mockDetailError = null;
+  });
+
+  async function pressReconnect() {
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+  }
+
+  it("closes Add to collection from its list's refusal", async () => {
+    mockCollectionsError = refused();
+    mockCollections = undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <AddToCollectionDialog
+        open
+        onOpenChange={onOpenChange}
+        connectionId="c"
+        libraryId={1}
+        path="Author/Book"
+        title="Book"
+      />,
+    );
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it("closes Add to collection from a collection row's refusal", async () => {
+    mockCollections = [road];
+    mockDetails = {};
+    mockDetailError = refused();
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <AddToCollectionDialog
+        open
+        onOpenChange={onOpenChange}
+        connectionId="c"
+        libraryId={1}
+        path="Author/Book"
+        title="Book"
+      />,
+    );
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it('closes Share from its refusal', async () => {
+    mockTargetsError = refused();
+    mockTargets = undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <ShareCollectionDialog open onOpenChange={onOpenChange} connectionId="c" collection={road} />,
+    );
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
   });
 });

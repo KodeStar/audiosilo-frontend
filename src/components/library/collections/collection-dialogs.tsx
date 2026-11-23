@@ -200,19 +200,22 @@ export function CollectionFormDialog({
 
 /** One of the listener's collections in "Add to collection": checked when it holds the
  * book (read from the collection itself, only while the dialog is open); pressing adds
- * the book or takes it out (by the item's own path: a remove is exact). */
+ * the book or takes it out (by the item's own path: a remove is exact). `onReconnect`
+ * closes the dialog before a refused read's Reconnect opens the sign-in page. */
 function CollectionToggle({
   collection,
   offline,
   connectionId,
   libraryId,
   path,
+  onReconnect,
 }: {
   collection: Collection;
   offline: boolean;
   connectionId: string;
   libraryId: number;
   path: string;
+  onReconnect: () => void;
 }) {
   const { t } = useTranslation();
   const detail = useCollection(collection.id, connectionId);
@@ -238,7 +241,7 @@ function CollectionToggle({
   };
   if (read.unread === 'failed') {
     return (
-      serverRefusalState(detail.error, connectionId) ?? (
+      serverRefusalState(detail.error, connectionId, onReconnect) ?? (
         <ErrorNote
           message={t('library.collection.addTo.readFailed', { name: collection.name })}
           onRetry={disabled ? undefined : () => void detail.refetch()}
@@ -294,6 +297,7 @@ export function AddToCollectionDialog({
   const [creating, setCreating] = useState(false);
   const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
+  const close = () => onOpenChange(false);
 
   const submit = async () => {
     // The keyboard's Done submits too: once the new collection is stored, `form.save` is
@@ -333,7 +337,7 @@ export function AddToCollectionDialog({
         ) : (
           <>
             {unread === 'failed' ? (
-              (serverRefusalState(error, connectionId) ?? (
+              (serverRefusalState(error, connectionId, close) ?? (
                 <ErrorNote
                   message={t('library.collections.error')}
                   onRetry={offline ? undefined : () => void refetch()}
@@ -356,6 +360,7 @@ export function AddToCollectionDialog({
                     connectionId={connectionId}
                     libraryId={libraryId}
                     path={path}
+                    onReconnect={close}
                   />
                 ))}
               </ScrollView>
@@ -446,7 +451,7 @@ export function ShareCollectionDialog({
         </DialogHeader>
         {offline ? <Text variant="muted">{t('library.collection.share.offline')}</Text> : null}
         {unread === 'failed' ? (
-          (serverRefusalState(targets.error, connectionId) ?? (
+          (serverRefusalState(targets.error, connectionId, () => onOpenChange(false)) ?? (
             <ErrorNote
               message={t('library.collection.share.error')}
               onRetry={offline ? undefined : () => void targets.refetch()}
