@@ -682,7 +682,9 @@ function waitForTabSwap(hold: NonNullable<typeof swapHold>): Promise<boolean> {
     const resume = (ready: boolean) => {
       clearTimeout(timer);
       hold.waiting.delete(resume);
-      if (stillStarting()) armStallWatchdog();
+      // Armed again while a start still shows connecting, also one a later play took over
+      // (an OS-controls play arms no watchdog of its own): never a spinner left unwatched.
+      if (waitingToPlay && startingPlayback && wantsPlayback) armStallWatchdog();
       resolve(ready);
     };
     const timer = setTimeout(() => {
