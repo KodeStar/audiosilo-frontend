@@ -228,7 +228,7 @@ import {
 } from './finish-route';
 import { closeSpan } from './listening-outbox';
 import { cutPlayingSpan } from './span-cut';
-import { SPAN_RECOVERY_WAIT_MS } from './span-recovery';
+import { SPAN_RECOVERY_WAIT_MS, spanRecovered } from './span-recovery';
 import {
   answerAfterSpan,
   cutListeningSpanNow,
@@ -432,6 +432,21 @@ it('a start at a place waits for a recovery that never ends for a while only', a
   jest.advanceTimersByTime(SPAN_RECOVERY_WAIT_MS);
   await playing;
   expect(mockSvc.load).toHaveBeenCalled();
+});
+
+it('a start after a reader waited out a recovery that never ends waits no longer', async () => {
+  // One recovery per launch (`recoverOpenSpan` keeps it): Previously on waits, then starts.
+  const never = new Promise<void>(() => {});
+  mockRecoverOpenSpan.mockImplementation(() => never);
+  try {
+    const waited = spanRecovered();
+    jest.advanceTimersByTime(SPAN_RECOVERY_WAIT_MS);
+    await waited;
+    await start(40);
+    expect(mockSvc.load).toHaveBeenCalled();
+  } finally {
+    mockRecoverOpenSpan.mockImplementation(async () => {});
+  }
 });
 
 describe('without listening_sync (the PUT path, unchanged)', () => {

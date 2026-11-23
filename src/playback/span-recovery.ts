@@ -6,15 +6,25 @@ import { recoverOpenSpan } from './listening-outbox';
  * turn behind every other tab's span writes (`spanOps`). */
 export const SPAN_RECOVERY_WAIT_MS = 2_000;
 
+/** The bounded wait for each recovery (one per launch, `recoverOpenSpan` keeps it), so its
+ * readers share one deadline: a reader that waited for it, then a start it makes (Previously
+ * on, the car), never waits out a recovery that never ends twice. */
+const bounded = new WeakMap<Promise<void>, Promise<void>>();
+
 /**
  * Wait for the span a kill left open to be brought into the mirror (`mirrorSpanEnd`), for a
- * reader about to read this device's places (a resume, the book page, the car's play specs),
- * but never longer than `SPAN_RECOVERY_WAIT_MS`: past it the reader goes on with the places
- * as they are, and the recovery lands later as it would have (a resume never hangs on it).
- * (`recoverOpenSpan` never rejects: only the timeout does, and is taken as over.)
+ * reader about to read this device's places (a start, the book page, the car's play specs),
+ * but never longer than `SPAN_RECOVERY_WAIT_MS` from the first reader's wait: past it every
+ * reader goes on with the places as they are, and the recovery lands later as it would have
+ * (a start never hangs on it). (`recoverOpenSpan` never rejects: only the timeout does, and
+ * is taken as over.)
  */
 export function spanRecovered(): Promise<void> {
-  return withTimeout(recoverOpenSpan(), SPAN_RECOVERY_WAIT_MS, 'span recovery').catch(
-    () => undefined,
-  );
+  const recovery = recoverOpenSpan();
+  let wait = bounded.get(recovery);
+  if (!wait) {
+    wait = withTimeout(recovery, SPAN_RECOVERY_WAIT_MS, 'span recovery').catch(() => undefined);
+    bounded.set(recovery, wait);
+  }
+  return wait;
 }
