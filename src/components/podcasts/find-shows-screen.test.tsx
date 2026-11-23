@@ -265,6 +265,21 @@ describe('FindShowsScreen', () => {
     expect(screen.getByRole('button', { name: 'Retry' })).not.toBeBusy();
   });
 
+  // A refusal offers no Retry: its read again is a sign-in's or a focus's, never "failed".
+  it('shows the loading state, not the failed check, while a refused check is read again', async () => {
+    mockCaps = {};
+    signIn();
+    mockServerError = new ApiError(401, 'unauthorized');
+    mockServerFailures = 1;
+    const view = await mountWithPortal(<FindShowsScreen />);
+    expect(screen.queryByText("Couldn't check whether you can add shows.")).toBeNull();
+    mockServerError = null;
+    mockServerFetching = true;
+    await view.rerender(<FindShowsScreen />);
+    expect(screen.queryByText("Couldn't check whether you can add shows.")).toBeNull();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
+
   it("offers no Retry for a server's failed answer while the device is offline", async () => {
     mockCaps = {};
     mockOnline = false;

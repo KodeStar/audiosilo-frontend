@@ -188,11 +188,20 @@ function FindShowsAccessState({ connectionId }: { connectionId: string }) {
   // `offline`: a server's failed answer (an `ApiError`) is `failed` whatever the network
   // does since, but its Retry can't work until the network is back.
   const { unread, offline } = useDialogRead(info);
+  // The last failure, kept while a read after it runs (`asking`).
+  const [failure, setFailure] = useState<unknown>(null);
+  if (info.error && info.error !== failure) setFailure(info.error);
   if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
   // Asked again after a failure: a read with nothing kept goes back to pending with no
   // error, so only its count of failures still says so (as `failedRead` in hooks.ts). The
-  // sentence stays with its Retry busy, never the skeleton for the whole ask.
-  const asking = info.data === undefined && info.errorUpdateCount > 0 && info.isFetching;
+  // sentence stays with its Retry busy, never the skeleton for the whole ask. Not after a
+  // refusal, which offers no Retry: the read again is a sign-in's (or a focus's), and that
+  // sentence would say the check failed while it runs.
+  const asking =
+    info.data === undefined &&
+    info.errorUpdateCount > 0 &&
+    info.isFetching &&
+    !refusedServer(connectionId, failure);
   if (unread === 'failed' || asking) {
     const refusal = refusedServer(connectionId, info.error);
     if (refusal) return <ServerRefusal {...refusal} />;
