@@ -204,11 +204,11 @@ let yieldedAttempt = -1;
 /** Pending stall→error timer and its deadline (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 let stallDeadline: number | null = null;
-/** Until when a `playing` report may be older than the stall watchdog's pause (`fireStallWatchdog`),
- * or a Cast receiver's than a give-way pause (`giveWayTo`): sent before the pause reached the
- * engine, and the pause wins. A time, not the pause's
- * promise: Android's resolves before the engine has paused. */
-let stallPauseUntil = 0;
+/** Until when a `playing` report may be older than a pause the store fenced: the stall
+ * watchdog's (`fireStallWatchdog`), or a tab's give-way pause of a Cast receiver still
+ * buffering (`giveWayTo`). Sent before the pause reached the engine, and the pause wins. A
+ * time, not the pause's promise: Android's resolves before the engine has paused. */
+let pauseFenceUntil = 0;
 /** A play asked of the engine from outside the app that the store follows
  * (`playAskedFromOutside`) while it is still starting, else null: over once it plays, is
  * given up (`clearPlaybackIntent`) or another play is asked for (`beginPlaybackAttempt`), so
@@ -898,17 +898,24 @@ function lowerFloorTo(bookPosition: number, trackIndex: number) {
 }
 
 /** A move of the listener's own in the loaded book (a seek, a track jump, a book
- * started): counted for the place reconcile (`localMoves`), and, given where it lands,
- * the resume floor lowered to it (`lowerFloorTo`). The place is theirs from here, whatever
- * another tab played meanwhile (`otherTabPlayed`). */
+ * started): the place chosen (`choosePlaceHere`), any move to another tab's place given up on
+ * called off (`lateTabSeek`), and, given where it lands, the resume floor lowered to it
+ * (`lowerFloorTo`). */
 function userMoved(bookPosition?: number, trackIndex = 0) {
   lateTabSeek = null;
+  choosePlaceHere();
+  if (bookPosition !== undefined) lowerFloorTo(bookPosition, trackIndex);
+}
+
+/** The listener chose the loaded book's place in this tab: counted for the place reconcile
+ * (`localMoves`), and theirs from here, whatever another tab played meanwhile
+ * (`otherTabPlayed`). */
+function choosePlaceHere() {
   localMoves++;
   cancelTabSwapMoves();
   quietAdopted = null;
   otherTabPlayed = null;
   placeChosen = true;
-  if (bookPosition !== undefined) lowerFloorTo(bookPosition, trackIndex);
 }
 
 /** Engine tunables derived from the settings store. */
@@ -2396,10 +2403,8 @@ function giveWayTo(claim: PlayingClaim) {
   }
   // Pause even when the engine has yet to report the play it was asked for.
   clearPlaybackIntent();
-  // A Cast receiver still buffering can report the play it buffered for before this pause
-  // reaches it: no play of the receiver's own (`castPlay`), so it is paused again until the
-  // receiver reports the pause (`stallPauseUntil`).
-  if (service?.isCasting?.()) stallPauseUntil = Date.now() + CAST_GIVE_WAY_FENCE_MS;
+  // Not read as the receiver's own play (`castPlay`): see `pauseFenceUntil`.
+  if (castRouted()) pauseFenceUntil = Date.now() + CAST_GIVE_WAY_FENCE_MS;
   void service
     ?.pause()
     .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));
@@ -3325,8 +3330,9 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
  * (`onGaveWayAnswer`), and begins again at the place while it plays.
  *
  * Not once the listener moved or the store asked the engine elsewhere (either clears
- * `lateTabSeek`; Stay does not, `chooseLoadedPlace`), another book started or another such move began meanwhile (`catchingUp`),
- * nor when the engine is not at the place (a queue replaced under the seek). `'unconfirmed'`:
+ * `lateTabSeek`; Stay does not, `chooseLoadedPlace`), another book started or another such
+ * move began meanwhile (`catchingUp`), nor when the engine is not at the place (a queue
+ * replaced under the seek). `'unconfirmed'`:
  * the report reached the place by playing on from `prev`, which is no landing yet; the report
  * handler runs its tick after this report settles.
  */
@@ -3578,8 +3584,8 @@ function fireStallWatchdog() {
   // The engine stops waiting to play too: left buffering, it would start on its own once the
   // server answered again, with the listener told playback had stopped. Only a press (Retry,
   // play, the car, a headset) plays from here. Its report of the pause is held by the error,
-  // and so is a `playing` it sent before the pause reached it (`stallPauseUntil`).
-  stallPauseUntil = Date.now() + STALL_PAUSE_FENCE_MS;
+  // and so is a `playing` it sent before the pause reached it (`pauseFenceUntil`).
+  pauseFenceUntil = Date.now() + STALL_PAUSE_FENCE_MS;
   void service?.pause().catch(() => undefined);
 }
 
@@ -3660,7 +3666,7 @@ function playAskedFromOutside() {
  * attempt's pause, and a rival tab's claim is weighed against this press. Shared by the
  * store's own starts and an OS-controls play the engine starts by itself. */
 function notePlayAsked(askedAt: number, intent: typeof playIntent) {
-  stallPauseUntil = 0;
+  pauseFenceUntil = 0;
   playAttempts++;
   cancelTabSwapMoves();
   playAskedAt = askedAt;
@@ -4131,12 +4137,12 @@ async function createService(): Promise<PlaybackService> {
     else if (state === 'loading' && !wantsPlayback && !startingPlayback) state = 'paused';
     const reported: PlaybackSnapshot = state === raw.state ? raw : { ...raw, state };
     const prev = usePlayer.getState().snapshot;
-    // The watchdog's pause reached the engine (iOS, the web: it reports itself paused, after
+    // The fenced pause reached the engine (iOS, the web: it reports itself paused, after
     // whatever it sent before the pause): a `playing` from here is a new play (the car, a
     // headset), never an older report, so the fence below ends. Not on Android, whose pause of
     // a buffering engine reads `loading`: its engine says so itself (`onPauseAsked`).
-    if (stallPauseUntil > 0 && raw.state === 'paused' && Platform.OS !== 'android') {
-      stallPauseUntil = 0;
+    if (pauseFenceUntil > 0 && raw.state === 'paused' && Platform.OS !== 'android') {
+      pauseFenceUntil = 0;
     }
     // After the stall watchdog (or an engine error) surfaces an `error`, the engine
     // keeps re-reporting around the dead stream - iOS: frozen `onProgress` ticks
@@ -4153,10 +4159,10 @@ async function createService(): Promise<PlaybackService> {
     if (errorHeld() && reported.state !== 'playing') {
       return;
     }
-    // Nor a `playing` sent just before the watchdog's pause reached the engine: the pause
+    // Nor a `playing` sent just before a fenced pause reached the engine: the pause
     // wins, and is asked again (a play pressed outside the app in that moment, on an engine
     // that does not say so, `onPlayAsked`, is pressed again).
-    if (reported.state === 'playing' && !wantsPlayback && Date.now() < stallPauseUntil) {
+    if (reported.state === 'playing' && !wantsPlayback && Date.now() < pauseFenceUntil) {
       void svc.pause().catch(() => undefined);
       return;
     }
@@ -4488,7 +4494,7 @@ async function createService(): Promise<PlaybackService> {
   // of), never a report from before the pause.
   svc.onPauseAsked?.(() => {
     if (playIntent === 'remote') playIntent = null;
-    stallPauseUntil = 0;
+    pauseFenceUntil = 0;
   });
   // Native: the OS changed the speed and the engine already runs at it. Only a speed
   // outside the app's range goes back to the engine, clamped.
@@ -5293,13 +5299,11 @@ export function holdSaves(): (opts?: { flush?: boolean }) => void {
   return release;
 }
 
-/** Stay on a place offer is a choice of the loaded book's current place. A move to another
- * tab's place given up on (`lateTabSeek`) is not called off by it: the engine goes there if
- * it lands, and the store follows, or the floor left behind would refuse every save. */
+/** Stay on a place offer is a choice of the loaded book's current place. Not a move: a move
+ * to another tab's place given up on (`lateTabSeek`) stands, since the engine goes there if it
+ * lands, and the store follows, or the floor left behind would refuse every save. */
 export function chooseLoadedPlace(): void {
-  const late = lateTabSeek;
-  userMoved();
-  lateTabSeek = late;
+  choosePlaceHere();
 }
 
 /** The listener's own moves so far (`localMoves`). */

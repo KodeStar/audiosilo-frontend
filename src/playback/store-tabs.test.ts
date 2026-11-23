@@ -1735,72 +1735,44 @@ describe.each([
         },
       );
 
-      it('far behind: the play that follows still saves its place', async () => {
-        mockMirror.on = true;
-        await a.start(5, 'c1', long);
-        await sleep(10);
-        a.engine.at(300);
-        await b.start(300, 'c1', long);
-        await until(() => a.player().snapshot.state === 'paused', 'A to give way');
-        // The listener went back in B (more than the save guard's slip tolerance), which
-        // then paused: no answer of B's moves A there.
-        await b.player().seekBook(12);
-        await sleep(10);
-        b.engine.at(15);
-        await b.player().pause();
-        const key = mirrorKey('c1', 2, long.book.rel_path);
-        await until(() => mockMirror.records.get(key)?.position === 15, "B's place saved");
-        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const seek = slowSeek();
-        try {
-          await a.player().toggle();
-          seek.restore();
-          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
-          seek.land();
+      // Stay before the landing chooses the place the book shows, but the engine still goes
+      // where the move lands: the landing is taken as without it.
+      it.each([{ stay: false }, { stay: true }])(
+        'far behind: the play that follows still saves its place (Stay $stay)',
+        async ({ stay }) => {
+          mockMirror.on = true;
+          await a.start(5, 'c1', long);
           await sleep(10);
-          a.engine.at(20);
-          await a.save();
-          expect(mockMirror.records.get(key)?.position).toBe(20);
-          await a.player().pause();
-        } finally {
-          seek.restore();
-          warned.mockRestore();
-        }
-      });
-
-      // Stay chooses the place the book shows; the engine still goes where the move lands,
-      // so the landing is taken as before and the play that follows is saved.
-      it('Stay pressed before the landing: the play that follows still saves its place', async () => {
-        mockMirror.on = true;
-        await a.start(5, 'c1', long);
-        await sleep(10);
-        a.engine.at(300);
-        await b.start(300, 'c1', long);
-        await until(() => a.player().snapshot.state === 'paused', 'A to give way');
-        await b.player().seekBook(12);
-        await sleep(10);
-        b.engine.at(15);
-        await b.player().pause();
-        const key = mirrorKey('c1', 2, long.book.rel_path);
-        await until(() => mockMirror.records.get(key)?.position === 15, "B's place saved");
-        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
-        const seek = slowSeek();
-        try {
-          await a.player().toggle();
-          seek.restore();
-          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
-          a.stay();
-          seek.land();
+          a.engine.at(300);
+          await b.start(300, 'c1', long);
+          await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+          // The listener went back in B (more than the save guard's slip tolerance), which
+          // then paused: no answer of B's moves A there.
+          await b.player().seekBook(12);
           await sleep(10);
-          a.engine.at(20);
-          await a.save();
-          expect(mockMirror.records.get(key)?.position).toBe(20);
-          await a.player().pause();
-        } finally {
-          seek.restore();
-          warned.mockRestore();
-        }
-      });
+          b.engine.at(15);
+          await b.player().pause();
+          const key = mirrorKey('c1', 2, long.book.rel_path);
+          await until(() => mockMirror.records.get(key)?.position === 15, "B's place saved");
+          const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+          const seek = slowSeek();
+          try {
+            await a.player().toggle();
+            seek.restore();
+            expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 300 });
+            if (stay) a.stay();
+            seek.land();
+            await sleep(10);
+            a.engine.at(20);
+            await a.save();
+            expect(mockMirror.records.get(key)?.position).toBe(20);
+            await a.player().pause();
+          } finally {
+            seek.restore();
+            warned.mockRestore();
+          }
+        },
+      );
     });
 
     it('a seek during the move starts the listening span at the listener’s place', async () => {
