@@ -135,6 +135,7 @@ export function OpmlImportPanel({
           state={state}
           opml={opml}
           running={running}
+          online={online}
         />
       ) : null}
     </View>
@@ -147,12 +148,15 @@ function ImportProgress({
   state,
   opml,
   running,
+  online,
 }: {
   connectionId: string;
   libraryId: number;
   state: WaveState;
   opml: OpmlImport;
   running: boolean;
+  /** `useDeviceOnline()`: Try again and a row's retry wait for the network. */
+  online: boolean;
 }) {
   const { t } = useTranslation();
   const focused = useIsFocused();
@@ -164,7 +168,6 @@ function ImportProgress({
   );
   const numbers = useMemo(() => entryNumbers(rows), [rows]);
   const { settled, total } = importProgress(rows);
-  const online = useDeviceOnline();
   const retryable = online && canRetryImport(state);
   return (
     <View className="gap-3">
