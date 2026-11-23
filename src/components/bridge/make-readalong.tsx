@@ -3,6 +3,7 @@ import { View } from 'react-native';
 
 import { useReadalongEstimate } from '@/api/hooks';
 import type { ReadalongEstimate } from '@/api/types';
+import { readRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -17,6 +18,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
+import { useDialogRead } from '@/lib/offline-state';
 import { pathLeaf } from '@/lib/paths';
 
 import { Fact } from './generate-dialog';
@@ -104,6 +106,7 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
   const { t } = useTranslation();
   const { connectionId, libraryId, path } = model.target;
   const estimate = useReadalongEstimate(libraryId, path, connectionId);
+  const { unread, offline } = useDialogRead(estimate);
   const data = estimate.data;
   const blocked = data ? readalongBlockKey(data) : null;
   const transcription = data ? transcriptionKey(data) : null;
@@ -148,17 +151,20 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
             </Text>
           ) : null}
         </View>
-      ) : estimate.isError ? (
-        <View testID="readalong-estimate-failed">
-          <ErrorNote
-            message={t(readalongRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
-            onRetry={() => void estimate.refetch()}
-          />
-        </View>
-      ) : (
+      ) : unread === 'failed' ? (
+        (readRefusalState(estimate.error, connectionId, () => model.setConfirming(false)) ?? (
+          <View testID="readalong-estimate-failed">
+            <ErrorNote
+              message={t(readalongRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}
+              onRetry={offline ? undefined : () => void estimate.refetch()}
+            />
+          </View>
+        ))
+      ) : offline ? null : (
         <SkeletonText lines={4} className="py-1" />
       )}
 
+      {offline ? <Text variant="muted">{t('bridge.generate.offline')}</Text> : null}
       <DialogFooter>
         <Button
           title={t('common.cancel')}
@@ -169,8 +175,8 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
           testID="readalong-confirm"
           title={t('bridge.readalong.confirm')}
           icon="sparkles"
-          disabled={!data || !!blocked}
-          loading={model.queueing}
+          disabled={offline || !data || !!blocked}
+          loading={!offline && model.queueing}
           onPress={() => void confirm()}
         />
       </DialogFooter>

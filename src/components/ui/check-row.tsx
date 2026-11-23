@@ -22,6 +22,7 @@ export function CheckRow({
   detail,
   checked,
   busy,
+  disabled = false,
   wrap = false,
   testID,
   onPress,
@@ -30,6 +31,7 @@ export function CheckRow({
   detail?: string;
   checked: boolean | undefined;
   busy?: boolean;
+  disabled?: boolean;
   /** The label wraps (a sentence) instead of keeping to one line (a name). */
   wrap?: boolean;
   testID?: string;
@@ -43,9 +45,9 @@ export function CheckRow({
       aria-checked={!!checked}
       accessibilityState={{ checked: !!checked, busy }}
       accessibilityLabel={detail ? `${label}, ${detail}` : label}
-      disabled={checked === undefined || busy}
+      disabled={disabled || checked === undefined || busy}
       onPress={onPress}
-      className={checkRowClass}
+      className={cn(checkRowClass, disabled && 'opacity-45')}
     >
       <View
         className={cn(

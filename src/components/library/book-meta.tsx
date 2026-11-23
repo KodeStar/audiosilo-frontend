@@ -25,6 +25,7 @@ import { SectionHeader } from '@/components/ui/section-header';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { SkeletonText } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
+import { useUnreadQuery } from '@/lib/offline-state';
 import { familyName, orderingLabelKey } from '@/lib/series-orderings';
 import { railPositionLabel } from '@/lib/series-position';
 import { openExternalUrl } from '@/lib/support';
@@ -478,7 +479,9 @@ function PreviousBookRow({
   // Open state lives here (not inside `Disclosure`) because the lazy fetch is
   // gated on it: a closed row must never request its work.
   const [open, setOpen] = useState(false);
-  const { data, isError } = useMetaWork(entry.id, open);
+  const query = useMetaWork(entry.id, open);
+  const { data } = query;
+  const unread = useUnreadQuery(query);
   return (
     <Disclosure
       className={first ? '' : 'border-t border-border'}
@@ -517,7 +520,9 @@ function PreviousBookRow({
             is stale offline, and its refetch fails there. */}
         {data ? (
           <Body work={data} entry={entry} />
-        ) : isError ? (
+        ) : unread === 'offline' ? (
+          <Text variant="caption">{t('book.meta.offline')}</Text>
+        ) : unread === 'failed' ? (
           <PreviousBookNote message={t('book.meta.couldntLoad')} url={entry.web_url} />
         ) : (
           <SkeletonText lines={3} className="py-1" />

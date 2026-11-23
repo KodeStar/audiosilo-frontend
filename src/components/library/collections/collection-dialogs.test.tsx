@@ -1,19 +1,45 @@
 import { fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
+import { ServerReadError } from '@/api/server-read-error';
 import type { Collection, CollectionDetail, HouseholdMember, HouseholdMembers } from '@/api/types';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
+const mockReconnect = jest.fn();
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (c: unknown) => mockReconnect(c),
+}));
 
-let mockCollections: Collection[] = [];
+let mockOnline = true;
+let mockPaused = false;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+}));
+beforeEach(() => {
+  mockOnline = true;
+  mockPaused = false;
+  mockCollectionsError = null;
+  mockTargetsError = null;
+  mockTargetsRetry.mockReset();
+  mockReconnect.mockReset();
+});
+let mockCollectionsError: Error | null = null;
+let mockTargetsError: Error | null = null;
+const mockTargetsRetry = jest.fn();
+let mockCollections: Collection[] | undefined = [];
+let mockDetailError: Error | null = null;
+const mockDetailRetry = jest.fn();
+let mockDetailPaused = false;
 let mockDetails: Record<number, CollectionDetail> = {};
 const mockAdd = jest.fn();
 const mockRemove = jest.fn();
 const mockCreate = jest.fn();
-let mockTargets: { id: number; username: string }[] = [];
+let mockTargets: { id: number; username: string }[] | undefined = [];
 let mockMembers: HouseholdMembers | undefined;
 const mockSetShares = jest.fn();
 jest.mock('@/api/hooks', () => {
@@ -21,13 +47,28 @@ jest.mock('@/api/hooks', () => {
   const mutation = (fn: jest.Mock) => ({ mutateAsync: fn, isPending: false });
   return {
     CapabilityError,
-    useCollections: () => ({ data: mockCollections, isLoading: false, error: null }),
-    useCollection: (id: number) => ({ data: mockDetails[id] }),
+    useCollections: () => ({
+      data: mockCollections,
+      isPaused: mockPaused,
+      isLoading: false,
+      error: mockCollectionsError,
+    }),
+    useCollection: (id: number) => ({
+      data: mockDetails[id],
+      error: mockDetailError,
+      isPaused: mockDetailPaused,
+      refetch: mockDetailRetry,
+    }),
     useAddCollectionItem: () => mutation(mockAdd),
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
-    useShareTargets: () => ({ data: mockTargets, error: null }),
+    useShareTargets: () => ({
+      data: mockTargets,
+      isPaused: mockPaused,
+      error: mockTargetsError,
+      refetch: mockTargetsRetry,
+    }),
     useSetCollectionShares: () => mutation(mockSetShares),
     // A server without household_members hands back no data.
     useHouseholdMembers: () => ({ data: mockMembers }),
@@ -35,7 +76,13 @@ jest.mock('@/api/hooks', () => {
 });
 
 /* eslint-disable import/first */
-import { AddToCollectionDialog, ShareCollectionDialog } from './collection-dialogs';
+import { type Connection, useSession } from '@/stores/session';
+
+import {
+  AddToCollectionDialog,
+  CollectionFormDialog,
+  ShareCollectionDialog,
+} from './collection-dialogs';
 /* eslint-enable import/first */
 
 const collection = (id: number, name: string, over: Partial<Collection> = {}): Collection => ({
@@ -76,9 +123,83 @@ function mount() {
 describe('AddToCollectionDialog', () => {
   beforeEach(() => {
     mockCollections = [road, comfort, shared];
+    mockDetailError = null;
+    mockDetailPaused = false;
+    mockDetailRetry.mockClear();
     // The book is in Road trip under its book path (an add resolves a part path).
     mockDetails = { 1: detail(road, ['Author/Book']), 2: detail(comfort, ['Other']) };
     [mockToast, mockAdd, mockRemove, mockCreate].forEach((m) => m.mockReset());
+  });
+
+  it('explains a held collection list and keeps New collection disabled', async () => {
+    mockCollections = undefined;
+    mockPaused = true;
+    await mount();
+    expect(screen.getByText("You're offline. Reconnect to change collections.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'New collection' })).toBeDisabled();
+    expect(screen.queryByText('Retry')).toBeNull();
+    expect(screen.queryByText(/no collections/i)).toBeNull();
+  });
+
+  it('shows a list not read yet as loading, never as "no collections"', async () => {
+    mockCollections = undefined;
+    await mount();
+    expect(screen.queryByText(/no collections/i)).toBeNull();
+    expect(screen.queryByText("You're offline. Reconnect to change collections.")).toBeNull();
+  });
+
+  it('never creates a second collection from the keyboard while the book is being added', async () => {
+    mockCreate.mockResolvedValue(collection(4, 'Winter'));
+    mockAdd.mockReturnValue(new Promise(() => {}));
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    await fireEvent(name, 'submitEditing');
+    expect(mockAdd).toHaveBeenCalledTimes(1);
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
+  });
+
+  it('names a collection whose membership is held without offering a toggle', async () => {
+    mockCollections = [road];
+    mockDetails = {};
+    mockDetailPaused = true;
+    await mount();
+    expect(screen.getByText('Road trip')).toBeTruthy();
+    expect(screen.getByText("You're offline")).toBeTruthy();
+    expect(screen.queryByRole('checkbox')).toBeNull();
+  });
+
+  it('can retry the collection whose membership failed online', async () => {
+    mockCollections = [road];
+    mockDetails = {};
+    mockDetailError = new Error('unavailable');
+    await mount();
+    expect(screen.getByText("Couldn't load Road trip.")).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Retry' }));
+    expect(mockDetailRetry).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps known membership visible without sending changes offline', async () => {
+    mockOnline = false;
+    await mount();
+    const checked = screen.getByRole('checkbox', { name: /^Road trip/ });
+    expect(checked).toBeChecked();
+    expect(checked).toBeDisabled();
+    await fireEvent.press(checked);
+    expect(mockRemove).not.toHaveBeenCalled();
+  });
+
+  it('keeps an open create form and blocks keyboard submission when the connection drops', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+    mockOnline = false;
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    expect(screen.getByRole('button', { name: 'Create and add' })).toBeDisabled();
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it("lists only the listener's own collections, checked where the book is", async () => {
@@ -154,6 +275,35 @@ describe('ShareCollectionDialog: household members (8b-1)', () => {
     };
   });
 
+  it.each([false, true])(
+    'explains why sharing cannot be saved offline (cached people: %s)',
+    async (cached) => {
+      if (!cached) mockTargets = undefined;
+      mockPaused = true;
+      await mountShare();
+      expect(screen.getByText("You're offline. Reconnect to save sharing changes.")).toBeTruthy();
+      expect(!!screen.queryByRole('checkbox', { name: 'evie' })).toBe(cached);
+      const save = screen.getByRole('button', { name: 'Save' });
+      expect(save).toBeDisabled();
+      await fireEvent.press(save);
+      expect(mockSetShares).not.toHaveBeenCalled();
+      expect(screen.queryByText('Retry')).toBeNull();
+    },
+  );
+
+  it('holds Save after a kept people list fails to read again online, until Retry', async () => {
+    mockTargetsError = new Error('unavailable');
+    await mountShare();
+    expect(screen.getByText("Couldn't load the people on this server")).toBeTruthy();
+    expect(screen.queryByRole('checkbox', { name: 'evie' })).toBeNull();
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(save).toBeDisabled();
+    await fireEvent.press(save);
+    expect(mockSetShares).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('Retry'));
+    expect(mockTargetsRetry).toHaveBeenCalled();
+  });
+
   it('says a picked member on "Only collections I share" can listen to all of it', async () => {
     await mountShare();
     expect(screen.queryByTestId('share-member-note')).toBeNull();
@@ -177,5 +327,194 @@ describe('ShareCollectionDialog: household members (8b-1)', () => {
     mockMembers = undefined;
     await mountShare(collection(4, 'Bedtime', { shared_with: [{ id: 12, username: 'evie' }] }));
     expect(screen.queryByTestId('share-member-note')).toBeNull();
+  });
+});
+
+// A refused /server read shows Reconnect inside the open dialog: pressing it closes the
+// dialog first, so the sign-in page it opens is not left under a modal.
+describe('collection dialogs: Reconnect from a refused server', () => {
+  const signedOut = { id: 'c', name: 'Hearthside', needsReconnect: 'auth' } as Connection;
+  const refused = () => new ServerReadError(new ApiError(401, 'signed out'));
+  beforeEach(() => {
+    useSession.setState({ connections: [signedOut] });
+    mockDetailError = null;
+  });
+
+  async function pressReconnect() {
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+  }
+
+  it("closes Add to collection from its list's refusal", async () => {
+    mockCollectionsError = refused();
+    mockCollections = undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <AddToCollectionDialog
+        open
+        onOpenChange={onOpenChange}
+        connectionId="c"
+        libraryId={1}
+        path="Author/Book"
+        title="Book"
+      />,
+    );
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it("closes Add to collection from a collection row's refusal", async () => {
+    mockCollections = [road];
+    mockDetails = {};
+    mockDetailError = refused();
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <AddToCollectionDialog
+        open
+        onOpenChange={onOpenChange}
+        connectionId="c"
+        libraryId={1}
+        path="Author/Book"
+        title="Book"
+      />,
+    );
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it('closes Share from its refusal', async () => {
+    mockTargetsError = refused();
+    mockTargets = undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <ShareCollectionDialog open onOpenChange={onOpenChange} connectionId="c" collection={road} />,
+    );
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+});
+
+// A revoked token: `/server` answers anyone, so only the dialog's own read is refused (a
+// 401). Its Retry could never work, so it offers Reconnect, which closes the dialog first.
+describe("collection dialogs: Reconnect from the server's 401 on the dialog's own read", () => {
+  const signedOut = { id: 'c', name: 'Hearthside', needsReconnect: 'auth' } as Connection;
+  const revoked = () => new ApiError(401, 'unauthorized');
+  beforeEach(() => {
+    useSession.setState({ connections: [signedOut] });
+    mockDetailError = null;
+  });
+
+  async function pressReconnect() {
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+  }
+
+  it("closes Add to collection from its list's 401", async () => {
+    mockCollectionsError = revoked();
+    mockCollections = undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <AddToCollectionDialog
+        open
+        onOpenChange={onOpenChange}
+        connectionId="c"
+        libraryId={1}
+        path="Author/Book"
+        title="Book"
+      />,
+    );
+    expect(screen.queryByText("Couldn't load your collections")).toBeNull();
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it('shows one sign-in row over a kept list, not one per collection', async () => {
+    mockCollections = [road, comfort];
+    mockCollectionsError = revoked();
+    mockDetails = {};
+    mockDetailError = revoked();
+    await mount();
+    expect(screen.getAllByText('Sign in again to Hearthside')).toHaveLength(1);
+  });
+
+  it.each([false, true])('closes Share from its 401 (kept people: %s)', async (kept) => {
+    mockTargetsError = revoked();
+    mockTargets = kept ? [{ id: 12, username: 'evie' }] : undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <ShareCollectionDialog open onOpenChange={onOpenChange} connectionId="c" collection={road} />,
+    );
+    expect(screen.queryByText("Couldn't load the people on this server")).toBeNull();
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it("keeps Retry for a proxy's own 401", async () => {
+    useSession.setState({ connections: [{ ...signedOut, needsReconnect: undefined }] });
+    mockCollectionsError = new ApiError(401, 'proxy', undefined, undefined, true);
+    mockCollections = undefined;
+    await mount();
+    expect(screen.getByText('Retry')).toBeTruthy();
+  });
+});
+
+describe('CollectionFormDialog', () => {
+  beforeEach(() => mockCreate.mockReset());
+  const mountForm = () =>
+    mountWithPortal(<CollectionFormDialog open onOpenChange={jest.fn()} connectionId="c" />);
+
+  it('holds Create offline and says why, from the button and the keyboard', async () => {
+    mockOnline = false;
+    await mountForm();
+    expect(screen.getByText("You're offline. Reconnect to change collections.")).toBeTruthy();
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toBeDisabled();
+    await fireEvent.press(create);
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates online', async () => {
+    mockCreate.mockResolvedValue(collection(9, 'Winter'));
+    await mountForm();
+    expect(screen.queryByText("You're offline. Reconnect to change collections.")).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('Name'), 'Winter');
+    await fireEvent.press(screen.getByRole('button', { name: 'Create' }));
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'Winter', description: '' });
+  });
+});
+
+// Two Enters about 15 ms apart arrive before React renders again, so a mutation's
+// `isPending` still reads false for the second.
+describe('collection forms: two keyboard submits before a render', () => {
+  it.each([
+    [
+      'Add to collection',
+      async () => {
+        await mount();
+        await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+      },
+    ],
+    [
+      'New collection',
+      () =>
+        mountWithPortal(<CollectionFormDialog open onOpenChange={jest.fn()} connectionId="c" />),
+    ],
+  ])('create one collection (%s)', async (_, open) => {
+    mockCreate.mockReset().mockReturnValue(new Promise(() => {}));
+    await open();
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    await fireEvent(name, 'submitEditing');
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).toHaveBeenCalledTimes(1);
   });
 });

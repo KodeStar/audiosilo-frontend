@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { fireEvent, render, screen } from '@testing-library/react-native';
 import { useState } from 'react';
 
 import type {
@@ -86,15 +86,11 @@ beforeEach(() => {
 });
 
 async function mount(ui: React.ReactElement) {
-  await act(async () => {
-    render(ui);
-  });
+  await render(ui);
 }
 
 async function press(label: string) {
-  await act(async () => {
-    fireEvent.press(screen.getByText(label));
-  });
+  await fireEvent.press(screen.getByText(label));
 }
 
 const characters: BookMetaCharacter[] = [
@@ -489,8 +485,22 @@ describe('previous books (Recaps tab)', () => {
     expect(screen.getByText('View on AudioSilo Meta')).toBeTruthy();
   });
 
+  it('explains a previous book waiting for the network when opened', async () => {
+    mockUseMetaWork.mockReturnValue({ isPaused: true });
+    await mount(
+      <RecapsTab recaps={[]} progress={{ chapter: 0, finished: false }} previousBooks={previous} />,
+    );
+    await press('The Two Towers');
+    expect(screen.getByText(/offline.*community details/i)).toBeTruthy();
+    expect(screen.queryByText('View on AudioSilo Meta')).toBeNull();
+  });
+
   it('degrades quietly when the fetch fails (old server / meta service down)', async () => {
-    mockUseMetaWork.mockReturnValue({ data: undefined, isError: true });
+    mockUseMetaWork.mockReturnValue({
+      data: undefined,
+      isError: true,
+      error: new Error('unavailable'),
+    });
     await mount(
       <RecapsTab recaps={[]} progress={{ chapter: 0, finished: false }} previousBooks={previous} />,
     );

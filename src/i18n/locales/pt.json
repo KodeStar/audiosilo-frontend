@@ -1087,7 +1087,8 @@
         "title": "Partilhar {{name}}",
         "hint": "Podem vê-la mas não alterá-la, e cada pessoa só vê os livros que consegue abrir.",
         "none": "Ainda não há mais ninguém neste servidor com quem partilhar.",
-        "error": "Não foi possível carregar as pessoas deste servidor"
+        "error": "Não foi possível carregar as pessoas deste servidor",
+        "offline": "Estás offline. Volta a ligar-te para guardar as alterações à partilha."
       },
       "deleteConfirm": {
         "title": "Eliminar {{name}}?",
@@ -1109,8 +1110,10 @@
       },
       "addTo": {
         "title": "Adicionar a uma coleção",
-        "none": "Ainda não tens coleções. Cria uma aqui."
-      }
+        "none": "Ainda não tens coleções. Cria uma aqui.",
+        "readFailed": "Não foi possível carregar {{name}}."
+      },
+      "offline": "Estás offline. Volta a ligar-te para alterar as coleções."
     }
   },
   "downloads": {
@@ -1402,7 +1405,8 @@
         "antagonist": "Antagonista",
         "supporting": "Coadjuvante",
         "minor": "Figurante"
-      }
+      },
+      "offline": "Estás offline. Os detalhes da comunidade sobre este livro serão carregados quando voltares a ter ligação."
     },
     "page": {
       "crumbs": "Onde está este livro",
@@ -1556,7 +1560,8 @@
       "queuedSome_one": "{{count}} de {{total}} livros na fila. Os outros não puderam entrar na fila.",
       "queuedSome_other": "{{count}} de {{total}} livros na fila. Os outros não puderam entrar na fila.",
       "queuedRestFailed": "Este livro ainda não está na fila. Toque em Gerar de novo para colocar os outros na fila.",
-      "queueFailed": "Não foi possível colocar na fila. Nada foi iniciado."
+      "queueFailed": "Não foi possível colocar na fila. Nada foi iniciado.",
+      "offline": "Estás offline. Volta a ligar-te para adicionar esta tarefa à fila."
     },
     "readalong": {
       "make": "Criar leitura sincronizada",
@@ -3118,7 +3123,8 @@
         "following": "Seguindo",
         "openShow": "Abrir programa",
         "searchAgain": "Pesquisar de novo",
-        "loading": "Pesquisando..."
+        "loading": "Pesquisando...",
+        "lastResults": "Estes são os últimos resultados para «{{query}}»."
       },
       "provider": {
         "itunes": "Apple Podcasts",
@@ -3168,7 +3174,9 @@
         "following": "Você segue {{title}}.",
         "adding": "Adicionando o programa. Ele aparece em Programas quando estiver pronto.",
         "followingPublic": "Você segue {{title}}. Ele já estava nesta biblioteca como feed público, então não é privado."
-      }
+      },
+      "offline": "Estás offline. Volta a ligar-te para procurar ou adicionar programas.",
+      "accessFailed": "Não foi possível verificar se podes adicionar programas."
     },
     "requests": {
       "title": "Programas sendo adicionados",

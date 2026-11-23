@@ -10,6 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
+import { isDeviceOnline, useDeviceOnline } from '@/lib/device-online';
 import { useNow } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -99,24 +100,28 @@ export function OpmlImportPanel({
   libraryId: number;
 }) {
   const { t } = useTranslation();
+  const online = useDeviceOnline();
   const { state, problem } = opml;
   const running = !!state && isRunning(state.status);
+  // The network is read again when the file comes back: the picker can stay open while it
+  // drops, and an upload started then fails unsent. The offline line already says why.
   const choose = () =>
     void pickOpml().then(
       (file) => {
-        if (file) opml.start(file);
+        if (file && isDeviceOnline()) opml.start(file);
       },
       () => opml.unreadable(),
     );
   return (
     <View testID="opml-import" className="gap-4">
       <Text variant="body">{t('podcasts.import.intro')}</Text>
+      {!online ? <Text variant="muted">{t('podcasts.find.offline')}</Text> : null}
       <Button
         variant={state ? 'outline' : 'default'}
         icon="inbox"
         title={state || problem ? t('podcasts.import.chooseAnother') : t('podcasts.import.choose')}
         onPress={choose}
-        disabled={running}
+        disabled={!online || running}
         className="self-start"
         testID="opml-choose"
       />
@@ -132,6 +137,7 @@ export function OpmlImportPanel({
           state={state}
           opml={opml}
           running={running}
+          online={online}
         />
       ) : null}
     </View>
@@ -144,12 +150,15 @@ function ImportProgress({
   state,
   opml,
   running,
+  online,
 }: {
   connectionId: string;
   libraryId: number;
   state: WaveState;
   opml: OpmlImport;
   running: boolean;
+  /** `useDeviceOnline()`: Try again and a row's retry wait for the network. */
+  online: boolean;
 }) {
   const { t } = useTranslation();
   const focused = useIsFocused();
@@ -161,7 +170,7 @@ function ImportProgress({
   );
   const numbers = useMemo(() => entryNumbers(rows), [rows]);
   const { settled, total } = importProgress(rows);
-  const retryable = canRetryImport(state);
+  const retryable = online && canRetryImport(state);
   return (
     <View className="gap-3">
       <View className="gap-1" accessibilityLiveRegion="polite">
@@ -213,7 +222,7 @@ function ImportProgress({
               }
               reasonKey={importRowReasonKey(row, requests)}
               busy={retries[row.outline_index]?.kind === 'busy'}
-              onRetry={canRetryRow(row) ? retryRow : undefined}
+              onRetry={online && canRetryRow(row) ? retryRow : undefined}
             />
           ))}
         </View>

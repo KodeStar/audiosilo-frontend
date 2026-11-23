@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { useEffect, useState } from 'react';
 
@@ -31,6 +31,11 @@ jest.mock('@/playback/progress-sync', () => ({
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (t: unknown) => mockToast(t) }));
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
+const mockReconnect = jest.fn();
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (c: unknown) => mockReconnect(c),
+}));
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
@@ -151,6 +156,36 @@ describe('who sees "Make read-along"', () => {
 });
 
 describe('the confirmation', () => {
+  it.each([false, true])(
+    'holds confirmation offline and recovers on reconnect (cached estimate: %s)',
+    async (cached) => {
+      await mount();
+      const action = await screen.findByTestId('readalong-make');
+      if (cached) {
+        await fireEvent.press(action);
+        await screen.findByTestId('readalong-estimate');
+        await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+      }
+      try {
+        await act(() => onlineManager.setOnline(false));
+        await fireEvent.press(screen.getByTestId('readalong-make'));
+        expect(
+          await screen.findByText("You're offline. Reconnect to queue this job."),
+        ).toBeTruthy();
+        expect(!!screen.queryByTestId('readalong-estimate')).toBe(cached);
+        const confirm = screen.getByTestId('readalong-confirm');
+        expect(confirm).toBeDisabled();
+        expect(screen.queryByText('Retry')).toBeNull();
+        expect(mockQueue).not.toHaveBeenCalled();
+        await act(() => onlineManager.setOnline(true));
+        await waitFor(() => expect(screen.getByTestId('readalong-confirm')).toBeEnabled());
+        expect(mockQueue).not.toHaveBeenCalled();
+      } finally {
+        await act(() => onlineManager.setOnline(true));
+      }
+    },
+  );
+
   const open = async () => {
     await mount();
     await fireEvent.press(await screen.findByTestId('readalong-make'));
@@ -218,5 +253,20 @@ describe('the confirmation', () => {
       }),
     );
     expect(screen.getByTestId('readalong-confirm')).toBeTruthy();
+  });
+});
+
+// A revoked token: `/server` answers anyone, so only the estimate's own read is refused.
+// Its Retry could never work: Reconnect closes the confirmation, then opens the sign-in.
+describe("the estimate's 401", () => {
+  it('offers Reconnect, closing the confirmation first', async () => {
+    mockEstimate.mockRejectedValue(new ApiError(401, 'unauthorized'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('readalong-make'));
+    expect(await screen.findByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(screen.queryByTestId('readalong-confirm')).toBeNull();
+    expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
   });
 });

@@ -1,9 +1,12 @@
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCapability, useLibrariesOf } from '@/api/hooks';
+import { useCapability, useLibrariesOf, useServerInfo } from '@/api/hooks';
+import { refusedServer } from '@/api/server-read-error';
+import { OfflineState } from '@/components/layout/offline-state';
+import { ServerRefusal } from '@/components/layout/server-refusal-state';
 import { useCid } from '@/api/provider';
 import { pageGutter } from '@/components/library/cover-layout';
 import { ContentScope } from '@/components/layout/content-scope';
@@ -13,6 +16,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { RowSkeletonList } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
+import { useDialogRead } from '@/lib/offline-state';
 import { useLayout } from '@/lib/layout';
 import { type FindShowsSection, parseFindShowsParams } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
@@ -65,14 +69,33 @@ function FindShowsContent() {
   const importer = useOpmlImport(cid, params?.libraryId ?? 0);
   const librariesRead = useLibrariesOf(cid);
   const libraries = librariesRead.data;
+  const librariesOffline = useDialogRead(librariesRead).offline;
+  const linked = params?.libraryId;
+  const lacksLinked = !!libraries && !libraries.some((l) => l.id === linked);
+  // A kept list may predate the linked library, and one whose last read failed is read
+  // again only on a reconnect or a focus. So when the page opens on a library (or moves to
+  // another) with such a list and nothing settled since, it reads the list once more, and
+  // calls the library missing only from a read since then. Once per library, and only for
+  // a listener who may add shows (the other pages never use the list).
+  const { dataUpdatedAt, errorUpdatedAt } = librariesRead;
+  const page = `${cid}:${linked}`;
+  const [opened, setOpened] = useState({ page, dataUpdatedAt, errorUpdatedAt });
+  if (opened.page !== page) setOpened({ page, dataUpdatedAt, errorUpdatedAt });
+  const readSinceOpened = dataUpdatedAt > opened.dataUpdatedAt;
+  const settledSinceOpened = readSinceOpened || errorUpdatedAt > opened.errorUpdatedAt;
+  const stale = !settledSinceOpened && (!!librariesRead.error || lacksLinked);
+  const askedFor = useRef<string | null>(null);
+  const { isFetching: librariesFetching, refetch: readLibraries } = librariesRead;
+  useEffect(() => {
+    if (linked === undefined || access !== 'allowed' || askedFor.current === page) return;
+    if (!stale || librariesOffline || librariesFetching) return;
+    askedFor.current = page;
+    void readLibraries();
+  }, [linked, access, page, stale, librariesOffline, librariesFetching, readLibraries]);
 
   if (!params) return <EmptyState icon="microphone" title={t('library.detail.badLink')} />;
   if (access === 'unknown') {
-    return (
-      <View className="p-4">
-        <RowSkeletonList />
-      </View>
-    );
+    return <FindShowsAccessState connectionId={cid} />;
   }
   if (access !== 'allowed') {
     return (
@@ -90,10 +113,18 @@ function FindShowsContent() {
     );
   }
 
-  // Only once the libraries are known and settled (a cached list read again may hold a
-  // library added since): a library the server lacks. A books library is the server's to
-  // refuse (`not_podcast_library`).
-  if (libraries && !librariesRead.isFetching && !libraries.some((l) => l.id === params.libraryId)) {
+  // A library the server lacks, only from a settled read since the page opened on it
+  // (above). A books library is the server's to refuse (`not_podcast_library`). While the
+  // list waits for the network or failed, the page stays as for a list not read yet: each
+  // section says what became of its own reads, and replacing the page would drop a typed
+  // address, kept results or a running import with its Stop.
+  if (
+    lacksLinked &&
+    readSinceOpened &&
+    !librariesFetching &&
+    !librariesOffline &&
+    !librariesRead.error
+  ) {
     return (
       <View testID="find-shows-library-missing">
         <EmptyState icon="microphone" title={t('library.detail.badLink')} />
@@ -148,6 +179,53 @@ function FindShowsContent() {
         </FindShowsScroll>
       );
   }
+}
+
+/** The capability check has no answer yet. A held or failed read needs its own state. */
+function FindShowsAccessState({ connectionId }: { connectionId: string }) {
+  const { t } = useTranslation();
+  const info = useServerInfo(connectionId);
+  // `offline`: a server's failed answer (an `ApiError`) is `failed` whatever the network
+  // does since, but its Retry can't work until the network is back.
+  const { unread, offline } = useDialogRead(info);
+  // The last failure, kept while a read after it runs (`asking`).
+  const [failure, setFailure] = useState<unknown>(null);
+  if (info.error && info.error !== failure) setFailure(info.error);
+  if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
+  // Asked again after a failure: a read with nothing kept goes back to pending with no
+  // error, so only its count of failures still says so (as `failedRead` in hooks.ts). The
+  // sentence stays with its Retry busy, never the skeleton for the whole ask. Not after a
+  // refusal, which offers no Retry: the read again is a sign-in's (or a focus's), and that
+  // sentence would say the check failed while it runs.
+  const asking =
+    info.data === undefined &&
+    info.errorUpdateCount > 0 &&
+    info.isFetching &&
+    !refusedServer(connectionId, failure);
+  if (unread === 'failed' || asking) {
+    const refusal = refusedServer(connectionId, info.error);
+    if (refusal) return <ServerRefusal {...refusal} />;
+    return (
+      <EmptyState
+        icon="server"
+        title={t('podcasts.find.accessFailed')}
+        action={
+          offline
+            ? undefined
+            : {
+                label: t('common.retry'),
+                onPress: () => void info.refetch(),
+                loading: info.isFetching,
+              }
+        }
+      />
+    );
+  }
+  return (
+    <View className="p-4">
+      <RowSkeletonList />
+    </View>
+  );
 }
 
 /** The page's scroller for a section without a long list (a feed address, an import):

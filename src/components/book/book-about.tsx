@@ -65,6 +65,7 @@ export function openLabelBooks(
 export function BookAbout({
   book,
   meta,
+  metaOffline,
   work,
   onOpenLabel,
 }: {
@@ -72,6 +73,7 @@ export function BookAbout({
   /** The matched envelope (`matchedMeta`): the recording's facts and the link to
    * AudioSilo Meta need a real community match. */
   meta?: MatchedBookMeta;
+  metaOffline?: boolean;
   /** The work every work-level field comes from (`bookMetaWork`): the matched work, or an
    * unmatched book's generated one. Required, with no fallback to `meta`'s work: a host
    * that left it out would drop an unmatched book's generated description, and a default
@@ -123,6 +125,7 @@ export function BookAbout({
           </AnimatedPressable>
         ) : null}
       </View>
+      {metaOffline ? <Text variant="caption">{t('book.meta.offline')}</Text> : null}
       {details.length > 0 ? (
         <View className="mt-1 gap-1.5">
           {details.map((d) => (
