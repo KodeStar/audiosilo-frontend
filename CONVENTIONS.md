@@ -2850,7 +2850,8 @@ media GETs only.
   the active session's guard. Stay saves this device's place at once. A timeout leaves the
   choice open for the next play or move. At sign-out the outbox finishes transferring any
   rollback saves first, then the final legacy flush checks each guarded save as any replay
-  does: one the server's row lets through is PUT with its original capture time before the
+  does, on a fresh read (a hold read over 5 s before, still reused by a tick, may predate
+  the other device going back below it): one the server's row lets through is PUT with its original capture time before the
   token is revoked, one still held is dropped with the mirror, never PUT unguarded (it would
   move the other device's further place back). A Sync v2 server never sees one: its listens
   go as events, which `ResolvePlace` and the `resume_behind` backstop resolve against the

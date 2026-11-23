@@ -2179,6 +2179,46 @@ describe('the replay guard on the legacy PUT path (fe#198)', () => {
       expect(await readQueue()).toEqual([]);
     });
 
+    it('reads the row afresh at the last flush, not a hold read before the other device went back', async () => {
+      const session = { ...guarded, guard_session: 'offer-unanswered' };
+      let row: Progress = ahead;
+      const api = serverWith(async () => row);
+      routeClients({ c1: api });
+      const now = jest.spyOn(Date, 'now');
+      const start = Date.now();
+      try {
+        now.mockReturnValue(start);
+        await expect(saveProgress(api, session)).resolves.toBe('held');
+        // Under a minute later (the hold is still reused by a tick) the other device has gone
+        // back below this capture, and the listener signs out.
+        row = { ...ahead, position: 2 };
+        now.mockReturnValue(start + 55_000);
+        api.getProgress.mockClear();
+        await flushConnection('c1', { lastChance: true });
+        expect(api.getProgress).toHaveBeenCalledTimes(1);
+        expect(api.saveProgress).toHaveBeenCalledTimes(1);
+        expect(api.saveProgress).toHaveBeenCalledWith(
+          1,
+          'A/Book',
+          expect.objectContaining({ position: session.position, updated_at: session.updated_at }),
+        );
+        expect(await readQueue()).toEqual([]);
+      } finally {
+        now.mockRestore();
+      }
+    });
+
+    it("reuses a hold read moments ago at the last flush (the stop's own save): one read", async () => {
+      const session = { ...guarded, guard_session: 'stopped-just-now' };
+      const api = serverWith(ahead);
+      routeClients({ c1: api });
+      await expect(saveProgress(api, session)).resolves.toBe('held');
+      await flushConnection('c1', { lastChance: true });
+      expect(api.getProgress).toHaveBeenCalledTimes(1);
+      expect(api.saveProgress).not.toHaveBeenCalled();
+      expect(await readQueue()).toEqual([]);
+    });
+
     it('keeps a held capture whose guard read gets no answer at the last flush, unsent', async () => {
       let fail = false;
       const api = serverWith(async () => {
