@@ -439,6 +439,51 @@ describe('the replay guard on the PUT path', () => {
     expect(guards()).toEqual([true, true]);
   });
 
+  const stamps = () => mockSaveProgress.mock.calls.map((c) => (c[1] as Stamped).updated_at);
+  type Stamped = { position: number; updated_at: string; guard?: boolean };
+
+  // A sign-out's stop saves the paused place again. Dated the sign-out, the guard's read (the
+  // server's row behind it, another device's move back) lets it through, and last-write-wins
+  // it then replaced that newer move.
+  it("a paused book's sign-out save keeps the stamp of the held capture that took its place", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(10_000);
+    mockSaveProgress.mockResolvedValueOnce('held' as never);
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    const [held] = stamps();
+    jest.advanceTimersByTime(18_000);
+    await teardownBeforeTokenRevoke('c1');
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    expect(mockSaveProgress.mock.calls[1][1]).toMatchObject({
+      position: 51,
+      guard: true,
+      updated_at: held,
+    });
+  });
+
+  it("a playing book's sign-out save is dated the stop: the listener was there until then", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(3_000);
+    const stoppedAt = new Date().toISOString();
+    await teardownBeforeTokenRevoke('c1');
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    expect(stamps()[1]).toBe(stoppedAt);
+  });
+
   // The other device was still playing: its row had moved on from the one the offer named,
   // so the Stay's own save was held again, and each save after it, with no new offer.
   it("Stay on a held save's offer lifts the guard, whatever the other device saved since", async () => {

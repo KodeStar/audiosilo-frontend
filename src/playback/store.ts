@@ -615,6 +615,10 @@ let placeGuard: { key: string; id: string } | null = null;
 /** A guarded session for the book `key`, with an id its saves carry (`guard_session`), so a
  * queued one PUT later lifts it (`guardSettled`, fe#198). */
 const guardFor = (key: string) => ({ key, id: newEventId() });
+/** The last place `persist` captured on the legacy PUT path, of the book `key` (`contentKey`),
+ * with the stamp it went with: a paused book's stop saves that place again under that stamp
+ * (`stampOfPausedPlace`). */
+let lastCapture: { key: string; position: number; updated_at: string } | null = null;
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
  * at a stale 0. */
@@ -1196,6 +1200,16 @@ async function persist(opts?: {
       heard.to = end;
     return position;
   }
+  // The last save of a paused book before it unloads (a stop, a sign-out's) is no new place:
+  // nothing was heard since the capture that took it. It keeps that capture's stamp, held or
+  // queued or PUT: dated now, it would win (last write by `updated_at`) over another device's
+  // move made since, which a guard read lets through when that move went back. A playing
+  // book's stop keeps its fresh stamp: the listener was there until now.
+  if (opts?.leaving && !forceFinished && !isPlayingState(snapshot.state)) {
+    const kept = stampOfPausedPlace(key, position);
+    if (kept) save.updated_at = kept;
+  }
+  lastCapture = { key, position, updated_at: save.updated_at };
   // The book named's own server (during a switch, `nowPlaying` is still the previous book
   // until the next one loads: a save meanwhile goes to the previous book's server). Read
   // again when the save is sent (`liveClient`): a re-pair since this capture changed the
@@ -1218,6 +1232,13 @@ async function persist(opts?: {
   // straight on from here.
   if (guarded && outcome === 'saved' && placeGuard === guard) placeGuard = null;
   return outcome === 'saved' || outcome === 'queued' ? position : undefined;
+}
+
+/** The stamp of the legacy capture that took the book `key`'s place `position` (within a
+ * second, as `samePlace` in progress-sync), when it was the last one (`lastCapture`). */
+function stampOfPausedPlace(key: string, position: number): string | undefined {
+  const last = lastCapture;
+  return last?.key === key && Math.abs(last.position - position) <= 1 ? last.updated_at : undefined;
 }
 
 /** The stopping book `key`'s place, saved once for the stops of it that overlap: a second
