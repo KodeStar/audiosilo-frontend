@@ -31,6 +31,11 @@ jest.mock('@/playback/progress-sync', () => ({
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (t: unknown) => mockToast(t) }));
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
+const mockReconnect = jest.fn();
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (c: unknown) => mockReconnect(c),
+}));
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
@@ -248,5 +253,20 @@ describe('the confirmation', () => {
       }),
     );
     expect(screen.getByTestId('readalong-confirm')).toBeTruthy();
+  });
+});
+
+// A revoked token: `/server` answers anyone, so only the estimate's own read is refused.
+// Its Retry could never work: Reconnect closes the confirmation, then opens the sign-in.
+describe("the estimate's 401", () => {
+  it('offers Reconnect, closing the confirmation first', async () => {
+    mockEstimate.mockRejectedValue(new ApiError(401, 'unauthorized'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('readalong-make'));
+    expect(await screen.findByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(screen.queryByTestId('readalong-confirm')).toBeNull();
+    expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
   });
 });

@@ -35,6 +35,12 @@ jest.mock('@/components/ui/toast', () => ({ toast: (t: unknown) => mockToast(t) 
 // The status polls while its screen is focused; these mount it with no navigator.
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 
+const mockReconnect = jest.fn();
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (c: unknown) => mockReconnect(c),
+}));
+
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
 import { qk } from '@/api/hooks';
@@ -655,5 +661,20 @@ describe('the status while a job runs', () => {
     await fireEvent.press(screen.getByTestId('generate-retry'));
     await waitFor(() => expect(mockQueue).toHaveBeenCalledTimes(1));
     expect(mockQueue.mock.calls[0][0]).toMatchObject({ path: 'Saga/Book 3' });
+  });
+});
+
+// A revoked token: `/server` answers anyone, so only the estimate's own read is refused.
+// Its Retry could never work: Reconnect closes the confirmation, then opens the sign-in.
+describe("the estimate's 401", () => {
+  it('offers Reconnect, closing the confirmation first', async () => {
+    mockEstimate.mockRejectedValue(new ApiError(401, 'unauthorized'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(screen.queryByTestId('generate-confirm')).toBeNull();
+    expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
   });
 });

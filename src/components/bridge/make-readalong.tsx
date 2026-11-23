@@ -3,7 +3,7 @@ import { View } from 'react-native';
 
 import { useReadalongEstimate } from '@/api/hooks';
 import type { ReadalongEstimate } from '@/api/types';
-import { serverRefusalState } from '@/components/layout/server-refusal-state';
+import { readRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -152,7 +152,7 @@ function MakeBody({ model, title }: { model: MakeReadalongModel; title?: string 
           ) : null}
         </View>
       ) : unread === 'failed' ? (
-        (serverRefusalState(estimate.error, connectionId) ?? (
+        (readRefusalState(estimate.error, connectionId, () => model.setConfirming(false)) ?? (
           <View testID="readalong-estimate-failed">
             <ErrorNote
               message={t(readalongRefusalKey(estimate.error, 'bridge.generate.estimateFailed'))}

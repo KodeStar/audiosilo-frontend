@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { useBridgeEstimate } from '@/api/hooks';
-import { serverRefusalState } from '@/components/layout/server-refusal-state';
+import { readRefusalState } from '@/components/layout/server-refusal-state';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -137,7 +137,7 @@ function GenerateBody({ model, title }: { model: GenerateModel; title?: string }
           ) : null}
         </View>
       ) : unread === 'failed' ? (
-        (serverRefusalState(estimate.error, connectionId) ?? (
+        (readRefusalState(estimate.error, connectionId, () => model.setConfirming(false)) ?? (
           // No automatic retry (`useBridgeEstimate`): the admin asks again from here.
           <View testID="generate-estimate-failed">
             <ErrorNote
