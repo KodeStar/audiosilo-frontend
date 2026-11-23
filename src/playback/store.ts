@@ -617,7 +617,8 @@ let placeGuard: { key: string; id: string } | null = null;
 const guardFor = (key: string) => ({ key, id: newEventId() });
 /** The last place `persist` captured on the legacy PUT path, of the book `key` (`contentKey`),
  * with the stamp it went with: a paused book's stop saves that place again under that stamp
- * (`stampOfPausedPlace`). */
+ * (`stampOfPausedPlace`). Held here, not read from the mirror: a sign-out's list refetch can
+ * write another device's newer row there before the stop's save reads it. */
 let lastCapture: { key: string; position: number; updated_at: string } | null = null;
 /** Set when `playBook` bailed at the resume-lookup stage (a streaming book whose resume
  * position couldn't be confirmed). `retry()` then re-runs the lookup instead of reloading
@@ -1206,8 +1207,7 @@ async function persist(opts?: {
   // move made since, which a guard read lets through when that move went back. A playing
   // book's stop keeps its fresh stamp: the listener was there until now.
   if (opts?.leaving && !forceFinished && !isPlayingState(snapshot.state)) {
-    const kept = stampOfPausedPlace(key, position);
-    if (kept) save.updated_at = kept;
+    save.updated_at = stampOfPausedPlace(key, position) ?? save.updated_at;
   }
   lastCapture = { key, position, updated_at: save.updated_at };
   // The book named's own server (during a switch, `nowPlaying` is still the previous book
@@ -1234,11 +1234,17 @@ async function persist(opts?: {
   return outcome === 'saved' || outcome === 'queued' ? position : undefined;
 }
 
-/** The stamp of the legacy capture that took the book `key`'s place `position` (within a
- * second, as `samePlace` in progress-sync), when it was the last one (`lastCapture`). */
+/** How far (s) a place may be from the last capture's and still be its place: `samePlace`'s
+ * second in progress-sync (not imported: the tests mock that module whole). */
+const CAPTURED_PLACE_S = 1;
+
+/** The stamp of the legacy capture that took the book `key`'s place `position`, when it was
+ * the last one (`lastCapture`). */
 function stampOfPausedPlace(key: string, position: number): string | undefined {
   const last = lastCapture;
-  return last?.key === key && Math.abs(last.position - position) <= 1 ? last.updated_at : undefined;
+  return last?.key === key && Math.abs(last.position - position) <= CAPTURED_PLACE_S
+    ? last.updated_at
+    : undefined;
 }
 
 /** The stopping book `key`'s place, saved once for the stops of it that overlap: a second

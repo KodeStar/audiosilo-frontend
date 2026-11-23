@@ -439,8 +439,8 @@ describe('the replay guard on the PUT path', () => {
     expect(guards()).toEqual([true, true]);
   });
 
-  const stamps = () => mockSaveProgress.mock.calls.map((c) => (c[1] as Stamped).updated_at);
-  type Stamped = { position: number; updated_at: string; guard?: boolean };
+  const stamps = () =>
+    mockSaveProgress.mock.calls.map((c) => (c[1] as { updated_at: string }).updated_at);
 
   // A sign-out's stop saves the paused place again. Dated the sign-out, the guard's read (the
   // server's row behind it, another device's move back) lets it through, and last-write-wins
