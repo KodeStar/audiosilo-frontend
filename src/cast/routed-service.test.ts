@@ -271,8 +271,10 @@ describe('RoutedPlaybackService', () => {
     await t.router.beginCast(fakeCast() as unknown as CastPlaybackService);
     press();
     expect(asked).toHaveBeenCalledTimes(1);
+    await t.router.endCast();
     t.router.onRemotePlay(null);
-    expect(register).toHaveBeenLastCalledWith(null);
+    press();
+    expect(asked).toHaveBeenCalledTimes(1);
   });
 
   it('passes on the phone engine stopping wanting to play, never while casting', async () => {
