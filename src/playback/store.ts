@@ -58,13 +58,13 @@ import {
   resumeStart,
   type LocalFiles,
 } from './book-source';
+import { connectionGeneration } from './connection-generation';
 import { engineTick, engineTicker } from './engine-ticks';
 import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
   afterInTurn,
   appendInTurn,
   closeSpan,
-  connectionGeneration,
   finishEvent,
   flushOutbox,
   movesNowhere,
@@ -3160,11 +3160,15 @@ async function otherTabsPlace(
         return { saved, at };
       }),
     );
+  // A hot-swap moving the file first (`swapHold`): its place is read once it lands. One
+  // that began while the read was out reads again after it, since the other tab could have
+  // paused or moved again while the download buffered.
+  const before = swapHold?.nowPlaying === loaded ? swapHold : null;
+  if (before && !(await waitForTabSwap(before))) return null;
   let reads = await read();
-  const hold = swapHold;
-  if (hold?.nowPlaying === loaded) {
-    if (!(await waitForTabSwap(hold))) return null;
-    // The other tab could have paused or moved again while the download buffered.
+  const during = swapHold;
+  if (during && during !== before && during.nowPlaying === loaded) {
+    if (!(await waitForTabSwap(during))) return null;
     reads = await read();
   }
   let record: (typeof reads)[number]['saved'] = null;
@@ -3640,19 +3644,24 @@ function playAskedFromOutside() {
   }
 }
 
-/** Begin a playback attempt: we intend to play, we're "connecting" until the engine
- * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
- * stream surfaces an error after the grace, matching the old native behavior). */
-function beginPlaybackAttempt(askedAt = Date.now(), intent: typeof playIntent = 'page') {
-  // A play of its own from here: what the engine reports next is of it, not of a stalled
-  // attempt's pause.
+/** A play asked for at `askedAt`: what the engine reports next is of it, not of a stalled
+ * attempt's pause, and a rival tab's claim is weighed against this press. Shared by the
+ * store's own starts and an OS-controls play the engine starts by itself. */
+function notePlayAsked(askedAt: number, intent: typeof playIntent) {
   stallPauseUntil = 0;
-  outsidePlay = null;
-  pausedAsk = null;
   playAttempts++;
   cancelTabSwapMoves();
   playAskedAt = askedAt;
   playIntent = intent;
+}
+
+/** Begin a playback attempt: we intend to play, we're "connecting" until the engine
+ * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
+ * stream surfaces an error after the grace, matching the old native behavior). */
+function beginPlaybackAttempt(askedAt = Date.now(), intent: typeof playIntent = 'page') {
+  outsidePlay = null;
+  pausedAsk = null;
+  notePlayAsked(askedAt, intent);
   wantsPlayback = true;
   startingPlayback = true;
   armStallWatchdog();
@@ -4350,11 +4359,7 @@ async function createService(): Promise<PlaybackService> {
     if (!nowPlaying || isPlayingState(snapshot.state)) return;
     // The engine owns this start. An early OS pause or an autoplay refusal remains a
     // pause, including when the engine was already paused before the press.
-    stallPauseUntil = 0;
-    playAskedAt = Date.now();
-    playAttempts++;
-    cancelTabSwapMoves();
-    playIntent = 'remote';
+    notePlayAsked(Date.now(), 'remote');
   });
   // The OS media controls' seeks (web Media Session) go through the store's own seek,
   // so a lock-screen scrub back lowers the resume floor and saves like any other seek.
