@@ -1,3 +1,4 @@
+import { withTimeout } from '@/lib/with-timeout';
 import { recoverOpenSpan } from './listening-outbox';
 
 /** How long a reader of this device's places waits for the launch's recovery of a span a
@@ -10,14 +11,10 @@ export const SPAN_RECOVERY_WAIT_MS = 2_000;
  * reader about to read this device's places (a resume, the book page, the car's play specs),
  * but never longer than `SPAN_RECOVERY_WAIT_MS`: past it the reader goes on with the places
  * as they are, and the recovery lands later as it would have (a resume never hangs on it).
- * One microtask turn after the recovery's own once it is over (`recoverOpenSpan` never rejects).
+ * (`recoverOpenSpan` never rejects: only the timeout does, and is taken as over.)
  */
 export function spanRecovered(): Promise<void> {
-  return new Promise<void>((resolve) => {
-    const late = setTimeout(resolve, SPAN_RECOVERY_WAIT_MS);
-    void recoverOpenSpan().then(() => {
-      clearTimeout(late);
-      resolve();
-    });
-  });
+  return withTimeout(recoverOpenSpan(), SPAN_RECOVERY_WAIT_MS, 'span recovery').catch(
+    () => undefined,
+  );
 }
