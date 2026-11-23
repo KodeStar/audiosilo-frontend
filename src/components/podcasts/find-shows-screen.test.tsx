@@ -228,13 +228,23 @@ describe('FindShowsScreen', () => {
     expect(screen.queryByText('Retry')).toBeNull();
   });
 
-  it('explains a paused library check before declaring the library missing', async () => {
-    mockLibraries = [{ id: 3 }];
-    mockLibrariesPaused = true;
-    await mountWithPortal(<FindShowsScreen />);
-    expect(screen.getByText("You're offline")).toBeTruthy();
-    expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
-  });
+  // Each section says it is offline itself; replacing the page would drop a typed
+  // address, kept search results or a running import with its Stop.
+  it.each([
+    ['held', { paused: true, online: true }],
+    ['failed with the device offline', { paused: false, online: false }],
+  ])(
+    'keeps the page while a kept list without the library is read again %s',
+    async (_, { paused, online }) => {
+      mockLibraries = [{ id: 3 }];
+      mockLibrariesPaused = paused;
+      mockOnline = online;
+      await mountWithPortal(<FindShowsScreen />);
+      expect(screen.getByTestId('section-search').props.children).toBe('search 7');
+      expect(screen.queryByText("You're offline")).toBeNull();
+      expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
+    },
+  );
 
   it('keeps the page while a libraries list not read yet waits for the network', async () => {
     mockLibraries = undefined;

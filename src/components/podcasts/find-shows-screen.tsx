@@ -94,11 +94,15 @@ function FindShowsContent() {
   // Only once the libraries are known and settled (a cached list read again may hold a
   // library added since): a library the server lacks. A books library is the server's to
   // refuse (`not_podcast_library`). Offline, a kept list may predate the library, so a
-  // missing one waits for the network too. A list not read yet keeps the page: each
-  // section says it is offline itself, and replacing the page would drop a typed address,
-  // kept results or a running import with its Stop.
-  if (libraries && !librariesRead.isFetching && !libraries.some((l) => l.id === params.libraryId)) {
-    if (librariesOffline) return <OfflineState hint={t('common.offlinePage')} />;
+  // missing one waits for the network, and the page stays as it does for a list not read
+  // yet: each section says it is offline itself, and replacing the page would drop a typed
+  // address, kept results or a running import with its Stop.
+  if (
+    libraries &&
+    !librariesRead.isFetching &&
+    !librariesOffline &&
+    !libraries.some((l) => l.id === params.libraryId)
+  ) {
     return (
       <View testID="find-shows-library-missing">
         <EmptyState icon="microphone" title={t('library.detail.badLink')} />
