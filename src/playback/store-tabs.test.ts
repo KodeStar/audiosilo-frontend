@@ -240,6 +240,8 @@ function makeEngine() {
       push({ state: 'loading' });
       push({ state: 'playing' });
     },
+    /** The play buffers mid-stream and has not come back yet. */
+    buffer: () => push({ state: 'loading' }),
     /** The stream dies: the engine reports `error` (and may come back by itself). */
     fail: () => push({ state: 'error' }),
     holdLoad: () => {
@@ -930,6 +932,19 @@ describe.each([
       await c.player().stop();
       await c.outbox.storeOpenSpan(null);
     }
+  });
+
+  it('a tab buffering mid-play answers with where it was heard to', async () => {
+    const answers = answersOn(browser);
+    await a.start(5, 'c1', long);
+    await sleep(40);
+    a.engine.at(38);
+    a.engine.buffer();
+    await sleep(5);
+    await b.open(long);
+    await until(() => b.player().snapshot.position === 38, 'B to take A’s place');
+    expect(answers()).toEqual([38]);
+    expect(a.player().snapshot.state).not.toBe('playing');
   });
 
   it('a play just asked for, not yet begun in the engine, gives way and never begins', async () => {

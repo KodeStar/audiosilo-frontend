@@ -3269,8 +3269,8 @@ media GETs only.
     names the play by what every claim of it carries (the claiming tab and `askedAt`), and
     the claiming tab keeps the play it claimed (`ownPlay`: `askedAt`, when it was first
     claimed, the place it began at), untouched by a later claim of the same play; never
-    match an answer on `sentAt`. Only a tab that was playing and up to date when it gave way
-    answers. A tab that was loading, or still catching up with the shared place, stays silent. A play
+    match an answer on `sentAt`. Only a tab that was playing (a buffer mid-play counts) and up to date when it
+    gave way answers. A tab whose start was loading, or still catching up with the shared place, stays silent. A play
     is answered **once**: a claim of a play the tab noted before (`notedPlay`) gets no
     second answer, which would name a later place. The
     claiming tab (`onGaveWayAnswer`) moves there by `moveToTabPlace`, the same path as the

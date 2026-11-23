@@ -2371,7 +2371,9 @@ function giveWayTo(claim: PlayingClaim) {
   }
   yieldedAttempt = playAttempts;
   const closed = closeListeningSpan({ endedAt: claim.sentAt });
-  if (np && isPlayingState(snapshot.state) && !startingPlayback && !wasBehind && !noted) {
+  // A start still loading has no place of its own yet; a play buffering mid-stream does.
+  const heard = isPlayingState(snapshot.state) || (snapshot.state === 'loading' && wantsPlayback);
+  if (np && heard && !startingPlayback && !wasBehind && !noted) {
     // Where its span ended, so the other tab's begins there: one chain, no gap.
     const at = closed && sameBook(closed, np) ? closed.to : engineEnd();
     const { total } = np.queue;
