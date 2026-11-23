@@ -17,6 +17,7 @@ jest.mock('@/lib/device-online', () => ({
 beforeEach(() => {
   mockOnline = true;
   mockPaused = false;
+  mockAddPending = false;
 });
 let mockCollections: Collection[] | undefined = [];
 let mockDetailError: Error | null = null;
@@ -24,6 +25,7 @@ const mockDetailRetry = jest.fn();
 let mockDetailPaused = false;
 let mockDetails: Record<number, CollectionDetail> = {};
 const mockAdd = jest.fn();
+let mockAddPending = false;
 const mockRemove = jest.fn();
 const mockCreate = jest.fn();
 let mockTargets: { id: number; username: string }[] | undefined = [];
@@ -46,7 +48,7 @@ jest.mock('@/api/hooks', () => {
       isPaused: mockDetailPaused,
       refetch: mockDetailRetry,
     }),
-    useAddCollectionItem: () => mutation(mockAdd),
+    useAddCollectionItem: () => ({ mutateAsync: mockAdd, isPending: mockAddPending }),
     useRemoveCollectionItem: () => mutation(mockRemove),
     useCreateCollection: () => mutation(mockCreate),
     useUpdateCollection: () => mutation(jest.fn()),
@@ -122,6 +124,17 @@ describe('AddToCollectionDialog', () => {
     await mount();
     expect(screen.queryByText(/no collections/i)).toBeNull();
     expect(screen.queryByText("You're offline. Reconnect to change collections.")).toBeNull();
+  });
+
+  it('never creates a second collection from the keyboard while the book is being added', async () => {
+    await mount();
+    await fireEvent.press(screen.getByRole('button', { name: 'New collection' }));
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    mockAddPending = true;
+    await fireEvent.changeText(name, 'Winter reads');
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).not.toHaveBeenCalled();
   });
 
   it('names a collection whose membership is held without offering a toggle', async () => {

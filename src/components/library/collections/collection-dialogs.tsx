@@ -96,6 +96,10 @@ function CollectionForm({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  // The keyboard's Done submits as the button does, so it is held by the same `disabled`.
+  const submit = () => {
+    if (!disabled) onSubmit();
+  };
   return (
     <>
       <View className="gap-3">
@@ -106,7 +110,7 @@ function CollectionForm({
           maxLength={NAME_MAX}
           autoFocus
           returnKeyType="done"
-          onSubmitEditing={onSubmit}
+          onSubmitEditing={submit}
         />
         <Textarea
           label={t('library.collection.form.description')}
@@ -121,7 +125,7 @@ function CollectionForm({
           title={submitLabel}
           disabled={disabled || !validName(form.name)}
           loading={loading}
-          onPress={onSubmit}
+          onPress={submit}
         />
       </DialogFooter>
     </>
@@ -292,7 +296,10 @@ export function AddToCollectionDialog({
   const add = useAddCollectionItem(connectionId);
 
   const submit = async () => {
-    if (offline) return;
+    // The keyboard's Done submits too: once the new collection is stored, `form.save` is
+    // free again while the book is still being added to it, and would store a second one.
+    // (Offline, the form's `disabled` holds it.)
+    if (add.isPending) return;
     try {
       const c = await form.save();
       if (!c) return;
