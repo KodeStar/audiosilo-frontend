@@ -1,5 +1,5 @@
 import type { TFunction } from 'i18next';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScrollView, View } from 'react-native';
 
@@ -17,6 +17,8 @@ import {
   useUpdateCollection,
 } from '@/api/hooks';
 import type { Collection, HouseholdMember } from '@/api/types';
+import { readRefusalState } from '@/components/layout/server-refusal-state';
+import { SignInAgainState, useSignedOutConnection } from '@/components/layout/sign-in-again';
 import { CheckRow } from '@/components/ui/check-row';
 import { collectionsMembers } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
@@ -33,6 +35,8 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useDeviceOnline } from '@/lib/device-online';
+import { useDialogRead } from '@/lib/offline-state';
 
 import { findQueued } from '../use-queue-actions';
 import {
@@ -65,14 +69,22 @@ function useCollectionForm(connectionId: string, collection?: Collection) {
   const create = useCreateCollection(connectionId);
   const update = useUpdateCollection(connectionId);
   const pending = create.isPending || update.isPending;
-  /** The stored collection, or null when there was nothing to save; rejects on a failed
-   * write. */
+  // A ref, not `pending`: two keyboard submits before React renders again would both read
+  // `pending` false and store two collections.
+  const saving = useRef(false);
+  /** The stored collection, or null when there was nothing to save (or a save is on its
+   * way); rejects on a failed write. */
   const save = async (): Promise<Collection | null> => {
-    if (!validName(name) || pending) return null;
+    if (!validName(name) || saving.current) return null;
+    saving.current = true;
     const fields = { name: name.trim(), description: description.trim() };
-    return collection
-      ? update.mutateAsync({ id: collection.id, ...fields })
-      : create.mutateAsync(fields);
+    try {
+      return await (collection
+        ? update.mutateAsync({ id: collection.id, ...fields })
+        : create.mutateAsync(fields));
+    } finally {
+      saving.current = false;
+    }
   };
   return { name, setName, description, setDescription, pending, save };
 }
@@ -82,16 +94,22 @@ function CollectionForm({
   form,
   submitLabel,
   loading,
+  disabled,
   onSubmit,
   onCancel,
 }: {
   form: ReturnType<typeof useCollectionForm>;
   submitLabel: string;
   loading: boolean;
+  disabled?: boolean;
   onSubmit: () => void;
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
+  // The keyboard's Done submits as the button does, so it is held by the same `disabled`.
+  const submit = () => {
+    if (!disabled) onSubmit();
+  };
   return (
     <>
       <View className="gap-3">
@@ -102,7 +120,7 @@ function CollectionForm({
           maxLength={NAME_MAX}
           autoFocus
           returnKeyType="done"
-          onSubmitEditing={onSubmit}
+          onSubmitEditing={submit}
         />
         <Textarea
           label={t('library.collection.form.description')}
@@ -115,9 +133,10 @@ function CollectionForm({
         <Button title={t('common.cancel')} variant="ghost" onPress={onCancel} />
         <Button
           title={submitLabel}
-          disabled={!validName(form.name)}
-          loading={loading}
-          onPress={onSubmit}
+          disabled={disabled || !validName(form.name)}
+          // Held offline, it shows no spinner, as the other dialogs' actions do.
+          loading={!disabled && loading}
+          onPress={submit}
         />
       </DialogFooter>
     </>
@@ -153,6 +172,7 @@ export function CollectionFormDialog({
 }) {
   const { t } = useTranslation();
   const form = useCollectionForm(connectionId, collection);
+  const offline = !useDeviceOnline();
 
   const submit = async () => {
     try {
@@ -178,9 +198,11 @@ export function CollectionFormDialog({
             <DialogDescription>{t('library.collection.form.newHint')}</DialogDescription>
           )}
         </DialogHeader>
+        {offline ? <Text variant="muted">{t('library.collection.offline')}</Text> : null}
         <CollectionForm
           form={form}
           submitLabel={t(collection ? 'common.save' : 'library.collection.form.create')}
+          disabled={offline}
           loading={form.pending}
           onSubmit={() => void submit()}
           onCancel={() => onOpenChange(false)}
@@ -192,20 +214,29 @@ export function CollectionFormDialog({
 
 /** One of the listener's collections in "Add to collection": checked when it holds the
  * book (read from the collection itself, only while the dialog is open); pressing adds
- * the book or takes it out (by the item's own path: a remove is exact). */
+ * the book or takes it out (by the item's own path: a remove is exact). `onReconnect`
+ * closes the dialog before a refused read's Reconnect opens the sign-in page (a refused
+ * `/server`, or the server's 401 on this read: `readRefusalState`). */
 function CollectionToggle({
   collection,
+  offline,
   connectionId,
   libraryId,
   path,
+  onReconnect,
 }: {
   collection: Collection;
+  offline: boolean;
   connectionId: string;
   libraryId: number;
   path: string;
+  onReconnect: () => void;
 }) {
   const { t } = useTranslation();
-  const { data } = useCollection(collection.id, connectionId);
+  const detail = useCollection(collection.id, connectionId);
+  const { data } = detail;
+  const read = useDialogRead(detail);
+  const disabled = offline || read.offline;
   const add = useAddCollectionItem(connectionId);
   const remove = useRemoveCollectionItem(connectionId);
   const item = data ? (findQueued(data.items, libraryId, path) ?? null) : undefined;
@@ -223,12 +254,31 @@ function CollectionToggle({
       );
     }
   };
+  if (read.unread === 'failed') {
+    return (
+      readRefusalState(detail.error, connectionId, onReconnect) ?? (
+        <ErrorNote
+          message={t('library.collection.addTo.readFailed', { name: collection.name })}
+          onRetry={disabled ? undefined : () => void detail.refetch()}
+        />
+      )
+    );
+  }
+  if (disabled && !data) {
+    return (
+      <View className="gap-1 px-3 py-2">
+        <Text variant="label">{collection.name}</Text>
+        {offline ? null : <Text variant="caption">{t('common.offlineTitle')}</Text>}
+      </View>
+    );
+  }
   return (
     <CheckRow
       label={collection.name}
       detail={t('library.collections.itemCount', { count: collection.item_count })}
       checked={item === undefined ? undefined : !!item}
-      busy={add.isPending || remove.isPending}
+      disabled={disabled}
+      busy={!disabled && (add.isPending || remove.isPending)}
       onPress={toggle}
     />
   );
@@ -255,13 +305,26 @@ export function AddToCollectionDialog({
   title: string;
 }) {
   const { t } = useTranslation();
-  const { data, isLoading, error, refetch } = useCollections(connectionId);
+  const collections = useCollections(connectionId);
+  const { data, error, refetch } = collections;
+  const { unread, offline } = useDialogRead(collections);
   const own = ownCollections(data);
   const [creating, setCreating] = useState(false);
   const form = useCollectionForm(connectionId);
   const add = useAddCollectionItem(connectionId);
+  const close = () => onOpenChange(false);
+  // Signed out (a 401 on any read): one sign-in row in place of the list, not one per
+  // collection as each row's own read is refused in turn.
+  const signedOut = useSignedOutConnection(connectionId);
+  // Held from the first submit until the book is in the new collection (or that failed):
+  // `form.save` is free again once the collection is stored, while the book is still being
+  // added, and a keyboard submit then would store a second one. (Offline, the form's
+  // `disabled` holds it.)
+  const submitting = useRef(false);
 
   const submit = async () => {
+    if (submitting.current) return;
+    submitting.current = true;
     try {
       const c = await form.save();
       if (!c) return;
@@ -270,6 +333,8 @@ export function AddToCollectionDialog({
       onOpenChange(false);
     } catch (e) {
       collectionFailed(e, t, 'tooMany');
+    } finally {
+      submitting.current = false;
     }
   };
 
@@ -282,20 +347,32 @@ export function AddToCollectionDialog({
           </DialogTitle>
           <DialogDescription numberOfLines={2}>{title}</DialogDescription>
         </DialogHeader>
+        {offline ? <Text variant="muted">{t('library.collection.offline')}</Text> : null}
         {creating ? (
           <CollectionForm
             form={form}
             submitLabel={t('library.collection.form.createAndAdd')}
+            disabled={offline}
             loading={form.pending || add.isPending}
             onSubmit={() => void submit()}
             onCancel={() => setCreating(false)}
           />
         ) : (
           <>
-            {error && !data ? (
-              <ErrorNote message={t('library.collections.error')} onRetry={() => refetch()} />
-            ) : isLoading ? (
-              <ListSkeleton />
+            {signedOut ? (
+              <SignInAgainState connection={signedOut} compact onReconnect={close} />
+            ) : unread === 'failed' ? (
+              (readRefusalState(error, connectionId, close) ?? (
+                <ErrorNote
+                  message={t('library.collections.error')}
+                  onRetry={offline ? undefined : () => void refetch()}
+                />
+              ))
+            ) : !data ? (
+              // Not `isLoading`: a list not asked yet (or held) is not "no collections".
+              offline ? null : (
+                <ListSkeleton />
+              )
             ) : own.length === 0 ? (
               <Text variant="muted">{t('library.collection.addTo.none')}</Text>
             ) : (
@@ -304,9 +381,11 @@ export function AddToCollectionDialog({
                   <CollectionToggle
                     key={c.id}
                     collection={c}
+                    offline={offline}
                     connectionId={connectionId}
                     libraryId={libraryId}
                     path={path}
+                    onReconnect={close}
                   />
                 ))}
               </ScrollView>
@@ -316,6 +395,7 @@ export function AddToCollectionDialog({
                 title={t('library.collections.new')}
                 icon="plus"
                 variant="outline"
+                disabled={offline}
                 onPress={() => setCreating(true)}
               />
               <Button title={t('common.done')} onPress={() => onOpenChange(false)} />
@@ -372,6 +452,12 @@ export function ShareCollectionDialog({
 }) {
   const { t } = useTranslation();
   const targets = useShareTargets(open, connectionId);
+  const { unread, offline } = useDialogRead(targets);
+  // Save replaces the shares with every picked person, so it is offered only over a people
+  // list the server answered: a kept list whose read again failed online shows the failure
+  // and Retry instead, and Save waits for a fresh read. Offline, the kept list shows with
+  // Save held by the offline line.
+  const failed = unread === 'failed' || (!offline && !!targets.error);
   const save = useSetCollectionShares(connectionId);
   const [ids, setIds] = useState(() => sharedIds(collection));
 
@@ -393,13 +479,18 @@ export function ShareCollectionDialog({
           </DialogTitle>
           <DialogDescription>{t('library.collection.share.hint')}</DialogDescription>
         </DialogHeader>
-        {targets.error ? (
-          <ErrorNote
-            message={t('library.collection.share.error')}
-            onRetry={() => targets.refetch()}
-          />
+        {offline ? <Text variant="muted">{t('library.collection.share.offline')}</Text> : null}
+        {failed ? (
+          (readRefusalState(targets.error, connectionId, () => onOpenChange(false)) ?? (
+            <ErrorNote
+              message={t('library.collection.share.error')}
+              onRetry={offline ? undefined : () => void targets.refetch()}
+            />
+          ))
         ) : !targets.data ? (
-          <ListSkeleton />
+          offline ? null : (
+            <ListSkeleton />
+          )
         ) : targets.data.length === 0 ? (
           <Text variant="muted">{t('library.collection.share.none')}</Text>
         ) : (
@@ -419,8 +510,8 @@ export function ShareCollectionDialog({
           <Button title={t('common.cancel')} variant="ghost" onPress={() => onOpenChange(false)} />
           <Button
             title={t('common.save')}
-            loading={save.isPending}
-            disabled={!targets.data}
+            loading={!offline && save.isPending}
+            disabled={offline || failed || !targets.data}
             onPress={() => void submit()}
           />
         </DialogFooter>

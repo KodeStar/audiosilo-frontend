@@ -267,7 +267,9 @@ function BookPage() {
   // Asked by the book's own path, as every other surface asks (and as a finished Bridge job
   // reads it again).
   const bookMetaEnabled = metaEnabledFor(useCapability('metadata', cid), book);
-  const { data: meta } = useBookMeta(libraryId, relPath, bookMetaEnabled);
+  const metaQuery = useBookMeta(libraryId, relPath, bookMetaEnabled);
+  const meta = metaQuery.data;
+  const metaUnread = useUnreadQuery(metaQuery);
   // What About's text and the Characters and Recaps tabs render: the matched work, or an
   // unmatched book's content generated on this server (the rails, the AudioSilo Meta links
   // and About's recording facts stay matched-only).
@@ -574,6 +576,7 @@ function BookPage() {
       book={book}
       connectionId={cid}
       meta={metaMatched}
+      metaOffline={bookMetaEnabled && metaUnread === 'offline'}
       work={metaWork}
       listening={listening}
       className={layout.columns === 1 ? 'mb-7' : undefined}

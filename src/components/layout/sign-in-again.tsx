@@ -63,22 +63,29 @@ export function refusedConnection(
  * The one state a screen shows for a connection that needs signing in again: "Sign in
  * again to <server>" with the Reconnect action (the banner's own flow,
  * `reconnectConnection`), never a Retry, in words that follow why (`signInAgainCopy`).
- * `compact`: a slim row for a panel (Up next); else a card in the page.
+ * `compact`: a slim row for a panel (Up next); else a card in the page. `onReconnect`
+ * runs first when Reconnect is pressed: a dialog closes itself there, so the sign-in
+ * page is not opened under it.
  */
 export function SignInAgainState({
   connection,
   compact = false,
   className,
+  onReconnect,
 }: {
   connection: Connection;
   compact?: boolean;
   className?: string;
+  onReconnect?: () => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   const { title, hint } = signInAgainCopy(connection, t);
   const action = t('reconnect.connect.heading');
-  const reconnect = () => void reconnectConnection(connection);
+  const reconnect = () => {
+    onReconnect?.();
+    void reconnectConnection(connection);
+  };
   if (compact) {
     return (
       <View

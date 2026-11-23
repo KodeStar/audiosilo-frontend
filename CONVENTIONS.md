@@ -1167,7 +1167,9 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   (only then a picker), the device region for Apple only. Artwork loads only through the
   server's proxy with the media token (`discoveryArtworkUrl` refuses any other URL), and a
   failed load mounts again on `artworkRetryDelay`'s schedule. All copy for refusals lives in
-  `find-shows-model.ts`; a code it does not know reads as the general line.
+  `find-shows-model.ts`; a code it does not know reads as the general line. A search read
+  again that failed keeps its results under "Showing the last results" with the failure and
+  Search again (fe#299), hidden while it is asked again.
 - **Follow requests poll only while open and seen**: `useFollowRequests(lib, {active})` reads
   `/me/podcasts` every 5 s only while one of the library's requests is open (`queued`,
   `claimed`, `running`, `needs_attention`), `active` (its screen focused: the Shows mode stays
@@ -5812,7 +5814,11 @@ under their empty state).
   Downloads sentence and never a second "You're offline" title; `common.offlinePage` and
   `common.offlineList` are the hints of a page and a list with nothing more to say. With no
   `hint` it is the title alone, for a section of a page that is on screen (a downloaded book's
-  bookmarks: nothing sends the listener to Downloads).
+  bookmarks: nothing sends the listener to Downloads). A surface with server actions over a
+  read (Add to collection, Share, the Generate and Make read-along estimates, Find shows)
+  asks `useDialogRead(query)`: its `unread` as above, and `offline` (no network, or the read
+  held) keeps a kept answer on screen, says why in a line, and disables the actions,
+  keyboard submits included, with no Retry (fe#271).
 - **The kept `/server` answer** (`src/api/server-snapshots.ts`, fe#211): each connection's last
   `/server` answer is kept on the device (`OFFLINE_SERVERS_KEY`, one document by connection id, in
   `SCOPED_STORAGE_KEYS` and the identity migration) and is the ONE copy of a server's facts for a

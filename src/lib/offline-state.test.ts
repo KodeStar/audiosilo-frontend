@@ -10,7 +10,13 @@ jest.mock('./device-online', () => ({
 }));
 
 /* eslint-disable import/first */
-import { offlineState, useKeptOffline, useUnreadBooks, useUnreadQuery } from './offline-state';
+import {
+  offlineState,
+  useDialogRead,
+  useKeptOffline,
+  useUnreadBooks,
+  useUnreadQuery,
+} from './offline-state';
 /* eslint-enable import/first */
 
 describe('offlineState (the one offline rule: Home, the Library, Folders, the read-along map)', () => {
@@ -112,6 +118,39 @@ describe('useKeptOffline', () => {
 
   it("never calls a server's refusal offline", async () => {
     expect(await ask({ ...kept, error: new ApiError(401, 'no') }, false)).toBe(false);
+  });
+});
+
+// A read behind a surface with server actions (a dialog's estimate, a list to add to,
+// fe#271): `unread` is `useUnreadQuery`'s, `offline` holds the actions.
+describe('useDialogRead', () => {
+  const down = new TypeError('Network request failed');
+  const read = { data: {} as unknown, isPaused: false, error: null as unknown };
+  const ask = async (query: typeof read, deviceOnline = true) => {
+    mockDeviceOnline = deviceOnline;
+    return (await renderHook(() => useDialogRead(query))).result.current;
+  };
+
+  it('holds the actions over a kept answer with no network, or while its read waits', async () => {
+    expect(await ask(read, false)).toEqual({ unread: null, offline: true });
+    expect(await ask({ ...read, isPaused: true })).toEqual({ unread: null, offline: true });
+  });
+
+  it('says why nothing shows, and frees the actions once the network is back', async () => {
+    expect(await ask({ ...read, data: undefined, error: down }, false)).toEqual({
+      unread: 'offline',
+      offline: true,
+    });
+    expect(await ask({ ...read, data: undefined, error: down })).toEqual({
+      unread: 'failed',
+      offline: false,
+    });
+    expect(await ask(read)).toEqual({ unread: null, offline: false });
+  });
+
+  it("keeps a server's refusal its own while the actions wait for the network", async () => {
+    const refused = { ...read, data: undefined, error: new ApiError(401, 'no') };
+    expect(await ask(refused, false)).toEqual({ unread: 'failed', offline: true });
   });
 });
 

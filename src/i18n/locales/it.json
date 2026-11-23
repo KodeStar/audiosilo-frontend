@@ -1087,7 +1087,8 @@
         "title": "Condividi {{name}}",
         "hint": "Possono vederla ma non modificarla, e ognuno vede solo i libri che può aprire.",
         "none": "Su questo server non c’è ancora nessun altro con cui condividerla.",
-        "error": "Impossibile caricare le persone di questo server"
+        "error": "Impossibile caricare le persone di questo server",
+        "offline": "Sei offline. Riconnettiti per salvare le modifiche alla condivisione."
       },
       "deleteConfirm": {
         "title": "Eliminare {{name}}?",
@@ -1109,8 +1110,10 @@
       },
       "addTo": {
         "title": "Aggiungi a una raccolta",
-        "none": "Non hai ancora raccolte. Creane una qui."
-      }
+        "none": "Non hai ancora raccolte. Creane una qui.",
+        "readFailed": "Impossibile caricare {{name}}."
+      },
+      "offline": "Sei offline. Riconnettiti per modificare le raccolte."
     }
   },
   "downloads": {
@@ -1402,7 +1405,8 @@
         "antagonist": "Antagonista",
         "supporting": "Secondario",
         "minor": "Minore"
-      }
+      },
+      "offline": "Sei offline. I dettagli della community su questo libro verranno caricati quando ti riconnetti."
     },
     "page": {
       "crumbs": "Dove si trova questo libro",
@@ -1556,7 +1560,8 @@
       "queuedSome_one": "{{count}} libro su {{total}} in coda. Gli altri non è stato possibile metterli in coda.",
       "queuedSome_other": "{{count}} libri su {{total}} in coda. Gli altri non è stato possibile metterli in coda.",
       "queuedRestFailed": "Questo libro non è ancora in coda. Premi di nuovo Genera per mettere in coda gli altri.",
-      "queueFailed": "Impossibile metterlo in coda. Non è stato avviato nulla."
+      "queueFailed": "Impossibile metterlo in coda. Non è stato avviato nulla.",
+      "offline": "Sei offline. Riconnettiti per mettere in coda questa attività."
     },
     "readalong": {
       "make": "Crea lettura sincronizzata",
@@ -3118,7 +3123,8 @@
         "following": "Seguito",
         "openShow": "Apri il programma",
         "searchAgain": "Cerca di nuovo",
-        "loading": "Ricerca in corso..."
+        "loading": "Ricerca in corso...",
+        "lastResults": "Sono visualizzati gli ultimi risultati per «{{query}}»."
       },
       "provider": {
         "itunes": "Apple Podcasts",
@@ -3168,7 +3174,9 @@
         "following": "Segui {{title}}.",
         "adding": "Il programma è in aggiunta. Comparirà in Programmi quando è pronto.",
         "followingPublic": "Segui {{title}}. Era già in questa libreria come feed pubblico, quindi non è privato."
-      }
+      },
+      "offline": "Sei offline. Riconnettiti per cercare o aggiungere programmi.",
+      "accessFailed": "Impossibile verificare se puoi aggiungere programmi."
     },
     "requests": {
       "title": "Programmi in aggiunta",

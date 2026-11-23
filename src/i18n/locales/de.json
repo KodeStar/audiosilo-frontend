@@ -1087,7 +1087,8 @@
         "title": "{{name}} teilen",
         "hint": "Sie können die Sammlung sehen, aber nicht ändern, und jede Person sieht nur die Bücher, die sie öffnen kann.",
         "none": "Auf diesem Server gibt es noch niemanden zum Teilen.",
-        "error": "Die Personen auf diesem Server konnten nicht geladen werden"
+        "error": "Die Personen auf diesem Server konnten nicht geladen werden",
+        "offline": "Du bist offline. Verbinde dich wieder, um die Freigaben zu speichern."
       },
       "deleteConfirm": {
         "title": "{{name}} löschen?",
@@ -1109,8 +1110,10 @@
       },
       "addTo": {
         "title": "Zu Sammlung hinzufügen",
-        "none": "Du hast noch keine Sammlungen. Lege hier eine an."
-      }
+        "none": "Du hast noch keine Sammlungen. Lege hier eine an.",
+        "readFailed": "„{{name}}“ konnte nicht geladen werden."
+      },
+      "offline": "Du bist offline. Verbinde dich wieder, um Sammlungen zu ändern."
     }
   },
   "downloads": {
@@ -1402,7 +1405,8 @@
         "antagonist": "Antagonist",
         "supporting": "Nebenfigur",
         "minor": "Randfigur"
-      }
+      },
+      "offline": "Du bist offline. Die Community-Infos zu diesem Buch werden geladen, sobald du wieder online bist."
     },
     "page": {
       "crumbs": "Wo dieses Buch liegt",
@@ -1556,7 +1560,8 @@
       "queuedSome_one": "{{count}} von {{total}} Büchern eingereiht. Der Rest ließ sich nicht einreihen.",
       "queuedSome_other": "{{count}} von {{total}} Büchern eingereiht. Der Rest ließ sich nicht einreihen.",
       "queuedRestFailed": "Dieses Buch ist noch nicht eingereiht. Tippe noch einmal auf Erstellen, um den Rest einzureihen.",
-      "queueFailed": "Konnte nicht eingereiht werden. Es wurde nichts gestartet."
+      "queueFailed": "Konnte nicht eingereiht werden. Es wurde nichts gestartet.",
+      "offline": "Du bist offline. Verbinde dich wieder, um diesen Auftrag in die Warteschlange zu stellen."
     },
     "readalong": {
       "make": "Mitlesen erstellen",
@@ -3118,7 +3123,8 @@
         "following": "Gefolgt",
         "openShow": "Sendung öffnen",
         "searchAgain": "Erneut suchen",
-        "loading": "Suche läuft..."
+        "loading": "Suche läuft...",
+        "lastResults": "Die letzten Ergebnisse für „{{query}}“ werden angezeigt."
       },
       "provider": {
         "itunes": "Apple Podcasts",
@@ -3168,7 +3174,9 @@
         "following": "Du folgst {{title}}.",
         "adding": "Die Sendung wird hinzugefügt. Sie erscheint unter Sendungen, sobald sie bereit ist.",
         "followingPublic": "Du folgst {{title}}. Die Sendung war schon als öffentlicher Feed in dieser Bibliothek, darum ist sie nicht privat."
-      }
+      },
+      "offline": "Du bist offline. Verbinde dich wieder, um Sendungen zu suchen oder hinzuzufügen.",
+      "accessFailed": "Es konnte nicht geprüft werden, ob du Sendungen hinzufügen kannst."
     },
     "requests": {
       "title": "Sendungen, die hinzugefügt werden",

@@ -2,6 +2,13 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react-n
 
 import type { OpmlImportRow, PodcastRequest } from '@/api/types';
 
+let mockOnline = true;
+jest.mock('@/lib/device-online', () => ({
+  ...jest.requireActual('@/lib/device-online'),
+  useDeviceOnline: () => mockOnline,
+  isDeviceOnline: () => mockOnline,
+}));
+
 const mockPick = jest.fn();
 jest.mock('./opml-pick', () => ({ pickOpml: () => mockPick() }));
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
@@ -51,11 +58,29 @@ const state = (status: WaveState['status'], rows: OpmlImportRow[] = []): WaveSta
 });
 
 beforeEach(() => {
+  mockOnline = true;
   mockPick.mockReset();
   mockRequests = [];
 });
 
 describe('OpmlImportPanel', () => {
+  it('keeps the import visible and holds new uploads and retries while offline', async () => {
+    mockOnline = false;
+    const opml = importer({
+      fileName: 'subs.opml',
+      state: state({ kind: 'failed', code: null }, [row(1, { status: 'cancelled' })]),
+      canRetryRow: () => true,
+    });
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
+    expect(screen.getByText('subs.opml')).toBeTruthy();
+    expect(screen.getByTestId('opml-choose')).toBeDisabled();
+    expect(screen.queryByTestId('opml-retry')).toBeNull();
+    expect(screen.queryByTestId('opml-row-retry-1')).toBeNull();
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    expect(mockPick).not.toHaveBeenCalled();
+  });
+
   it('starts an import with the chosen file', async () => {
     const opml = importer();
     const picked = { name: 'subs.opml', size: 10, body: new Uint8Array(10) };
@@ -64,6 +89,20 @@ describe('OpmlImportPanel', () => {
     expect(screen.getByText('Choose a file')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('opml-choose'));
     expect(opml.start).toHaveBeenCalledWith(picked);
+  });
+
+  it('starts nothing when the network drops while the picker is open', async () => {
+    const opml = importer();
+    const picked = { name: 'subs.opml', size: 10, body: new Uint8Array(10) };
+    let choose: (f: typeof picked) => void = () => {};
+    mockPick.mockReturnValue(new Promise((resolve) => (choose = resolve)));
+    const view = await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    mockOnline = false;
+    await act(async () => choose(picked));
+    await view.rerender(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(opml.start).not.toHaveBeenCalled();
+    expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
   });
 
   it('does nothing when the picker is cancelled, and says so when it fails', async () => {

@@ -1,4 +1,4 @@
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
 import { AppState } from 'react-native';
 
@@ -34,6 +34,12 @@ const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (t: unknown) => mockToast(t) }));
 // The status polls while its screen is focused; these mount it with no navigator.
 jest.mock('expo-router', () => ({ useIsFocused: () => true }));
+
+const mockReconnect = jest.fn();
+jest.mock('@/components/layout/reconnect-banner', () => ({
+  ...jest.requireActual('@/components/layout/reconnect-banner'),
+  reconnectConnection: (c: unknown) => mockReconnect(c),
+}));
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
@@ -173,6 +179,36 @@ describe('the covered line', () => {
 });
 
 describe('the confirmation', () => {
+  it.each([false, true])(
+    'holds confirmation offline and recovers on reconnect (cached estimate: %s)',
+    async (cached) => {
+      await mount();
+      const action = await screen.findByTestId('generate-action');
+      if (cached) {
+        await fireEvent.press(action);
+        await screen.findByTestId('generate-estimate');
+        await fireEvent.press(screen.getByRole('button', { name: 'Cancel' }));
+      }
+      try {
+        await act(() => onlineManager.setOnline(false));
+        await fireEvent.press(screen.getByTestId('generate-action'));
+        expect(
+          await screen.findByText("You're offline. Reconnect to queue this job."),
+        ).toBeTruthy();
+        expect(!!screen.queryByTestId('generate-estimate')).toBe(cached);
+        const confirm = screen.getByTestId('generate-confirm');
+        expect(confirm).toBeDisabled();
+        expect(screen.queryByText('Retry')).toBeNull();
+        expect(mockQueue).not.toHaveBeenCalled();
+        await act(() => onlineManager.setOnline(true));
+        await waitFor(() => expect(screen.getByTestId('generate-confirm')).toBeEnabled());
+        expect(mockQueue).not.toHaveBeenCalled();
+      } finally {
+        await act(() => onlineManager.setOnline(true));
+      }
+    },
+  );
+
   it('shows the estimate, then queues the earlier books first, in order, then this one', async () => {
     await mount();
     await fireEvent.press(await screen.findByTestId('generate-action'));
@@ -625,5 +661,20 @@ describe('the status while a job runs', () => {
     await fireEvent.press(screen.getByTestId('generate-retry'));
     await waitFor(() => expect(mockQueue).toHaveBeenCalledTimes(1));
     expect(mockQueue.mock.calls[0][0]).toMatchObject({ path: 'Saga/Book 3' });
+  });
+});
+
+// A revoked token: `/server` answers anyone, so only the estimate's own read is refused.
+// Its Retry could never work: Reconnect closes the confirmation, then opens the sign-in.
+describe("the estimate's 401", () => {
+  it('offers Reconnect, closing the confirmation first', async () => {
+    mockEstimate.mockRejectedValue(new ApiError(401, 'unauthorized'));
+    await mount();
+    await fireEvent.press(await screen.findByTestId('generate-action'));
+    expect(await screen.findByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+    expect(screen.queryByTestId('generate-confirm')).toBeNull();
+    expect(mockReconnect).toHaveBeenCalledWith(expect.objectContaining({ id: 'c1' }));
   });
 });

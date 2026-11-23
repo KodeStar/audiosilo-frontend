@@ -56,6 +56,7 @@ const mockBookArgs = jest.fn();
 let mockChapters: ChaptersResponse | undefined;
 let mockProgress: Progress | null = null;
 let mockMeta: BookMeta | undefined;
+let mockMetaPaused = false;
 let mockCaps: Record<string, boolean> = {};
 let mockBridge: { version: string; features: string[] } | undefined;
 let mockJobs: BridgeJob[] = [];
@@ -99,7 +100,7 @@ jest.mock('@/api/hooks', () => ({
       : { data: undefined, isSuccess: false },
   useBookMeta: (...args: unknown[]) => {
     mockMetaArgs(...args);
-    return { data: mockMeta };
+    return { data: mockMeta, isPaused: mockMetaPaused };
   },
   useBookProgress: (...args: unknown[]) => {
     mockProgressArgs(...args);
@@ -299,6 +300,7 @@ beforeEach(() => {
   mockChapters = CHAPTERS;
   mockProgress = null;
   mockMeta = undefined;
+  mockMetaPaused = false;
   mockCaps = {};
   mockBridge = undefined;
   mockJobs = [];
@@ -690,6 +692,15 @@ describe('book page tabs', () => {
 });
 
 describe('book page aside', () => {
+  it("keeps the book's description and explains why its community details are missing offline", async () => {
+    mockCaps = { metadata: true };
+    mockMetaPaused = true;
+    mockBook = { ...BOOK, description: 'Description from the library' };
+    await mountAt('desktop');
+    expect(screen.getByText('Description from the library')).toBeTruthy();
+    expect(screen.getByText(/offline.*community details/i)).toBeTruthy();
+  });
+
   it('asks the In the house card about this book', async () => {
     await mountAt('desktop');
     expect(screen.getByText('In the house: 1/Author/Book')).toBeTruthy();

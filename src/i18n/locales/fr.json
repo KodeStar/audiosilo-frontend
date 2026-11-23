@@ -1087,7 +1087,8 @@
         "title": "Partager {{name}}",
         "hint": "Ces personnes peuvent la voir mais pas la modifier, et chacune ne voit que les livres qu’elle peut ouvrir.",
         "none": "Il n’y a encore personne d’autre sur ce serveur avec qui partager.",
-        "error": "Impossible de charger les personnes de ce serveur"
+        "error": "Impossible de charger les personnes de ce serveur",
+        "offline": "Vous êtes hors ligne. Reconnectez-vous pour enregistrer les changements de partage."
       },
       "deleteConfirm": {
         "title": "Supprimer {{name}} ?",
@@ -1109,8 +1110,10 @@
       },
       "addTo": {
         "title": "Ajouter à une collection",
-        "none": "Tu n’as pas encore de collection. Crée-en une ici."
-      }
+        "none": "Tu n’as pas encore de collection. Crée-en une ici.",
+        "readFailed": "Impossible de charger {{name}}."
+      },
+      "offline": "Vous êtes hors ligne. Reconnectez-vous pour modifier les collections."
     }
   },
   "downloads": {
@@ -1402,7 +1405,8 @@
         "antagonist": "Antagoniste",
         "supporting": "Secondaire",
         "minor": "Mineur"
-      }
+      },
+      "offline": "Vous êtes hors ligne. Les informations de la communauté sur ce livre se chargeront à la reconnexion."
     },
     "page": {
       "crumbs": "Emplacement de ce livre",
@@ -1556,7 +1560,8 @@
       "queuedSome_one": "{{count}} livre sur {{total}} en file d'attente. Les autres n'ont pas pu l'être.",
       "queuedSome_other": "{{count}} livres sur {{total}} en file d'attente. Les autres n'ont pas pu l'être.",
       "queuedRestFailed": "Ce livre n'est pas encore en file d'attente. Appuyez de nouveau sur Générer pour y mettre les autres.",
-      "queueFailed": "Impossible de le mettre en file d'attente. Rien n'a été lancé."
+      "queueFailed": "Impossible de le mettre en file d'attente. Rien n'a été lancé.",
+      "offline": "Vous êtes hors ligne. Reconnectez-vous pour mettre cette tâche en attente."
     },
     "readalong": {
       "make": "Créer la lecture synchronisée",
@@ -3118,7 +3123,8 @@
         "following": "Suivie",
         "openShow": "Ouvrir l'émission",
         "searchAgain": "Rechercher à nouveau",
-        "loading": "Recherche..."
+        "loading": "Recherche...",
+        "lastResults": "Voici les derniers résultats pour « {{query}} »."
       },
       "provider": {
         "itunes": "Apple Podcasts",
@@ -3168,7 +3174,9 @@
         "following": "Vous suivez {{title}}.",
         "adding": "Ajout de l'émission en cours. Elle apparaîtra dans Émissions dès qu'elle sera prête.",
         "followingPublic": "Vous suivez {{title}}. L'émission était déjà dans cette bibliothèque en tant que flux public, elle n'est donc pas privée."
-      }
+      },
+      "offline": "Vous êtes hors ligne. Reconnectez-vous pour rechercher ou ajouter des émissions.",
+      "accessFailed": "Impossible de vérifier si vous pouvez ajouter des émissions."
     },
     "requests": {
       "title": "Émissions en cours d'ajout",

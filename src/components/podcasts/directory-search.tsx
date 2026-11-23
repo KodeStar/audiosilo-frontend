@@ -14,6 +14,7 @@ import {
   usePodcastShows,
 } from '@/api/hooks';
 import type { PodcastDiscoveryProvider, PodcastDiscoveryResult } from '@/api/types';
+import { useDialogRead, useKeptOffline } from '@/lib/offline-state';
 import { pageGutter } from '@/components/library/cover-layout';
 import { useMiniPlayerInset } from '@/components/player/mini-player';
 import { Button } from '@/components/ui/button';
@@ -78,6 +79,8 @@ export function DirectorySearch({
   const [tooShort, setTooShort] = useState(false);
   const [params, setParams] = useState<PodcastSearchParams | null>(null);
   const search = usePodcastSearch(params, connectionId);
+  const { unread, offline } = useDialogRead(search);
+  const keptOffline = useKeptOffline(search);
   const follow = useFollowPodcastByUrl(connectionId);
   const [outcomes, setOutcomes] = useState<Record<string, ResultOutcome>>({});
   // A result on its way reads its request live (the page's requests list polls it), so
@@ -112,6 +115,7 @@ export function DirectorySearch({
   }, [outcomes, requests, shows]);
 
   const submit = (using: PodcastDiscoveryProvider = provider) => {
+    if (offline) return;
     const q = cleanSearchText(text);
     if (Array.from(q).length < MIN_SEARCH_LENGTH) {
       setTooShort(true);
@@ -124,9 +128,11 @@ export function DirectorySearch({
       country: using === 'itunes' ? (deviceCountry() ?? null) : null,
       limit: SEARCH_LIMIT,
     };
-    // The same search: its held results stand; asked again only after it failed.
+    // The same search: its held results stand; asked again only after it failed, and not
+    // while that ask runs (the keyboard's Search still submits while the button spins, and
+    // a refetch over kept results restarts the request, spending the search budget again).
     if (sameSearch(params, next)) {
-      if (search.isError) void search.refetch();
+      if (search.isError && !search.isFetching) void search.refetch();
       return;
     }
     setParams(next);
@@ -154,13 +160,16 @@ export function DirectorySearch({
 
   const answered = search.data;
   const providerName = t(`podcasts.find.provider.${answered?.provider ?? provider}`);
-  // Only with nothing to show: a search read again that failed (the app back in the
-  // foreground reads every list again) keeps its results, and with them each row's follow.
-  const failure = params && search.isError && !answered ? searchErrorCopy(search.error) : null;
+  // Not while it is asked again: a failed re-read with results kept stays `isError` while
+  // its retry runs, and "Searching..." says what is happening then (fe#299).
+  const failure =
+    params && search.isError && !search.isFetching && unread !== 'offline' && !keptOffline
+      ? searchErrorCopy(search.error)
+      : null;
 
   const form = (
     <View className="gap-3 pb-4">
-      {indexAvailable ? (
+      {indexAvailable && !offline ? (
         <SegmentedControl
           options={[
             { value: 'itunes', label: t('podcasts.find.provider.itunes') },
@@ -195,7 +204,8 @@ export function DirectorySearch({
           icon="search"
           title={t('podcasts.find.search.submit')}
           onPress={() => submit()}
-          loading={search.isFetching}
+          disabled={offline}
+          loading={!offline && search.isFetching}
           testID="directory-search-submit"
           className={tooShort ? 'mb-6' : undefined}
         />
@@ -205,24 +215,39 @@ export function DirectorySearch({
           {t('podcasts.find.search.resultsFrom', { provider: providerName })}
         </Text>
       ) : null}
+      {offline ? (
+        <Text variant="muted" accessibilityLiveRegion="polite">
+          {t('podcasts.find.offline')}
+        </Text>
+      ) : null}
+      {answered && (failure || offline || search.isFetching) ? (
+        <Text variant="caption" accessibilityLiveRegion="polite">
+          {search.isFetching && !offline
+            ? t('podcasts.find.search.loading')
+            : t('podcasts.find.search.lastResults', { query: answered.query })}
+        </Text>
+      ) : null}
       {failure ? (
         <View className="gap-2" accessibilityLiveRegion="polite" testID="directory-search-error">
           <Text variant="body">{t(failure.key, { seconds: failure.seconds })}</Text>
-          <Button
-            variant="outline"
-            size="sm"
-            icon="rotate"
-            title={t('podcasts.find.search.searchAgain')}
-            onPress={() => void search.refetch()}
-            className="self-start"
-          />
+          {offline ? null : (
+            <Button
+              variant="outline"
+              size="sm"
+              icon="rotate"
+              title={t('podcasts.find.search.searchAgain')}
+              onPress={() => void search.refetch()}
+              className="self-start"
+            />
+          )}
         </View>
       ) : null}
     </View>
   );
 
+  const searching = !answered && (search.isPending || search.isFetching);
   const empty =
-    !params || failure ? null : search.isPending || (search.isFetching && !answered) ? (
+    !params || (!answered && (failure || offline)) ? null : searching ? (
       <View
         className="items-center gap-2 py-6"
         accessibilityLabel={t('podcasts.find.search.loading')}
@@ -240,7 +265,7 @@ export function DirectorySearch({
   return (
     <FlatList
       testID="directory-search"
-      data={failure ? [] : (answered?.results ?? [])}
+      data={answered?.results ?? []}
       keyExtractor={(r) => r.feed_url}
       extraData={liveOutcomes}
       {...TAB_PAGE_SCROLL_PROPS}
@@ -252,7 +277,7 @@ export function DirectorySearch({
           result={item}
           providerName={providerName}
           outcome={liveOutcomes[item.feed_url]}
-          canFollow={canFollow}
+          canFollow={canFollow && !offline}
           onFollow={() => followResult(item)}
           onOpenShow={(lib, path) => openPodcastShow(connectionId, lib, path)}
         />
