@@ -10,6 +10,9 @@ const [babelJest, babelOptions] = require('jest-expo/jest-preset').transform['\\
 const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const SRC = escapeRegExp(path.join(__dirname, 'src') + path.sep);
 const SEP = escapeRegExp(path.sep);
+// Whether the app is built with the React Compiler: what the Expo CLI hands Metro, which sets
+// babel-preset-expo's `supportsReactCompiler` caller flag from it.
+const REACT_COMPILER = require('./app.json').expo.experiments?.reactCompiler === true;
 
 module.exports = {
   preset: 'jest-expo',
@@ -29,7 +32,10 @@ module.exports = {
   transform: {
     [`^${SRC}(?!testing${SEP})(?!.*\\.test\\.).*\\.[jt]sx?$`]: [
       babelJest,
-      { ...babelOptions, caller: { ...babelOptions.caller, supportsReactCompiler: true } },
+      {
+        ...babelOptions,
+        caller: { ...babelOptions.caller, supportsReactCompiler: REACT_COMPILER },
+      },
     ],
   },
   // jest-expo excludes node_modules from transform; re-include the ESM packages
