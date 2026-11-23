@@ -2306,14 +2306,20 @@ export async function answerAfterSpan(ref: ContentRef, answer: () => Promise<voi
   void storeOpenSpan({ ...reopened });
 }
 
-/** Cut the playing span now (the server came back, the app went to the background); a
- * no-op with no span open, or for another connection than `connectionId` when given. */
+/** Cut the playing span now (the server came back, the app went to the background, the web
+ * page hid); a no-op with no span open, or for another connection than `connectionId` when
+ * given. Not while a reconcile holds saves: as the save loop's cut (`tickListeningSpan`), it
+ * would replace the last trusted keep a kill recovers with a span at the held place. */
 export function cutListeningSpanNow(connectionId?: string): void {
+  if (!savesHeld()) cutSpanOf(connectionId);
+}
+
+function cutSpanOf(connectionId?: string): void {
   if (!span || (connectionId !== undefined && span.connectionId !== connectionId)) return;
   cutListeningSpan();
 }
-// A sign-out's or a removal's last send carries the playing span (`unsentListens`).
-provideSpanCut(cutListeningSpanNow);
+// A sign-out's or a removal's last send carries the playing span (`unsentListens`), held or not.
+provideSpanCut(cutSpanOf);
 
 /** Web `pagehide`: close the span and send what waits in a keepalive request. */
 function closeSpanOnPageHide() {

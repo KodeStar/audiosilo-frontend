@@ -2974,6 +2974,35 @@ describe('the open span is kept every 5 s', () => {
     },
   );
 
+  it('a reconcile hold keeps the span through a background, reconnect or hidden cut', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 1));
+    await settle();
+    pushSnapshot(snap('playing', 0, 6));
+    jest.advanceTimersByTime(5_000);
+    await settle();
+    const before = structuredClone(mockStoreOpenSpan.mock.lastCall?.[0]) as OpenSpan;
+    const release = holdSaves();
+    try {
+      pushSnapshot(snap('playing', 0, 9));
+      cutListeningSpanNow(); // the app going to the background
+      cutListeningSpanNow('c1'); // its server coming back
+      flushHistoryOnHide(false); // the web page hidden
+      await settle();
+      expect(mockClosed).toHaveLength(0);
+      expect(mockStoreOpenSpan.mock.lastCall?.[0]).toMatchObject({
+        to: before.to,
+        endedAt: before.endedAt,
+      });
+      // A sign-out's last send still takes the span.
+      cutPlayingSpan('c1');
+      await settle();
+      expect(mockClosed.map((s) => [s.from.pos, s.to.pos])).toEqual([[1, 9]]);
+    } finally {
+      release({ flush: false });
+    }
+  });
+
   // A native lock-screen move: the engine's landed place reaches the store before the move.
   it('never moves the span back: a remote move landing as the keep is due ends where it was', async () => {
     await start();
