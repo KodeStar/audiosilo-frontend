@@ -130,15 +130,19 @@ export function givesWayTo(claim: PlayingClaim, mine: OwnPlay, now = Date.now())
   ) {
     return false;
   }
-  const mineBefore = beforeClockStep(mine.askedAt, now);
-  if (mineBefore !== beforeClockStep(claim.askedAt, now)) return mineBefore;
-  return laterPlay(claim, mine);
+  return laterPlay(claim, mine, now);
 }
 
+/** Whether play `a` was asked for later than `b`, read at `now`: one from before the clock was
+ * set back (`beforeClockStep`) is the older whatever the two times say; else the later time
+ * (the same millisecond: the greater tab id). */
 function laterPlay(
   a: Pick<PlayingClaim, 'tab' | 'askedAt'>,
   b: Pick<PlayingClaim, 'tab' | 'askedAt'>,
+  now: number,
 ) {
+  const bBefore = beforeClockStep(b.askedAt, now);
+  if (bBefore !== beforeClockStep(a.askedAt, now)) return bBefore;
   return a.askedAt === b.askedAt ? a.tab > b.tab : a.askedAt > b.askedAt;
 }
 
@@ -209,8 +213,8 @@ const CLOCK_STEP_MS = 60_000;
 
 /** Whether `at` (ms) is from before the clock was set back, read at `now`: more than
  * `CLOCK_STEP_MS` ahead of it. The tabs share one clock, so nothing dated since can be. The
- * one rule for a tab's own play (`givesWayTo`), a rival claim (`newerTabPlay`) and the claim
- * kept per connection (`tabClaims`). */
+ * one rule for which of two plays is the later (`laterPlay`: a tab's own play, `givesWayTo`,
+ * and the claim kept per connection, `tabClaims`) and for a rival claim (`newerTabPlay`). */
 const beforeClockStep = (at: number, now: number) => at > now + CLOCK_STEP_MS;
 
 export function newerTabPlay(connectionId: string, askedAt: number): PlayingClaim | null {
@@ -224,7 +228,7 @@ export function newerTabPlay(connectionId: string, askedAt: number): PlayingClai
   for (const [cid, claim] of rivals) {
     if (!claim || beforeClockStep(claim.sentAt, now)) continue;
     if (!sameConnection(cid, connectionId) || !givesWayTo(claim, mine, now)) continue;
-    if (!newest || laterPlay(claim, newest)) newest = claim;
+    if (!newest || laterPlay(claim, newest, now)) newest = claim;
   }
   return newest;
 }
@@ -255,7 +259,7 @@ export function tabClaims(): PlayingClaims {
       for (const [cid, previous] of rivals) {
         if (
           sameConnection(cid, claim.connectionId) &&
-          (!previous || laterPlay(claim, previous) || stale(previous))
+          (!previous || laterPlay(claim, previous, Date.now()) || stale(previous))
         ) {
           rivals.set(cid, claim);
         }
