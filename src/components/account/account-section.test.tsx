@@ -55,17 +55,15 @@ jest.mock('@/api/hooks', () => {
     useRevokeMyDevice: () => ({ mutateAsync: mockRevoke, isPending: false }),
     useReadMyDevicesAgain: () => async () => undefined,
     // Gated like the real hook: nothing without the flag.
-    useServerAddresses: mockedHook((cid: string) => {
-      return { data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined };
-    }),
-    useApiKeys: mockedHook((enabled: boolean, cid: string) => {
-      return {
-        data: enabled && mockCaps[cid]?.api_keys ? mockKeys : undefined,
-        isPending: !mockCaps[cid]?.api_keys,
-        isPaused: mockServerRead === 'held',
-        error: mockServerRead === 'failed' ? mockServerError : null,
-      };
-    }),
+    useServerAddresses: mockedHook((cid: string) => ({
+      data: mockCaps[cid]?.addresses ? mockAddresses[cid] : undefined,
+    })),
+    useApiKeys: mockedHook((enabled: boolean, cid: string) => ({
+      data: enabled && mockCaps[cid]?.api_keys ? mockKeys : undefined,
+      isPending: !mockCaps[cid]?.api_keys,
+      isPaused: mockServerRead === 'held',
+      error: mockServerRead === 'failed' ? mockServerError : null,
+    })),
     useCreateApiKey: () => ({ mutateAsync: jest.fn(), isPending: false }),
     useRevokeApiKey: () => ({ mutate: jest.fn() }),
   };

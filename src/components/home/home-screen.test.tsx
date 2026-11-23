@@ -121,7 +121,8 @@ jest.mock('@/api/hooks', () => ({
     unreadError: mockProgress.error,
     ...mockProgress,
   }),
-  useLibrariesAll: () => ({ groups: mockGroups }),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useLibrariesAll: require('@/testing/mock-hooks').mockedHook(() => ({ groups: mockGroups })),
   useRecentAll: () => ({ unreadError: mockRecent.error, ...mockRecent }),
   useFavouritesAll: () => ({ favourites: [] }),
   useBook: () => ({ data: undefined }),
@@ -155,10 +156,11 @@ let mockNext: { answers: unknown[]; supported: boolean | undefined; isLoading: b
 };
 const mockCandidates = jest.fn();
 jest.mock('./use-next-in-series', () => ({
-  useNextInSeries: (candidates: unknown) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useNextInSeries: require('@/testing/mock-hooks').mockedHook((candidates: unknown) => {
     mockCandidates(candidates);
     return mockNext;
-  },
+  }),
 }));
 // A tile's actions menu has its own tests.
 jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
@@ -754,9 +756,8 @@ describe("HomeScreen's book shelves leave episodes out", () => {
       started('Book', '2026-10-04T00:00:00Z'),
       { ...started('Done', '2026-10-03T00:00:00Z'), finished: true, position: 1000 },
     ];
-    const client = new QueryClient();
-    const view = await render(
-      <QueryClientProvider client={client}>
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
         <HomeScreen />
       </QueryClientProvider>,
     );
@@ -773,11 +774,7 @@ describe("HomeScreen's book shelves leave episodes out", () => {
 
     mockGroups = [{ connectionId: 'a', libraries: [{ id: 1, kind: 'books' }], status: 'ready' }];
     mockNext = { answers: [], supported: true, isLoading: false };
-    await view.rerender(
-      <QueryClientProvider client={client}>
-        <HomeScreen />
-      </QueryClientProvider>,
-    );
+    await mocksChanged();
     await settleFlashList();
     expect(screen.getByText('Smart shelves')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();

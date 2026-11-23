@@ -55,15 +55,13 @@ jest.mock('@/api/hooks', () => {
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { mockedHook } = require('@/testing/mock-hooks');
   return {
-    useServerInfo: mockedHook(() => {
-      return {
-        isPaused: mockServerPaused,
-        error: mockServerError,
-        isFetching: mockServerFetching,
-        errorUpdateCount: mockServerFailures,
-        refetch: mockServerRetry,
-      };
-    }),
+    useServerInfo: mockedHook(() => ({
+      isPaused: mockServerPaused,
+      error: mockServerError,
+      isFetching: mockServerFetching,
+      errorUpdateCount: mockServerFailures,
+      refetch: mockServerRetry,
+    })),
     useCapability: mockedHook((flag: string, cid?: string) => {
       mockCapCids.add(cid);
       return mockCaps[flag];
