@@ -15,6 +15,7 @@ import {
   selectBookKey,
   selectBookPosition,
   selectIsTransportLive,
+  stopPlayOnThroughStall,
   usePlayer,
 } from './store';
 
@@ -1068,6 +1069,8 @@ const sleepTimerStore = createStore<SleepTimerState>()((set, get) => {
       const live =
         get().origin?.kind === 'duration' ? soundPlays(player) : selectIsTransportLive(player);
       if (!player.nowPlaying || !live) {
+        // A move held in its stall to play on once it lands plays on no further.
+        stopPlayOnThroughStall();
         get().endTimer('expired');
         return;
       }

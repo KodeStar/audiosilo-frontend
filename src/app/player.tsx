@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { isNotInLibraryError } from '@/api/client';
@@ -30,6 +30,7 @@ import {
   useEpisodeFetch,
 } from '@/playback/episode-fetch';
 import { isAbsentEpisode } from '@/playback/episode-fetch-rules';
+import { takePlayerPress } from '@/playback/playing-claim';
 import { usePlayer } from '@/playback/store';
 
 export default function PlayerScreen() {
@@ -97,6 +98,16 @@ export default function PlayerScreen() {
   // target still starts. The end of a book is not such a target: the credits start the
   // next book in place (`advanceTo`) and only then show it here, already playing.
   const startedKeyRef = useRef<string | null>(null);
+  const pressRef = useRef<{ key: string; askedAt: number } | null>(null);
+  useEffect(() => {
+    if (Platform.OS !== 'web' || !routeNamesBook || gated) {
+      pressRef.current = null;
+      return;
+    }
+    const key = contentKey(cid, libraryId, path);
+    if (pressRef.current?.key !== key)
+      pressRef.current = { key, askedAt: takePlayerPress(cid, key) };
+  }, [cid, libraryId, path, routeNamesBook, gated]);
   // Closing the player takes its "Bookmark added" toast along (fe#197 PLAYER-13).
   useEffect(() => dismissBookmarkToast, []);
   // The route's jump (`?position=` / `?track=`: a chapter, file, bookmark or history tap)
@@ -176,11 +187,16 @@ export default function PlayerScreen() {
     jumpedKeyRef.current = jumpKey;
     const startAt = hasPos ? posParam : undefined;
     if (!onDevice && needsEpisodeFetch(book, podcastFetch)) {
-      requestEpisodeFetch({ connectionId: cid, libraryId, path: book.rel_path }, book, {
-        position: startAt,
-        ...(filePlace ? { file: filePlace } : {}),
-        track: hasTrack ? trackParam : undefined,
-      });
+      requestEpisodeFetch(
+        { connectionId: cid, libraryId, path: book.rel_path },
+        book,
+        {
+          position: startAt,
+          ...(filePlace ? { file: filePlace } : {}),
+          track: hasTrack ? trackParam : undefined,
+        },
+        { askedAt: pressRef.current?.askedAt },
+      );
       return;
     }
     // Played here: a fetch of anything else ends (the last tap wins), and so does one of
@@ -199,6 +215,10 @@ export default function PlayerScreen() {
         chapterData,
         startAt,
         filePlace ?? (hasTrack ? trackParam : undefined),
+        undefined,
+        undefined,
+        undefined,
+        pressRef.current?.askedAt,
       )
       .then(() => dropStartedBook(cid, libraryId, book.rel_path, path))
       .catch((err) => playFailedToast(err));

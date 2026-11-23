@@ -180,6 +180,7 @@ import * as readingProgress from '@/reader/reading-progress';
 
 import { bookFileSpecs } from './book-queue';
 import { clearJumpUndo, startJumpUndo, useJumpUndo } from './jump-undo';
+import * as listeningOutbox from './listening-outbox';
 import { flushConnection, writeMirror } from './progress-sync';
 import { useSleepTimer } from './sleep-timer';
 import { useReachability } from '@/api/reachability';
@@ -201,8 +202,10 @@ import {
   selectIsPlaying,
   selectIsTransportLive,
   stopPlaybackForConnection,
+  flushConnectionSaves,
   teardownBeforeTokenRevoke,
   initializePlayback,
+  playOnThroughStall,
   usePlayer,
   watchPageHide,
 } from './store';
@@ -815,6 +818,63 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('error');
     jest.mocked(mockSvc.pause).mockClear();
   }
+
+  /** Playing at 50, then a move to 80 asked to play on (`playOnThroughStall`, the web's seek
+   * done at the ask) that stalls into the watchdog's error. */
+  async function moveToPlayOnStalled() {
+    await startBook(makeBook(), 0);
+    pushSnapshot(snap('playing', 50));
+    await Promise.resolve();
+    await usePlayer.getState().seekInTrack(80);
+    playOnThroughStall();
+    pushSnapshot(snap('loading', 80));
+    await Promise.resolve();
+    jest.advanceTimersByTime(3_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  }
+
+  it('a move asked to play on that stalls into the error plays on once it lands', async () => {
+    await moveToPlayOnStalled();
+    // The engine is left waiting for the move, not stopped.
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(9_000);
+    pushSnapshot(snap('playing', 80));
+    await Promise.resolve();
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'playing', position: 80 });
+    // Over once it plays: a later stall is stopped as ever.
+    pushSnapshot(snap('loading', 85));
+    await Promise.resolve();
+    jest.advanceTimersByTime(3_000);
+    await flushMicrotasks();
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('a move asked to play on that never lands is stopped once its time is up', async () => {
+    await moveToPlayOnStalled();
+    jest.advanceTimersByTime(26_000);
+    expect(mockSvc.pause).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1_000);
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().snapshot.state).toBe('error');
+  });
+
+  it('a move asked to play on is stopped at once by a pause (the sleep timer, a press)', async () => {
+    await moveToPlayOnStalled();
+    await usePlayer.getState().pause();
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // Its time running out stops nothing more.
+    jest.advanceTimersByTime(30_000);
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+  });
+
+  it('a move asked to play on is stopped at once when the listener moves again in the error', async () => {
+    await moveToPlayOnStalled();
+    await usePlayer.getState().seekInTrack(20);
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    expect(usePlayer.getState().snapshot).toMatchObject({ state: 'error', position: 20 });
+  });
 
   // The review (fe#157): a car or headset play after the error was held by it, so it could
   // hang with nothing said, or start whenever the server answered.
@@ -1447,6 +1507,24 @@ describe('stopPlaybackForConnection (the token-revoking teardown rule)', () => {
     expect(flushConnection).toHaveBeenCalledWith('c1', { lastChance: true });
     // And gives the bookmarks waiting on the device their last send.
     expect(mockSendBookmarks).toHaveBeenCalledWith('c1');
+  });
+
+  it('sends the legacy queue after a final outbox flush can transfer a held save', async () => {
+    let transferred!: () => void;
+    const converting = jest
+      .spyOn(listeningOutbox, 'flushOutbox')
+      .mockImplementationOnce(() => new Promise<void>((r) => (transferred = r)));
+    jest.mocked(flushConnection).mockClear();
+    try {
+      const sending = flushConnectionSaves('c1');
+      expect(converting).toHaveBeenCalledWith('c1', { lastChance: true });
+      expect(flushConnection).not.toHaveBeenCalled();
+      transferred();
+      await sending;
+      expect(flushConnection).toHaveBeenCalledWith('c1', { lastChance: true });
+    } finally {
+      converting.mockRestore();
+    }
   });
 
   // Web: a tab playing through the connection sends its own while the token still works,

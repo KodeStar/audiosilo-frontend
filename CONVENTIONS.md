@@ -2825,7 +2825,7 @@ media GETs only.
   server's place as the download starts (`keepServerPlace` in `downloads/store.ts`) and on
   every server answer of `fetchBookProgress` (the registry check reaches the hooks through
   `downloads/kept-offline.ts`, which has no imports), and from Home's progress list
-  (`allProgressQuery`: the downloaded books' rows in one `writeMirrors`, fe#198): offline it
+  (`allProgressQuery` returns the rows while one `writeMirrors` keeps the downloads, fe#198): offline it
   opens there, never at 0 with its first save over the server's place (v2.5.1 PLAYER-01).
   Keep-newest, so a newer save of this device's own stays. A server's row in the mirror is
   marked `server_clock` (`progressToSave`) and compared by this device's clock, its stamp moved
@@ -2845,16 +2845,20 @@ media GETs only.
   session's PUT saves (`placeGuard`; not on an explicit place or a finish) until one is PUT:
   `saveProgress` answers `saved`, or a queued one is replayed later (each guarded save carries
   its session's `guard_session` id, a PUT settles it, and the store's next save asks
-  `guardSettled`). Before a
-  guarded save is PUT, live or replayed, `guardPasses` reads the server's row: another
-  device's unfinished place more than `GUARD_SLACK_S` (30 s) further on, not answered
-  (`answered` holds its `device_id|updated_at`), holds it (`guardHolds`). A held save is not
-  sent and leaves the queue (the mirror keeps it; `guard` is never kept in the mirror), and
-  `onHeldSave` tells the place reconcile, which offers that place for the loaded book with the
-  same Jump/Stay toast (`offerLoadedPlace(..., { held: true })`: Stay answers, lifts the
-  session's guard and saves at once, `saveLoadedPlace`, so a row the other device has saved
-  again since cannot hold it; a timeout answers nothing). Sync v2 needs none of it: the server
-  resolves each span on its `base_version`.
+  `guardSettled`). The guard checks the server for an unfinished place another device saved
+  more than `GUARD_SLACK_S` (30 s) further on. If that row holds the save, the latest capture
+  stays queued. The same session can reuse the held row for two minutes. Reaching its place or
+  answering it prompts a fresh read before a guarded PUT. Jump and Stay on the offer both lift
+  the active session's guard. Stay saves this device's place at once. A timeout leaves the
+  choice open for the next play or move. At sign-out the outbox finishes transferring any
+  rollback saves first, then the final legacy flush checks each guarded save as any replay
+  does, on a fresh read (a hold read over 5 s before, still reused by a tick, may predate
+  the other device going back below it): one the server's row lets through is PUT with its original capture time before the
+  token is revoked, one still held is dropped with the mirror, never PUT unguarded (it would
+  move the other device's further place back). A Sync v2 server never sees one: its listens
+  go as events, which `ResolvePlace` and the `resume_behind` backstop resolve against the
+  further place. Queue writes check the connection's sign-in
+  after an outstanding guard read or PUT, so a late response cannot recreate purged saves.
 - **A loaded book picks up another device's place** (`src/playback/place-reconcile.ts`,
   started from the root layout). When the app comes back to the front, the book's server comes
   back, or the book plays again after `LONG_PAUSE_MS` (60 s) of pause from any source (the
@@ -2972,7 +2976,7 @@ media GETs only.
     and takes the events under an id the identity migration moved the connection from
     (`sameConnection`), which the purge and the unsent count take too. A close or an event made
     for a connection and appended after an await is dropped once that connection was removed
-    meanwhile (`connectionGeneration`, bumped first thing in the outbox's removal purge: the
+    meanwhile (`connectionGeneration`, `connection-generation.ts`, bumped on removal before the purges: the
     same account signing in again has the same connection id, and an orphan appended after the
     purge was sent then); the store's mirror writes for a finish and its Undo check it too. The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded
@@ -3093,7 +3097,7 @@ media GETs only.
     http, fe#208); on the web they re-read storage, and a tab's outbox copy follows the
     `storage` event.
   - *Sending* (`flushOutbox`). One request in flight per connection, chunks of 200, `sent_at` set
-    at each attempt. A 413 or `too_many_events` halves the chunk (one event alone still 413:
+    at each attempt. A 413 or `too_many_events` halves the number of events actually sent after withdrawals (one event alone still 413:
     `too_large`); another 400 resends that chunk one event at a time once (a `stay` refused alone,
     a server rolled back under a stale cached `listening_stay`, goes once more as a `jump`, and the
     cached `/server` is asked again, fe#321), and an event still
@@ -3104,11 +3108,13 @@ media GETs only.
     the event; `rejected` moves it to the list. Triggers: the launch (after `recoverOpenSpan`),
     a reconnect, the foreground, each closed span; the web `pagehide` sends what waits (up to
     ~60 KB, the closes still queued behind a lock too: a lease's timer never fires on a page
-    going) with `keepalive`. A 404/405 that a fresh `/server` confirms is a rollback: one legacy
-    PUT per book (`legacySavesOf`, each guarded: the replay guard below; a finish with no listen
-    beside it takes its place and length from the mirror its finish wrote, `withFinishedPlace`,
-    so it is the legacy finished save, never a finish at 0 of 0), the outbox dropped, the PUT
-    path from then on.
+    going) with `keepalive`. When a fresh `/server` confirms a rollback after 404/405, the
+    outbox converts each book's remaining events to one legacy save (`legacySaveOf`).
+    Deliberate moves and finishes go straight through. A finish without a listen takes its
+    position and duration from its finished mirror record (`withFinishedPlace`). Each book's
+    send marks and rechecks its own finishes so another tab can Undo a later book while an
+    earlier PUT is in flight. A held or unreachable save goes into the legacy queue before
+    its events leave the outbox.
   - *Across tabs* (web, fe#123, fe#211). The tabs of a browser are one device: they share the
     three documents and the device id, but not each other's memory. So what a tab's Undo must
     know of another tab's sends is written in the stored outbox, which every tab reads under
@@ -3177,30 +3183,22 @@ media GETs only.
     Diary lists, never joined into a server's session, and one the server's rows already
     hold is left out, so a listen whose answer is on the way never shows twice).
 - **One tab plays at a time (web)** (`src/playback/playing-claim.ts`, fe#123; owner decision:
-  the newest tab wins). A tab that reaches `playing` says so to the browser's other tabs
-  (`claimPlaying` in `store.ts`, on every move into `playing`, before its span opens), and a
-  tab of the same connection that plays or means to (`wantsPlayback`) gives way
-  (`giveWayTo`): its span closes there and then, dated no later than the claim (`sentAt`), so
-  two tabs never record the same seconds; it pauses like any pause (the pause finds no span
-  left, so the span is one event), except that the engine is paused whatever the snapshot
-  reads (a play asked for a moment ago, whose first engine event has not arrived, must not
-  go on to `playing`: with the intent dropped it would read as a new play and take the
-  connection back; for the same reason the web engine reports no `playing` for an element
-  that is paused by then, one the browser queued before the pause landed); and the listener
-  is told with a toast, "Playing in another tab" (`other-tab-notice.ts`, a root service;
-  shown once the tab is looked at, and the store keeps a give-way nobody was there to hear
-  until the service registers). It keeps
-  its book, and a play there claims the connection back. A tab whose stream died
-  (`error`, no Retry out) is not playing and is told nothing, but its engine is paused all the
-  same: a stream that came back by itself would read as a new play and take the connection
-  back. Per connection, not per book: two connections may play side by side. "Newest" is
-  when the play was asked for
-  (`playAskedAt`: `beginPlaybackAttempt`, else the moment the engine began by itself, the OS
-  media controls), not which claim arrives last, with the tab id breaking a tie
-  (`givesWayTo`, pure), so of two tabs that start together exactly one stands; a start or
-  a Retry still loading when it gives way does not play once loaded (`yieldedAttempt`, read
-  in `startEngine`, the one place every start passes: played regardless, its `playing` would
-  read as a new play and take the connection back from the newer tab). The channel is
+  the newest tab wins). A tab reaching `playing` for a requested play claims the connection
+  before its span opens (`claimPlaying` in `store.ts`). A tab on the same connection that
+  is playing or loading an older play gives way (`giveWayTo`). Its span closes at the claim
+  time, it pauses its engine and it shows "Playing in another tab" when the listener looks
+  there (`other-tab-notice.ts`). The book stays loaded. A press in that tab can take it back.
+  A tab with a failed stream also pauses its engine when another tab takes over. A Cast
+  receiver's `playing` sent before a give-way pause reached it is paused again, never read as
+  the receiver's own Play, until the receiver reports the pause (`CAST_GIVE_WAY_FENCE_MS`).
+  `playAskedAt` dates a book start from the press, before its metadata and place lookups.
+  The web player carries it through the player route, a seek before resuming a paused book,
+  and a podcast episode waiting to be fetched. A web Media
+  Session Play signals `onRemotePlay` before the engine starts. A completion or recovery
+  report alone cannot claim the connection. Each new transition to playing during the same
+  requested play uses its original timestamp. `givesWayTo` breaks ties by tab id.
+  A book start or Retry that yields while loading stays paused (`yieldedAttempt`).
+  The channel is
   `tabChannel` (`src/lib/tab-channel.ts`): `BroadcastChannel` (no secure context needed, so
   plain http has it), else `storage` events (the message written to `localStorage` under
   `audiosilo-tab:<name>` and removed at once); null off the web, where none of this runs.
@@ -3235,9 +3233,10 @@ media GETs only.
     the same landing before the receiver publishes its position, while the call could still
     land (`ASK_SETTLE_MAX_MS` from the ask): a Cast move there later is the listener's own. This
     applies unless the listener
-    moved or another book started meanwhile: left alone, a landing far behind the floor put
-    back refused every save, and one further on ran the open span over audio nobody heard. A
-    book switch drops a move still out (`switchBook` clears
+    moved or another book started meanwhile (Stay on a place offer is no move here: the engine
+    still goes where the move lands, `chooseLoadedPlace`): left alone, a landing far behind the
+    floor put back refused every save, and one further on ran the open span over audio nobody
+    heard. A book switch drops a move still out (`switchBook` clears
     `catchingUp`), so it holds none of the next book's saves or spans. A book
     the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
     as a fresh load of a finished book does (not when this tab is at the end itself).
@@ -3280,8 +3279,8 @@ media GETs only.
     names the play by what every claim of it carries (the claiming tab and `askedAt`), and
     the claiming tab keeps the play it claimed (`ownPlay`: `askedAt`, when it was first
     claimed, the place it began at), untouched by a later claim of the same play; never
-    match an answer on `sentAt`. Only a tab that was not itself behind another's play
-    answers (the note, or a move to the shared place still out: `catchingUp`), and a play
+    match an answer on `sentAt`. Only a tab that was playing (a buffer mid-play counts) and up to date when it
+    gave way answers. A tab whose start was loading, or still catching up with the shared place, stays silent. A play
     is answered **once**: a claim of a play the tab noted before (`notedPlay`) gets no
     second answer, which would name a later place. The
     claiming tab (`onGaveWayAnswer`) moves there by `moveToTabPlace`, the same path as the
@@ -3294,9 +3293,12 @@ media GETs only.
     older play than the tab's last (a press since; an answer with no `askedAt` matches
     none), or later than `GAVE_WAY_ANSWER_MS` (5 s) after the play's first claim;
     another connection or book; while a book loads; a place the listener chose here
-    (`placeChosen`: an explicit start or a seek, until another tab plays); when yet another
+    (`placeChosen`: an explicit start, a seek
+    or Stay on a place offer, until another tab plays); when yet another
     tab plays by now; and a finished one (a book is not started again under a listener
-    hearing it; the next resume reads the save). A play that began by itself is still
+    hearing it; the next resume reads the save). If a download is changing the file indexes
+    (`swapHold`), a handoff waits up to ten seconds and maps the file against the settled
+    queue. A new seek or play during the wait takes precedence. A play that began by itself is still
     moving to the mirror's place when the answer comes: the answer waits for that
     (`catchingUp`). A `playing` that arrives while such a move is out (the play buffered
     during it) begins no history either (`beginHistory` reads `catchingUp` itself, as

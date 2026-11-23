@@ -38,6 +38,7 @@ import { onConnectionRemoved } from '@/stores/session';
 import { shallow } from 'zustand/shallow';
 
 import { FINISHED_TOLERANCE } from './book-queue';
+import { connectionGeneration } from './connection-generation';
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
 import { hasStoredSkews, readStoredSkews } from './stored-skews';
@@ -1210,11 +1211,11 @@ export async function readMirror(
 // a place this device never checked against the server (offline, or behind another
 // device's further place) would move that further place back, with no question asked: the
 // v2.5.1 sweep saw a place go from 3570 s to 4.78 s. Such a save carries `guard`; before
-// it is PUT (live or replayed) the server's row is read, and another device's place further
-// on that the listener has not chosen to leave (Stay, `answerOffer`) holds it: it is not
-// sent and leaves the queue (this device's mirror keeps it), and the loaded book's player
-// offers that place (`onHeldSave`, the place reconcile's Jump/Stay offer). Sync v2 needs
-// none of this: the server resolves each span on its `base_version`.
+// a live PUT or replay, the guard checks the server's row. An unanswered place further on
+// holds the capture in the queue. The loaded book offers that place through `onHeldSave`.
+// The capture goes after an answer or when a fresh check permits it; one still held at the
+// final flush before sign-out, checked afresh there, is dropped, never PUT. Sync v2 resolves
+// each span on its `base_version`.
 
 /** How much further on (s) another device's place must be to hold a guarded save; the
  * place reconcile's threshold too (`MOVE_THRESHOLD_S`; auto-rewind is up to 30 s). */
@@ -1253,15 +1254,63 @@ export function onHeldSave(listener: HeldListener): () => void {
   return () => heldListeners.delete(listener);
 }
 
-/** Whether `save` may be PUT (unguarded, or its server's row does not hold it). A held one
- * is told to the listeners. Throws what reading the row throws. */
-async function guardPasses(client: ApiClient, save: ProgressSave): Promise<boolean> {
+/** Reuse a hold across both the 15 s foreground ticks and the 60 s background ticks.
+ * A PUT always needs a fresh check if the guard still applies. */
+const HELD_RECHECK_MS = 2 * 60_000;
+/** A sign-out's last flush takes only a hold read this recently (ms; the stop's own save
+ * just before it): the other device may have gone back below the save since an older one,
+ * and the save is dropped if held (`flushGroup`). Read as each save is checked, so a hold
+ * read stored while the flush waited its turn is held to it too. */
+const LAST_CHANCE_RECHECK_MS = 5_000;
+let lastHeld: { session: string; connectionId: string; row: Progress; at: number } | null = null;
+
+/** Whether `save` may be PUT. Tell the player even on a cached hold so a fresh play or move
+ * can offer that place again. An answered or nearly reached place is checked afresh before
+ * a PUT, since the other device may have moved further meanwhile. */
+async function guardPasses(
+  client: ApiClient,
+  save: ProgressSave,
+  current: () => boolean,
+  reuseMs = HELD_RECHECK_MS,
+): Promise<boolean> {
   if (!save.guard) return true;
-  const [row, mine] = await Promise.all([
-    client.getProgress(save.libraryId, save.path),
-    readMirror(save.connectionId, save.libraryId, save.path),
-  ]);
-  if (!row || !guardHolds(save, row, mine?.answered)) return true;
+  const now = Date.now();
+  const cached = lastHeld;
+  const reusable =
+    cached &&
+    cached.session === save.guard_session &&
+    cached.connectionId === save.connectionId &&
+    cached.row.library_id === save.libraryId &&
+    cached.row.path === save.path &&
+    now >= cached.at &&
+    now - cached.at < reuseMs
+      ? cached.row
+      : null;
+  // Only a cached hold needs the mirror's answer before deciding; otherwise the mirror and
+  // the server's row are read together.
+  let mine: ProgressSave | null = null;
+  let row: Progress | null = null;
+  if (reusable) {
+    mine = await readMirror(save.connectionId, save.libraryId, save.path);
+    if (!current()) return false;
+    if (guardHolds(save, reusable, mine?.answered)) row = reusable;
+  }
+  if (!row) {
+    let fresh: Progress | null;
+    if (reusable) fresh = await client.getProgress(save.libraryId, save.path);
+    else
+      [mine, fresh] = await Promise.all([
+        readMirror(save.connectionId, save.libraryId, save.path),
+        client.getProgress(save.libraryId, save.path),
+      ]);
+    if (!current()) return false;
+    if (!fresh || !guardHolds(save, fresh, mine?.answered)) return true;
+    row = fresh;
+    noteSuccess(save.connectionId);
+    if (save.guard_session) {
+      lastHeld = { session: save.guard_session, connectionId: save.connectionId, row, at: now };
+    }
+  }
   for (const listener of heldListeners) {
     try {
       listener(save, row, mine);
@@ -1299,51 +1348,68 @@ function notePut(save: ProgressSave): void {
  * the replay guard (`held`), or refused for good (`dropped`, a 4xx but a 408 or a 429). */
 export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 
+/** Send a live or replayed capture only through its own sign-in. A guard read can outlast
+ * account removal, as can the PUT itself. A guarded save is always checked first, also at a
+ * sign-out's last flush: a held one is never PUT (`flushGroup`). */
+async function putSave(
+  client: ApiClient,
+  save: ProgressSave,
+  current: () => boolean,
+  reuseMs?: number,
+): Promise<'held' | 'saved' | 'dropped'> {
+  const allowed = await guardPasses(client, save, current, reuseMs);
+  if (!current()) return 'dropped';
+  if (!allowed) return 'held';
+  await client.saveProgress(save.libraryId, save.path, putBody(save));
+  if (!current()) return 'dropped';
+  notePut(save);
+  noteSuccess(save.connectionId);
+  return 'saved';
+}
+
 /** Save progress now; if the network fails, queue it for later replay. version
  * is left 0 so the server reconciles by (updated_at, version). A guarded save is checked
  * first (`guardPasses`). Sent through the save's connection as it is at each request
  * (`liveClient`; `api` only when it is not signed in now): a re-pair while the mirror was
  * written or the guard read changed the token, and the old one is refused (401). */
-export async function saveProgress(api: ApiClient, save: ProgressSave): Promise<SaveOutcome> {
+export async function saveProgress(
+  api: ApiClient,
+  save: ProgressSave,
+  { requireQueued = false }: { requireQueued?: boolean } = {},
+): Promise<SaveOutcome> {
   // Reachability is per-connection: this save's success/failure notes ONLY its own
   // server. A book keeps playing on a connection the user has navigated away from, and
   // its periodic save loop lands here without touching any other server's state.
   // Always record the latest position in the durable mirror, independent of the network
   // outcome - this is what a future resume falls back to when the server can't be reached.
+  const since = connectionGeneration(save.connectionId);
+  const current = () => connectionGeneration(save.connectionId) === since;
   await writeMirror(save);
+  if (!current()) return 'dropped';
   // This server known to be unreachable, or one that asked to wait (a 429 until its
   // `Retry-After`, `rateLimited`): queue locally without hitting the network, so the
   // periodic save loop doesn't fire a doomed request every tick. The queue's replay sends
   // it once the server is back or the wait is over (`onRateLimitOver`).
-  if (!isReachable(save.connectionId) || rateLimited(save.connectionId)) {
-    await enqueue(save);
-    return 'queued';
-  }
-  const client = liveClient(save.connectionId) ?? api;
-  try {
-    if (!(await guardPasses(client, save))) {
-      noteSuccess(save.connectionId);
-      return 'held';
+  let outcome: SaveOutcome = 'queued';
+  if (isReachable(save.connectionId) && !rateLimited(save.connectionId)) {
+    const client = liveClient(save.connectionId) ?? api;
+    try {
+      outcome = await putSave(client, save, current);
+    } catch (e) {
+      if (!current() || isRefusedForGood(e)) return 'dropped';
+      noteFailure(save.connectionId, e);
+      noteRateLimit(save.connectionId, e);
     }
-    await client.saveProgress(save.libraryId, save.path, putBody(save));
-    notePut(save);
-    noteSuccess(save.connectionId);
-    void flushQueue();
-    return 'saved';
-  } catch (e) {
-    // Auth/forbidden: don't retry forever. A 408 or a 429 (the rate limit) says "not now":
-    // queued like a failed request.
-    if (isRefusedForGood(e)) return 'dropped';
-    // No answer only asks for a check of the server (`noteFailure`): one slow save never
-    // marks a healthy server down; the check does when it gets no answer either.
-    noteFailure(save.connectionId, e);
-    // A 429 is the connection's: its live saves and the queue's replays wait out its
-    // `Retry-After`, and the replay that follows it sends this save (the last before a pause
-    // has no later save to do it).
-    noteRateLimit(save.connectionId, e);
-    await enqueue(save);
-    return 'queued';
   }
+  // A rollback removes its source events only after a successful send or durable transfer.
+  // Live saves still have the mirror if storage has no room for the queue.
+  if (!current() || outcome === 'dropped') return 'dropped';
+  const queued = updateQueuedSave(save, outcome === 'saved', current);
+  if (requireQueued && outcome !== 'saved') await queued;
+  else await queued.catch(() => undefined);
+  if (!current()) return 'dropped';
+  if (outcome === 'saved') void flushQueue();
+  return outcome;
 }
 
 /** A save as the legacy PUT's body. */
@@ -1366,21 +1432,31 @@ function putBody(save: ProgressSave) {
 // seconds and a replay can take longer.
 const withQueueLock = tabLock(QUEUE_KEY);
 
-async function enqueue(save: ProgressSave): Promise<void> {
+/** Keep the latest capture of a book. A successful live PUT retires its older queued save
+ * too, including a held save the listener has since answered with Jump or Stay. */
+async function updateQueuedSave(
+  save: ProgressSave,
+  sent: boolean,
+  current: () => boolean,
+): Promise<void> {
+  const sameBook = (s: ProgressSave) =>
+    sameConnection(s.connectionId, save.connectionId) &&
+    s.libraryId === save.libraryId &&
+    s.path === save.path;
+  // A sent save with nothing of its book queued (nearly every live tick) has nothing to
+  // retire: skip the cross-tab lock.
+  if (sent && !(await readQueue()).some(sameBook)) return;
   await withQueueLock(async () => {
-    const queue = await readQueue();
-    // Keep only the latest pending save per (connection, library, path).
-    const next = queue.filter(
-      (s) =>
-        !(
-          s.connectionId === save.connectionId &&
-          s.libraryId === save.libraryId &&
-          s.path === save.path
-        ),
-    );
-    next.push(save);
-    // Best effort, as ever: a save storage has no room for stays in the mirror only.
-    await writeQueue(next, queue.length).catch(() => undefined);
+    // The purge uses this lock too. It either runs after this write or has already
+    // invalidated the sign-in that requested it.
+    if (!current()) return;
+    const queue = await readQueueStrict();
+    // An earlier guard read can finish after a newer save queued.
+    const newer = (s: ProgressSave) => Date.parse(s.updated_at) > Date.parse(save.updated_at);
+    const next = queue.filter((s) => !sameBook(s) || newer(s));
+    if (!sent && !next.some(sameBook)) next.push(save);
+    else if (next.length === queue.length) return;
+    await writeQueue(next, queue.length);
   });
 }
 
@@ -1397,7 +1473,10 @@ async function flushGroup(
   routed: ApiClient,
   saves: ProgressSave[],
   mine: ClaimCheck<ProgressSave>,
+  lastChance: boolean,
 ): Promise<ProgressSave[]> {
+  const since = connectionGeneration(cid);
+  const current = () => connectionGeneration(cid) === since;
   const client = liveClient(cid) ?? routed;
   const remaining: ProgressSave[] = [];
   // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
@@ -1416,14 +1495,17 @@ async function flushGroup(
       continue;
     }
     try {
-      // A guarded save the server's row holds back leaves the queue (the mirror keeps it).
-      if (await guardPasses(client, save)) {
-        await client.saveProgress(save.libraryId, save.path, putBody(save));
-        notePut(save);
-      }
-      noteSuccess(cid);
+      // Held: it waits in the queue for the listener's answer to the offer. Not at a
+      // sign-out's last flush: unanswered, it is dropped with the mirror, never PUT. The
+      // legacy PUT is last-write-wins by `updated_at`, so it would move the other device's
+      // further place back (fe#198). Sync v2 never queues one here: its listens reach the
+      // server as events, which the server resolves against that place.
+      // Checked on a fresh read then, unless the stop's own save just read it.
+      const reuseMs = lastChance ? LAST_CHANCE_RECHECK_MS : undefined;
+      const outcome = await putSave(client, save, current, reuseMs);
+      if (outcome === 'held' && !lastChance) remaining.push(save);
     } catch (e) {
-      if (isRefusedForGood(e)) continue; // 4xx: drop, can't ever succeed (not a 408 or a 429)
+      if (!current() || isRefusedForGood(e)) continue;
       noteFailure(cid, e); // only a check marks the server down
       remaining.push(save); // keep it to retry next time
       // A save's own failure lets the rest through, so one poison entry never blocks every
@@ -1458,7 +1540,7 @@ function replaySaves(
       readStrict: readQueueStrict,
       write: writeQueue,
       route,
-      send: flushGroup,
+      send: (cid, client, saves, mine) => flushGroup(cid, client, saves, mine, takeOver),
       sent: sentUnsettled,
       takeOver,
     }),
@@ -1565,6 +1647,7 @@ export async function flushConnection(
 // Removing a connection orphans its scoped state (signing in again starts from the
 // server's own record), so drop its mirror records and queued saves here.
 onConnectionRemoved(async (id) => {
+  if (lastHeld && sameConnection(lastHeld.connectionId, id)) lastHeld = null;
   clockSkews.delete(id);
   skewLooked.delete(id);
   forgetRateLimit(id);
@@ -1580,7 +1663,7 @@ onConnectionRemoved(async (id) => {
       const map = await readMirrorMap();
       let changed = false;
       for (const [key, save] of Object.entries(map)) {
-        if (save.connectionId === id) {
+        if (sameConnection(save.connectionId, id)) {
           delete map[key];
           changed = true;
         }

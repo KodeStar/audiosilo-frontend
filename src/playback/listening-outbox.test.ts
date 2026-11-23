@@ -55,11 +55,11 @@ import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-of
 import { setConnectionAliases } from '@/lib/connection-id';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { connectionGeneration } from './connection-generation';
 import {
   appendEvents,
   appendInTurn,
   clockSkewOf,
-  connectionGeneration,
   closeSpan,
   eventIsFinite,
   COULD_NOT_SYNC_KEEP_MS,
@@ -71,7 +71,7 @@ import {
   LIVE_SPAN_MS,
   MAX_EVENT_SPAN_MS,
   keptMine,
-  legacySavesOf,
+  legacySaveOf,
   type OpenSpan,
   outboxEvents,
   recoverOpenSpan,
@@ -98,6 +98,7 @@ import {
 import {
   ackVersion,
   getDeviceId,
+  flushConnection,
   noteClockSkew,
   pendingSaves,
   type ProgressSave,
@@ -1554,7 +1555,7 @@ describe('flushOutbox', () => {
     expect(await outboxEvents('c1')).toEqual([]);
   });
 
-  it("a rolled-back listen is held by another device's further place (the replay guard)", async () => {
+  it('transfers a held rollback save to the legacy queue and sends it once the guard passes', async () => {
     await appendEvents('c1', [listen('a')]);
     const c = client(async () => {
       throw new ApiError(404, 'not found');
@@ -1573,7 +1574,85 @@ describe('flushOutbox', () => {
     expect(c.getProgress).toHaveBeenCalledWith(3, 'Author/Book');
     expect(c.saveProgress).not.toHaveBeenCalled();
     expect(await outboxEvents('c1')).toEqual([]);
+    expect((await pendingSaves('c1')).saves).toBe(1);
+
+    c.getProgress.mockResolvedValue(null);
+    await flushConnection('c1');
+    expect(c.saveProgress).toHaveBeenCalledWith(
+      3,
+      'Author/Book',
+      expect.objectContaining({ position: 16800 }),
+    );
+    expect((await pendingSaves('c1')).saves).toBe(0);
   });
+
+  it("a late rollback confirmation cannot transfer the next sign-in's events", async () => {
+    await appendEvents('c1', [listen('old-sign-in')]);
+    const confirming = Promise.withResolvers<void>();
+    const confirmed = Promise.withResolvers<unknown>();
+    const c = client(
+      async () => {
+        throw new ApiError(405, 'no route');
+      },
+      () => {
+        confirming.resolve();
+        return confirmed.promise;
+      },
+    );
+    const sending = flushOutbox('c1');
+    await confirming.promise;
+    await Promise.all(purges.map((purge) => purge('c1')));
+    await appendEvents('c1', [listen('new-sign-in')]);
+    confirmed.resolve({ capabilities: {} });
+    await sending;
+    expect(await outboxEvents('c1')).toEqual([
+      { connectionId: 'c1', event: listen('new-sign-in') },
+    ]);
+    expect(c.saveProgress).not.toHaveBeenCalled();
+    expect(keepServerAnswer).not.toHaveBeenCalled();
+    expect((await pendingSaves('c1')).saves).toBe(0);
+  });
+
+  it('retains the original rollback events when the held save could not be stored', async () => {
+    await appendEvents('c1', [listen('a')]);
+    const c = client(async () => {
+      throw new ApiError(405, 'no route');
+    });
+    c.getProgress.mockResolvedValue({ device_id: 'other', position: 20000 });
+    const setItem = jest.mocked(AsyncStorage.setItem);
+    const write = setItem.getMockImplementation()!;
+    setItem.mockImplementation(async (key, value) => {
+      if (key === 'audiosilo.progressQueue') throw new Error('quota');
+      return write(key, value);
+    });
+    try {
+      await flushOutbox('c1');
+      expect(c.saveProgress).not.toHaveBeenCalled();
+      expect((await outboxEvents('c1')).map((e) => e.event.id)).toEqual(['a']);
+      expect((await pendingSaves('c1')).saves).toBe(0);
+    } finally {
+      setItem.mockImplementation(write);
+    }
+  });
+
+  it.each(['jump', 'moved_back', 'restart', 'stay'] as const)(
+    'rolls a %s back to a PUT of the chosen place without checking the guard',
+    async (start) => {
+      await appendEvents('c1', [listen('move', { start, to_pos: 0 })]);
+      const c = client(async () => {
+        throw new ApiError(405, 'no route');
+      });
+      c.getProgress.mockResolvedValue({ device_id: 'other', position: 20000 });
+      await flushOutbox('c1');
+      expect(c.getProgress).not.toHaveBeenCalled();
+      expect(c.saveProgress).toHaveBeenCalledWith(
+        3,
+        'Author/Book',
+        expect.objectContaining({ position: 0, finished: false }),
+      );
+      expect(await outboxEvents('c1')).toEqual([]);
+    },
+  );
 
   it('unsentListens sends once more while reachable, else only counts', async () => {
     await appendEvents('c1', [listen('a')]);
@@ -1944,39 +2023,52 @@ async function settleState() {
   for (let i = 0; i < 20; i++) await new Promise((r) => setImmediate(r));
 }
 
-describe('legacySavesOf', () => {
-  it('the newest listen end per book; finished only by a finish not older than it', () => {
-    const later = listen('b', {
-      to_pos: 20000,
-      ended_at: '2026-10-25T09:00:00.000Z',
-    } as Partial<ListeningEvent>);
-    const unfinish = {
-      id: 'u',
-      kind: 'unfinish',
+describe('legacySaveOf', () => {
+  const saveOf = (events: ListeningEvent[]) =>
+    legacySaveOf(
+      events.map((event) => ({ connectionId: 'c1', event })),
+      'dev',
+    );
+
+  it('takes the newest listen end over an older finish', () => {
+    const later = listen('b', { to_pos: 20000, ended_at: '2026-10-25T09:00:00.000Z' });
+    const finish: ListeningEvent = {
+      id: 'f',
+      kind: 'finish',
       library_id: 3,
       path: 'Author/Book',
       at: '2026-10-25T08:30:00.000Z',
-    } as ListeningEvent;
-    const other = listen('c', { path: 'Other/Book', to_pos: 50 } as Partial<ListeningEvent>);
-    const saves = legacySavesOf(
-      'c1',
-      [listen('a'), unfinish, later, other].map((event) => ({ connectionId: 'c1', event })),
-      'dev',
-    );
-    expect(saves).toEqual([
-      {
-        connectionId: 'c1',
-        libraryId: 3,
-        path: 'Author/Book',
-        position: 20000,
-        duration: 61200,
-        finished: false,
-        playback_speed: 1.2,
-        device_id: 'dev',
-        updated_at: '2026-10-25T09:00:00.000Z',
-      },
-      expect.objectContaining({ path: 'Other/Book', position: 50, finished: false }),
-    ]);
+    };
+    expect(saveOf([later, finish, listen('a')])).toEqual({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: 'Author/Book',
+      position: 20000,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1.2,
+      device_id: 'dev',
+      updated_at: '2026-10-25T09:00:00.000Z',
+      guard: true,
+    });
+  });
+
+  it('guards a continuation according to the most recent play or move, even if an older span was appended last', () => {
+    const move = listen('move', { start: 'jump' });
+    const resume = listen('resume', { start: 'resume', ended_at: '2026-10-25T08:00:00.000Z' });
+    const cut = listen('cut', {
+      start: 'continue',
+      from_pos: 16800,
+      from_file: 'Author/Book/05.mp3',
+      ended_at: '2026-10-25T09:00:00.000Z',
+      to_pos: 16805,
+    });
+    expect(saveOf([cut, move])).toMatchObject({ position: 16805 });
+    expect(saveOf([cut, move])).not.toHaveProperty('guard');
+    expect(saveOf([resume, cut, move])).toMatchObject({ position: 16805, guard: true });
+    expect(saveOf([cut])).toMatchObject({ position: 16805, guard: true });
+    const unrelated = listen('other', { start: 'continue', ended_at: '2026-10-25T10:00:00.000Z' });
+    expect(saveOf([move, unrelated])).toMatchObject({ guard: true });
   });
 });
 

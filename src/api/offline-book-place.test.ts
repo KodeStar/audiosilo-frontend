@@ -35,9 +35,10 @@ jest.mock('@/api/provider', () => {
 /* eslint-disable import/first */
 import { allProgressQuery, fetchBookProgress } from '@/api/hooks';
 import { setKeptOfflineCheck } from '@/downloads/kept-offline';
-import { loadInitialProgress, readMirror, writeMirror } from '@/playback/progress-sync';
+import * as progressSync from '@/playback/progress-sync';
 /* eslint-enable import/first */
 
+const { loadInitialProgress, readMirror, writeMirror } = progressSync;
 const BOOK = 'Dresden/Death Masks.m4b';
 
 /** Death Masks at 70% (chapter 9), saved by another device. */
@@ -139,10 +140,38 @@ describe("the progress list keeps the downloaded books' places", () => {
     ({ allProgress: jest.fn(async () => rows) }) as unknown as ApiClient;
   const streamed: Progress = { ...serverPlace, path: 'Other/Streamed.m4b' };
 
-  async function readList(rows: Progress[]) {
+  function fetchList(rows: Progress[]) {
     const fn = allProgressQuery('c1', listClient(rows)).queryFn as () => Promise<Progress[]>;
     return fn();
   }
+
+  // The query returns as soon as its rows arrive. For checks of the stored copy, wait
+  // separately for the write it started.
+  async function readList(rows: Progress[]) {
+    const write = jest.spyOn(progressSync, 'writeMirrors');
+    try {
+      const result = await fetchList(rows);
+      await write.mock.results[0].value;
+      return result;
+    } finally {
+      write.mockRestore();
+    }
+  }
+
+  it('returns the rows while their mirror write is waiting', async () => {
+    let release!: () => void;
+    const pending = new Promise<void>((resolve) => (release = resolve));
+    const write = jest.spyOn(progressSync, 'writeMirrors').mockReturnValueOnce(pending);
+    try {
+      const rows = [serverPlace, streamed];
+      const result = await Promise.race([fetchList(rows), new Promise((r) => setTimeout(r, 0))]);
+      expect(result).toBe(rows);
+      expect(write).toHaveBeenCalledTimes(1);
+    } finally {
+      release();
+      write.mockRestore();
+    }
+  });
 
   it('mirrors a downloaded book from the list, and only a downloaded one', async () => {
     await expect(readList([serverPlace, streamed])).resolves.toEqual([serverPlace, streamed]);

@@ -50,9 +50,11 @@ const mockPlayBook = jest.fn();
 const mockToggle = jest.fn();
 const mockSeekBook = jest.fn();
 const mockGoToTrack = jest.fn();
+const mockPlayOnThroughStall = jest.fn();
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
+    playOnThroughStall: () => mockPlayOnThroughStall(),
     selectBookKey: (s: { key: string | null }) => s.key,
     selectIsTransportLive: (s: { live: boolean }) => s.live,
     usePlayer: create(() => ({
@@ -60,7 +62,7 @@ jest.mock('@/playback/store', () => {
       nowPlaying: null,
       live: false,
       playBook: (...a: unknown[]) => mockPlayBook(...a),
-      toggle: () => mockToggle(),
+      toggle: (...args: unknown[]) => mockToggle(...args),
       seekBook: (...args: unknown[]) => mockSeekBook(...args),
       goToTrack: (i: number) => mockGoToTrack(i),
     })),
@@ -104,6 +106,7 @@ beforeEach(() => {
   mockToggle.mockReset();
   mockSeekBook.mockReset();
   mockGoToTrack.mockReset();
+  mockPlayOnThroughStall.mockReset();
   mockPush.mockReset();
 });
 
@@ -134,6 +137,7 @@ describe('usePlayBook', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
     expect(mockPush).not.toHaveBeenCalled();
   });
@@ -146,6 +150,57 @@ describe('usePlayBook', () => {
     await play({ viaBookPage: true });
     expect(mockPush.mock.calls.map((c) => c[0].pathname)).toEqual(['/book/[libraryId]', '/player']);
     expect(mockPlayBook).not.toHaveBeenCalled();
+  });
+
+  it('dates the resume of a paused book from its chapter press before a slow seek', async () => {
+    setPlayer({ key: 'c:1:Book', live: false });
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      mockSeekBook.mockImplementationOnce(async () => {
+        clock.mockReturnValue(now + 1000);
+      });
+      await play({ at: { position: 40 } });
+      expect(mockToggle).toHaveBeenCalledWith(now);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('plays on a book live at the press that stopped during the seek, dated at the press', async () => {
+    setPlayer({ key: 'c:1:Book', live: true });
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      mockSeekBook.mockImplementationOnce(async () => {
+        // A stall's watchdog fired while the seek was out.
+        setPlayer({ key: 'c:1:Book', live: false });
+        clock.mockReturnValue(now + 1000);
+      });
+      await play({ at: { position: 40 } });
+      expect(mockToggle).toHaveBeenCalledWith(now);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it('a book still live once its seek was asked plays on through a stall of it', async () => {
+    setPlayer({ key: 'c:1:Book', live: true });
+    mockSeekBook.mockImplementationOnce(async () => {
+      expect(mockPlayOnThroughStall).not.toHaveBeenCalled(); // after the move, not before
+    });
+    await play({ at: { position: 40 } });
+    expect(mockPlayOnThroughStall).toHaveBeenCalledTimes(1);
+    expect(mockToggle).not.toHaveBeenCalled();
+    // One stopped during the seek is played on at once instead.
+    mockSeekBook.mockImplementationOnce(async () => setPlayer({ key: 'c:1:Book', live: false }));
+    await play({ at: { position: 40 } });
+    expect(mockPlayOnThroughStall).toHaveBeenCalledTimes(1);
+    expect(mockToggle).toHaveBeenCalledTimes(1);
+    // A Play with no move asked leaves its stalls to the watchdog.
+    setPlayer({ key: 'c:1:Book', live: true });
+    await play();
+    expect(mockPlayOnThroughStall).toHaveBeenCalledTimes(1);
   });
 
   it('plays a loaded book on (never pausing it) unless the button is a toggle', async () => {
@@ -269,6 +324,7 @@ describe('usePlayBook', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
     expect(mockPush).not.toHaveBeenCalled();
   });

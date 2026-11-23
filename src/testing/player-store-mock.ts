@@ -185,6 +185,8 @@ function buildPlayerStoreMock() {
       };
     },
     resumeOtherBook: () => spies.resumeOtherBook(),
+    /** The store's `stopPlayOnThroughStall`: nothing held here. */
+    stopPlayOnThroughStall: () => undefined,
 
     // --- driving the double ------------------------------------------------
 
