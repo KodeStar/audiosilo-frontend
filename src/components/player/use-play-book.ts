@@ -87,12 +87,13 @@ export function usePlayBook() {
 }
 
 /** The loaded book to `at` (`seekBook`, so the Undo chip offers the way back), then
- * playing on, also when it was paused. */
+ * playing on, also when it was paused, or stopped during the seek (a stall's error, its
+ * end). Dated at the press: another tab's play since wins (`toggle`). */
 async function playOn(connectionId: string, at: BookPlace) {
   const store = usePlayer.getState();
-  const askedAt = selectIsTransportLive(store) ? undefined : bookPlayPressed(connectionId);
+  const askedAt = bookPlayPressed(connectionId);
   if (at.file || at.position !== undefined) await store.seekBook(at.position ?? 0, at.file);
   else if (at.track !== undefined) await store.goToTrack(at.track);
   const player = usePlayer.getState();
-  if (askedAt !== undefined && !selectIsTransportLive(player)) await player.toggle(askedAt);
+  if (!selectIsTransportLive(player)) await player.toggle(askedAt);
 }

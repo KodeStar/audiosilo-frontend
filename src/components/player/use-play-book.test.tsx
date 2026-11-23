@@ -164,6 +164,23 @@ describe('usePlayBook', () => {
     }
   });
 
+  it('plays on a book live at the press that stopped during the seek, dated at the press', async () => {
+    setPlayer({ key: 'c:1:Book', live: true });
+    const now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      mockSeekBook.mockImplementationOnce(async () => {
+        // A stall's watchdog fired while the seek was out.
+        setPlayer({ key: 'c:1:Book', live: false });
+        clock.mockReturnValue(now + 1000);
+      });
+      await play({ at: { position: 40 } });
+      expect(mockToggle).toHaveBeenCalledWith(now);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   it('plays a loaded book on (never pausing it) unless the button is a toggle', async () => {
     setPlayer({ key: 'c:1:Book', live: true });
     await play();
