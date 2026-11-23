@@ -6,6 +6,7 @@ let mockOnline = true;
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockOnline,
+  isDeviceOnline: () => mockOnline,
 }));
 
 const mockPick = jest.fn();
@@ -88,6 +89,20 @@ describe('OpmlImportPanel', () => {
     expect(screen.getByText('Choose a file')).toBeTruthy();
     await fireEvent.press(screen.getByTestId('opml-choose'));
     expect(opml.start).toHaveBeenCalledWith(picked);
+  });
+
+  it('starts nothing when the network drops while the picker is open', async () => {
+    const opml = importer();
+    const picked = { name: 'subs.opml', size: 10, body: new Uint8Array(10) };
+    let choose: (f: typeof picked) => void = () => {};
+    mockPick.mockReturnValue(new Promise((resolve) => (choose = resolve)));
+    const view = await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    await fireEvent.press(screen.getByTestId('opml-choose'));
+    mockOnline = false;
+    await act(async () => choose(picked));
+    await view.rerender(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(opml.start).not.toHaveBeenCalled();
+    expect(screen.getByText("You're offline. Reconnect to find or add shows.")).toBeTruthy();
   });
 
   it('does nothing when the picker is cancelled, and says so when it fails', async () => {

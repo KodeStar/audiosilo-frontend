@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
-import { useDeviceOnline } from '@/lib/device-online';
+import { isDeviceOnline, useDeviceOnline } from '@/lib/device-online';
 import { useNow } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -103,10 +103,12 @@ export function OpmlImportPanel({
   const online = useDeviceOnline();
   const { state, problem } = opml;
   const running = !!state && isRunning(state.status);
+  // The network is read again when the file comes back: the picker can stay open while it
+  // drops, and an upload started then fails unsent. The offline line already says why.
   const choose = () =>
     void pickOpml().then(
       (file) => {
-        if (file) opml.start(file);
+        if (file && isDeviceOnline()) opml.start(file);
       },
       () => opml.unreadable(),
     );
