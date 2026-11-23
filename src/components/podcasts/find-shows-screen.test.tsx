@@ -219,6 +219,14 @@ describe('FindShowsScreen', () => {
     expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
   });
 
+  it('keeps the page while a libraries list not read yet waits for the network', async () => {
+    mockLibraries = undefined;
+    mockLibrariesPaused = true;
+    await mountWithPortal(<FindShowsScreen />);
+    expect(screen.getByTestId('section-search')).toBeTruthy();
+    expect(screen.queryByText("You're offline")).toBeNull();
+  });
+
   it('waits for the server before deciding', async () => {
     mockCaps = {};
     await mountWithPortal(<FindShowsScreen />);
