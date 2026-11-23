@@ -119,7 +119,7 @@ export type OwnPlay = {
  * before the clock was set back (`beforeClockStep`) is older than one asked for since,
  * whatever the two times say.
  */
-export function givesWayTo(claim: PlayingClaim, mine: OwnPlay): boolean {
+export function givesWayTo(claim: PlayingClaim, mine: OwnPlay, now = Date.now()): boolean {
   // The same connection under an id the identity migration moved it from too: a tab that
   // followed the rename and one that loaded its book before it (`sameConnection`).
   if (
@@ -130,7 +130,6 @@ export function givesWayTo(claim: PlayingClaim, mine: OwnPlay): boolean {
   ) {
     return false;
   }
-  const now = Date.now();
   const mineBefore = beforeClockStep(mine.askedAt, now);
   if (mineBefore !== beforeClockStep(claim.askedAt, now)) return mineBefore;
   return laterPlay(claim, mine);
@@ -224,7 +223,7 @@ export function newerTabPlay(connectionId: string, askedAt: number): PlayingClai
   let newest: PlayingClaim | null = null;
   for (const [cid, claim] of rivals) {
     if (!claim || beforeClockStep(claim.sentAt, now)) continue;
-    if (!sameConnection(cid, connectionId) || !givesWayTo(claim, mine)) continue;
+    if (!sameConnection(cid, connectionId) || !givesWayTo(claim, mine, now)) continue;
     if (!newest || laterPlay(claim, newest)) newest = claim;
   }
   return newest;
