@@ -3325,7 +3325,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
  * (`onGaveWayAnswer`), and begins again at the place while it plays.
  *
  * Not once the listener moved or the store asked the engine elsewhere (either clears
- * `lateTabSeek`), another book started or another such move began meanwhile (`catchingUp`),
+ * `lateTabSeek`; Stay does not, `chooseLoadedPlace`), another book started or another such move began meanwhile (`catchingUp`),
  * nor when the engine is not at the place (a queue replaced under the seek). `'unconfirmed'`:
  * the report reached the place by playing on from `prev`, which is no landing yet; the report
  * handler runs its tick after this report settles.
@@ -5293,9 +5293,13 @@ export function holdSaves(): (opts?: { flush?: boolean }) => void {
   return release;
 }
 
-/** Stay on a place offer is a choice of the loaded book's current place. */
+/** Stay on a place offer is a choice of the loaded book's current place. A move to another
+ * tab's place given up on (`lateTabSeek`) is not called off by it: the engine goes there if
+ * it lands, and the store follows, or the floor left behind would refuse every save. */
 export function chooseLoadedPlace(): void {
+  const late = lateTabSeek;
   userMoved();
+  lateTabSeek = late;
 }
 
 /** The listener's own moves so far (`localMoves`). */

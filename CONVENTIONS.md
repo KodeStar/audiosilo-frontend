@@ -3230,8 +3230,10 @@ media GETs only.
     the same landing before the receiver publishes its position, while the call could still
     land (`ASK_SETTLE_MAX_MS` from the ask): a Cast move there later is the listener's own. This
     applies unless the listener
-    moved or another book started meanwhile: left alone, a landing far behind the floor put
-    back refused every save, and one further on ran the open span over audio nobody heard. A
+    moved or another book started meanwhile (Stay on a place offer is no move here: the engine
+    still goes where the move lands, `chooseLoadedPlace`): left alone, a landing far behind the
+    floor put back refused every save, and one further on ran the open span over audio nobody
+    heard. A
     book switch drops a move still out (`switchBook` clears
     `catchingUp`), so it holds none of the next book's saves or spans. A book
     the other tab **finished** starts again from 0 as a `restart` with the `unfinish` owed,
