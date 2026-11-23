@@ -3075,10 +3075,13 @@ media GETs only.
     (`answerAfterSpan`, `afterInTurn`; in turn with no span open too, behind a close already
     on its way), so what was heard before the answer never goes on the row's version (the
     place left behind would replace the other device's newer one, sent alone after a kill;
-    fe#285); the span the cut opens begins again where the engine is once the answer is in,
-    and is stored then (what it heard meanwhile would close on the row's at the old place, a
-    keep's copy too after a kill); the move goes on the row's (`decide` makes it only if the
-    book and the listener's moves are as they were). The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
+    fe#285); the span the cut opens begins again where the engine is once the answer is in
+    (what it heard meanwhile would close on the row's at the old place, a keep's copy too
+    after a kill); the move (`answerAfterSpan`'s `move`) is made right then, and that span is
+    stored only when no move took it: a copy at the old place stamped after the answer,
+    recovered after a kill before the move's own span was stored, moved this device's record
+    back there over the row just answered. The move goes on the row's (`decide` makes it only
+    if the book and the listener's moves are as they were). The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
     still acknowledges before the move.
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,

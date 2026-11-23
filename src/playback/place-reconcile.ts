@@ -285,8 +285,8 @@ export async function offerLoadedPlace(
         onPress: () => {
           // Acknowledged before the move, so the span the jump opens is sent on the row it
           // answered, and after the span heard here closes, so that one is not
-          // (`answerAfterSpan`).
-          void answerAfterSpan(np, answer).then(() => {
+          // (`answerAfterSpan`, which makes the move before it stores anything).
+          void answerAfterSpan(np, answer, () => {
             if (selectBookKey(usePlayer.getState()) === bookKey) {
               if (held) placeChecked(bookKey);
               quietly(usePlayer.getState().seekBook(offer.position));
@@ -536,15 +536,24 @@ async function decide(
     // and then the row is not acknowledged either (this device never moved to it).
     const overtaken = () =>
       selectBookKey(usePlayer.getState()) !== bookKey || localMoveCount() !== moves;
-    await answerAfterSpan(np, async () => {
-      if (overtaken()) return;
-      await ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
-        () => undefined,
-      );
-    });
-    if (overtaken()) return false;
+    const moved = await answerAfterSpan(
+      np,
+      async () => {
+        if (overtaken()) return;
+        await ackVersion(np.connectionId, np.libraryId, np.path, server.version, server).catch(
+          () => undefined,
+        );
+      },
+      async () => {
+        if (overtaken()) return false;
+        await usePlayer.getState().seekBook(to);
+        return true;
+      },
+    );
+    if (!moved) return false;
+  } else {
+    await usePlayer.getState().seekBook(to);
   }
-  await usePlayer.getState().seekBook(to);
   tell(bookKey, from, to);
   return true;
 }

@@ -2278,32 +2278,50 @@ export function standByPlace(): void {
  * In turn with no span of the book open too (a server taking listening events): a close
  * already on its way (a pause just before the answer) reads its base before the answer
  * lands. The span the cut opens while playing begins again where the engine is once the
- * answer is in, and is stored then: what it heard while the answer waited its turn would
- * close on the row's version, at the place left behind.
+ * answer is in: what it heard while the answer waited its turn would close on the row's
+ * version, at the place left behind. `move` (the Jump's seek) is made right after, before
+ * that span is stored, and resolves this with its result: a copy stored at the place left,
+ * stamped after the answer, is what a kill before the move's own span was stored recovered,
+ * and it moved this device's record there over the row just answered.
  */
-export async function answerAfterSpan(ref: ContentRef, answer: () => Promise<void>): Promise<void> {
+export async function answerAfterSpan<T = void>(
+  ref: ContentRef,
+  answer: () => Promise<void>,
+  move?: () => T | Promise<T>,
+): Promise<T | undefined> {
   let reopened: OpenSpan | null = null;
   if (span && sameBook(span, ref)) {
     cutListeningSpan();
     reopened = span;
   } else if (!usesListeningSync(ref.connectionId)) {
     // No spans there (the PUT path): nothing to wait for.
-    return answer();
+    await answer();
+    return move?.();
   }
   await afterInTurn(ref.connectionId, answer);
-  if (!reopened || span !== reopened) return;
-  const here = engineEnd() ?? reopened.to;
-  const now = new Date().toISOString();
-  Object.assign(reopened, {
-    from: here,
-    to: here,
-    startedAt: now,
-    endedAt: now,
-    start: 'continue',
-  });
-  // Stored as it begins again (behind a keep made while the answer waited, at the place
-  // left): a kill before the next keep recovers this copy, not that one on the row's version.
-  void storeOpenSpan({ ...reopened });
+  if (reopened && span === reopened) {
+    const here = engineEnd() ?? reopened.to;
+    const now = new Date().toISOString();
+    Object.assign(reopened, {
+      from: here,
+      to: here,
+      startedAt: now,
+      endedAt: now,
+      start: 'continue',
+    });
+  }
+  let moving: T | Promise<T> | undefined;
+  try {
+    // A seek moves the span at its call (`moveListeningSpan`): that close clears the keep made
+    // while the answer waited, and the move's own span is stored at the target.
+    moving = move?.();
+  } finally {
+    // No move took it (none asked, or none made): stored as it begins again (behind a keep
+    // made while the answer waited, at the place left), so a kill before the next keep
+    // recovers this copy, not that one on the row's version.
+    if (reopened && span === reopened) void storeOpenSpan({ ...reopened });
+  }
+  return moving;
 }
 
 /** Cut the playing span now (the server came back, the app went to the background, the web

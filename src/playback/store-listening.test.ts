@@ -3107,6 +3107,33 @@ describe('the open span is kept every 5 s', () => {
     expect(stored().at(-1)).toEqual(['continue', 36, 36]);
   });
 
+  // A kill between a copy stored at the place left and the move recovered that copy, stamped
+  // after the answer, and moved this device's record back there over the row just answered.
+  it("an offer's answer with a move stores nothing at the place left", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 30));
+    await settle();
+    let release: () => void = () => {};
+    const answered = answerAfterSpan(
+      { connectionId: 'c1', libraryId: 2, path: folder },
+      () => new Promise<void>((r) => (release = r)),
+      () => usePlayer.getState().seekBook(70),
+    );
+    await settle();
+    pushSnapshot(snap('playing', 0, 36));
+    mockStoreOpenSpan.mockClear();
+    release();
+    await answered;
+    await settle();
+    expect(stored()).toEqual([['jump', 70, 70]]);
+    // What it heard while the answer waited closes on nothing: begun again at the answer.
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).not.toContainEqual([
+      'continue',
+      30,
+      36,
+    ]);
+  });
+
   it('a cut stores nothing at once: the keep does', async () => {
     await start();
     pushSnapshot(snap('playing', 0, 30));

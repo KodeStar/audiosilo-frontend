@@ -74,11 +74,15 @@ export function ListeningOfferLine({
     setAnswered(offer.key);
     const { connectionId, libraryId, path } = target;
     // After the span this book still has open closes (`answerAfterSpan`): what was heard
-    // before the answer is not sent on the row's version.
-    void answerAfterSpan(target, () =>
-      // A mirror that could not be read is left as it is: the play still goes.
-      answerOffer(connectionId, libraryId, path, row, offer.key).catch(() => undefined),
-    ).then(() => onPlay(offer.position));
+    // before the answer is not sent on the row's version. The play is its move, made before
+    // anything of the place left is stored.
+    void answerAfterSpan(
+      target,
+      () =>
+        // A mirror that could not be read is left as it is: the play still goes.
+        answerOffer(connectionId, libraryId, path, row, offer.key).catch(() => undefined),
+      () => onPlay(offer.position),
+    );
   };
   return (
     <View testID="listening-offer" className="flex-row flex-wrap items-center gap-x-2 gap-y-1">
