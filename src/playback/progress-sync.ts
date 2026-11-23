@@ -1267,24 +1267,35 @@ async function guardPasses(
   current: () => boolean,
 ): Promise<boolean> {
   if (!save.guard) return true;
-  const mine = await readMirror(save.connectionId, save.libraryId, save.path);
-  if (!current()) return false;
   const now = Date.now();
   const cached = lastHeld;
-  let row: Progress;
-  if (
+  const reusable =
     cached &&
     cached.session === save.guard_session &&
     cached.connectionId === save.connectionId &&
     cached.row.library_id === save.libraryId &&
     cached.row.path === save.path &&
     now >= cached.at &&
-    now - cached.at < HELD_RECHECK_MS &&
-    guardHolds(save, cached.row, mine?.answered)
-  ) {
-    row = cached.row;
-  } else {
-    const fresh = await client.getProgress(save.libraryId, save.path);
+    now - cached.at < HELD_RECHECK_MS
+      ? cached.row
+      : null;
+  // Only a cached hold needs the mirror's answer before deciding; otherwise the mirror and
+  // the server's row are read together.
+  let mine: ProgressSave | null = null;
+  let row: Progress | null = null;
+  if (reusable) {
+    mine = await readMirror(save.connectionId, save.libraryId, save.path);
+    if (!current()) return false;
+    if (guardHolds(save, reusable, mine?.answered)) row = reusable;
+  }
+  if (!row) {
+    let fresh: Progress | null;
+    if (reusable) fresh = await client.getProgress(save.libraryId, save.path);
+    else
+      [mine, fresh] = await Promise.all([
+        readMirror(save.connectionId, save.libraryId, save.path),
+        client.getProgress(save.libraryId, save.path),
+      ]);
     if (!current()) return false;
     if (!fresh || !guardHolds(save, fresh, mine?.answered)) return true;
     row = fresh;
@@ -1420,15 +1431,18 @@ async function updateQueuedSave(
   sent: boolean,
   current: () => boolean,
 ): Promise<void> {
+  const sameBook = (s: ProgressSave) =>
+    sameConnection(s.connectionId, save.connectionId) &&
+    s.libraryId === save.libraryId &&
+    s.path === save.path;
+  // A sent save with nothing of its book queued (nearly every live tick) has nothing to
+  // retire: skip the cross-tab lock.
+  if (sent && !(await readQueue()).some(sameBook)) return;
   await withQueueLock(async () => {
     // The purge uses this lock too. It either runs after this write or has already
     // invalidated the sign-in that requested it.
     if (!current()) return;
     const queue = await readQueueStrict();
-    const sameBook = (s: ProgressSave) =>
-      sameConnection(s.connectionId, save.connectionId) &&
-      s.libraryId === save.libraryId &&
-      s.path === save.path;
     // An earlier guard read can finish after a newer save queued.
     const newer = (s: ProgressSave) => Date.parse(s.updated_at) > Date.parse(save.updated_at);
     const next = queue.filter((s) => !sameBook(s) || newer(s));
