@@ -209,6 +209,18 @@ let stallDeadline: number | null = null;
  * buffering (`giveWayTo`). Sent before the pause reached the engine, and the pause wins. A
  * time, not the pause's promise: Android's resolves before the engine has paused. */
 let pauseFenceUntil = 0;
+/** A move the listener asked to play on from (`playOnThroughStall`: a chapter or bookmark
+ * row's Play while the book plays), until `until`: the book, the listener's moves then
+ * (`localMoves`), and the timer that stops the engine at `until` once a stall of it is
+ * held (`holdStalledSeek`). */
+let seekPlayOn: {
+  np: NowPlaying;
+  moves: number;
+  until: number;
+  timer: ReturnType<typeof setTimeout> | null;
+} | null = null;
+/** How long a move asked to play on keeps its stalled engine waiting (ms, from the ask). */
+const SEEK_PLAY_ON_MS = 30_000;
 /** A play asked of the engine from outside the app that the store follows
  * (`playAskedFromOutside`) while it is still starting, else null: over once it plays, is
  * given up (`clearPlaybackIntent`) or another play is asked for (`beginPlaybackAttempt`), so
@@ -911,6 +923,7 @@ function userMoved(bookPosition?: number, trackIndex = 0) {
  * (`localMoves`), and theirs from here, whatever another tab played meanwhile
  * (`otherTabPlayed`). */
 function choosePlaceHere() {
+  endSeekPlayOn(true);
   localMoves++;
   cancelTabSwapMoves();
   quietAdopted = null;
@@ -3584,9 +3597,56 @@ function fireStallWatchdog() {
   // The engine stops waiting to play too: left buffering, it would start on its own once the
   // server answered again, with the listener told playback had stopped. Only a press (Retry,
   // play, the car, a headset) plays from here. Its report of the pause is held by the error,
-  // and so is a `playing` it sent before the pause reached it (`pauseFenceUntil`).
+  // and so is a `playing` it sent before the pause reached it (`pauseFenceUntil`). Not a
+  // move asked to play on (`seekPlayOn`): it plays once it lands.
+  if (holdStalledSeek()) return;
+  stopStalledEngine();
+}
+
+/** Stop an engine left waiting to play after the watchdog's error: its reports until the
+ * pause lands are fenced (`pauseFenceUntil`). */
+function stopStalledEngine() {
   pauseFenceUntil = Date.now() + STALL_PAUSE_FENCE_MS;
   void service?.pause().catch(() => undefined);
+}
+
+/**
+ * The book plays on from a move the listener asked for (a chapter or bookmark row's Play while
+ * it plays, `usePlayBook`): a stall of that move into the watchdog's error leaves the engine
+ * waiting, so it plays once the move lands (the web reports the seek done at the ask, before
+ * the stall), and the `playing` it reports ends the error (`errorHeld`). Until `SEEK_PLAY_ON_MS`
+ * after the ask; after that, or once the listener moves or presses play again, it is stopped
+ * like any stall. Over at the next `playing`. Call it once the move was asked for.
+ */
+export function playOnThroughStall(): void {
+  endSeekPlayOn(false);
+  const np = usePlayer.getState().nowPlaying;
+  if (np) seekPlayOn = { np, moves: localMoves, until: Date.now() + SEEK_PLAY_ON_MS, timer: null };
+}
+
+/** The watchdog fired on the move asked to play on (`seekPlayOn`), the same book and no move
+ * since: hold the stop until that move's time is up. Whether it holds. */
+function holdStalledSeek(): boolean {
+  const held = seekPlayOn;
+  const np = usePlayer.getState().nowPlaying;
+  if (!held || held.np !== np || held.moves !== localMoves || Date.now() >= held.until) {
+    endSeekPlayOn(false);
+    return false;
+  }
+  if (held.timer) clearTimeout(held.timer);
+  held.timer = setTimeout(() => endSeekPlayOn(true), held.until - Date.now());
+  return true;
+}
+
+/** The move asked to play on is over (`seekPlayOn`). `stop`: an engine still held waiting in
+ * the error of its book is stopped now, as the watchdog would have. */
+function endSeekPlayOn(stop: boolean) {
+  const held = seekPlayOn;
+  if (!held) return;
+  seekPlayOn = null;
+  if (!held.timer) return;
+  clearTimeout(held.timer);
+  if (stop && errorHeld() && usePlayer.getState().nowPlaying === held.np) stopStalledEngine();
 }
 
 /** Where the store's book stood at `asked`, else null: null too once the listener moved the
@@ -3677,6 +3737,7 @@ function notePlayAsked(askedAt: number, intent: typeof playIntent) {
  * reaches `playing`, and the stall watchdog is ticking from now (a dead/slow-to-start
  * stream surfaces an error after the grace, matching the old native behavior). */
 function beginPlaybackAttempt(askedAt = Date.now(), intent: typeof playIntent = 'page') {
+  endSeekPlayOn(false);
   outsidePlay = null;
   pausedAsk = null;
   notePlayAsked(askedAt, intent);
@@ -4299,6 +4360,7 @@ async function createService(): Promise<PlaybackService> {
         wantsPlayback = true;
         startingPlayback = false;
         outsidePlay = null;
+        endSeekPlayOn(false);
         cancelStallWatchdog();
         // Picked up again after a long pause, from anywhere (a press, the lock screen,
         // earbuds): the listener is told synchronously, so its save hold is in place
