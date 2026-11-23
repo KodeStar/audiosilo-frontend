@@ -2969,7 +2969,7 @@ media GETs only.
     and takes the events under an id the identity migration moved the connection from
     (`sameConnection`), which the purge and the unsent count take too. A close or an event made
     for a connection and appended after an await is dropped once that connection was removed
-    meanwhile (`connectionGeneration`, bumped first thing in the outbox's removal purge: the
+    meanwhile (`connectionGeneration`, `connection-generation.ts`, bumped on removal before the purges: the
     same account signing in again has the same connection id, and an orphan appended after the
     purge was sent then); the store's mirror writes for a finish and its Undo check it too. The book page's Mark as finished is a `finish` event too on such a
     server (`finish-route.ts`, which the store registers: the hooks can't import it; the loaded

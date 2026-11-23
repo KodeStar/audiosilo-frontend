@@ -50,7 +50,6 @@ import { wallClockSeconds } from './rate';
 import { cutPlayingSpan } from './span-cut';
 import { provideStoredSkews } from './stored-skews';
 
-export { connectionGeneration };
 export type { OpenSpan, SpanEnd } from './open-span-doc';
 
 /**

@@ -39,7 +39,7 @@ import { onStoredChange } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
-import { connectionGeneration } from './listening-outbox';
+import { connectionGeneration } from './connection-generation';
 import { onlyConnection, queuedRoute, routeOnly, storedRoute } from './progress-sync';
 
 /**
@@ -1134,8 +1134,8 @@ export const startBookmarkSync = sharedStart((): (() => void) => {
 
 // Removing a connection (signing out) drops its waiting bookmarks, as its listening, those
 // under an id the identity migration moved it from too (`sameConnection`, as its last send
-// takes them). Its sign-in ends first, before any await (the listening outbox's
-// `connectionGeneration`): a bookmark made for it is not appended from here.
+// takes them). Its sign-in ends first, before any await (`connectionGeneration`): a
+// bookmark made for it is not appended from here.
 onConnectionRemoved(async (id) => {
   await withLock(async () => {
     const queue = await readQueue();

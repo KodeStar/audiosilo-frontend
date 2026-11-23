@@ -146,6 +146,8 @@ async function appendedInTurn(
   mockAppended.push(...events.map((e) => (b === undefined ? e : { ...e, base_version: b })));
 }
 const mockAppendInTurn = jest.fn(appendedInTurn);
+// A removal ends the connection's sign-in (`connection-generation`).
+jest.mock('./connection-generation', () => ({ connectionGeneration: () => mockGeneration }));
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
@@ -169,7 +171,6 @@ jest.mock('./listening-outbox', () => {
       events: ListeningEvent[],
       base?: () => Promise<number | undefined>,
     ) => mockAppendInTurn(cid, events, base),
-    connectionGeneration: () => mockGeneration,
     afterInTurn: (_cid: string, op: () => Promise<void>) => op(),
     waitingInTurn: () => mockWaitingInTurn,
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),

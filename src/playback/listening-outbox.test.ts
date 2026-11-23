@@ -55,11 +55,11 @@ import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-of
 import { setConnectionAliases } from '@/lib/connection-id';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { connectionGeneration } from './connection-generation';
 import {
   appendEvents,
   appendInTurn,
   clockSkewOf,
-  connectionGeneration,
   closeSpan,
   eventIsFinite,
   COULD_NOT_SYNC_KEEP_MS,
