@@ -719,6 +719,21 @@ describe.each([
     expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 1]);
   });
 
+  // A Cast receiver's own controls (a TV remote) send no play signal: the receiver's play,
+  // with nothing asked for in the page, is the listener's and claims the connection back.
+  it('a play from the Cast receiver’s own controls claims it back', async () => {
+    await a.start(5);
+    a.engine.svc.isCasting.mockReturnValue(true);
+    await sleep(5);
+    await b.start(30);
+    await until(() => a.player().snapshot.state === 'paused', 'A to give way');
+    await sleep(5);
+    await a.engine.svc.play(); // the receiver plays, no press in the page
+    await until(() => b.player().snapshot.state === 'paused', 'B to give way');
+    expect(a.player().snapshot.state).toBe('playing');
+    expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 1]);
+  });
+
   it('a newer play wins while an older OS Play is still waiting for audio', async () => {
     await a.start(5);
     await a.player().pause();

@@ -4079,9 +4079,11 @@ async function createService(): Promise<PlaybackService> {
       usePlayer.getState().snapshot.state !== 'playing' &&
       Platform.OS === 'web' &&
       !playIntent &&
+      !svc.isCasting?.() &&
       (yieldedAttempt === playAttempts || otherTabPlayed !== null)
     ) {
-      // A late engine report after a takeover cannot take the sound back.
+      // A late engine report after a takeover cannot take the sound back. Not a cast's: the
+      // receiver's own controls (a TV remote) have no play signal (`castPlay`, below).
       void svc.pause().catch(() => undefined);
       return;
     }
@@ -4239,10 +4241,13 @@ async function createService(): Promise<PlaybackService> {
     if (isPlayingState(snapshot.state) && !isPlayingState(prev.state)) {
       // Native engines have no separate OS play signal yet. Keep their pickup and offer
       // checks tied to a new play after a pause. Only the web arbitrates between tabs.
-      if (Platform.OS !== 'web' && !wantsPlayback) playAskedAt = Date.now();
+      // Nor does a Cast receiver's (a TV remote, the Google Home app): on the web a play it
+      // begins by itself is asked for now, as it is on native.
+      const castPlay = Platform.OS === 'web' && !wantsPlayback && !!svc.isCasting?.();
+      if ((Platform.OS !== 'web' && !wantsPlayback) || castPlay) playAskedAt = Date.now();
       // An OS play begins in the engine, before the store can move to the shared place.
-      const behind = playIntent === 'remote' ? otherTabPlayed : null;
-      if (playIntent) claimPlaying();
+      const behind = playIntent === 'remote' || castPlay ? otherTabPlayed : null;
+      if (playIntent || castPlay) claimPlaying();
       const loadedNow = usePlayer.getState().nowPlaying;
       if (behind && loadedNow && sameConnection(behind.connectionId, loadedNow.connectionId)) {
         catchUpPlaying(svc, behind.since);
