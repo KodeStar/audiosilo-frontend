@@ -41,7 +41,6 @@ const mockStop = jest.fn();
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
-    FINISHED_TOLERANCE: 5,
     selectBookPosition: (s: { position: number }) => s.position,
     selectEndsPartial: (s: { endsPartial?: boolean }) => !!s.endsPartial,
     usePlayer: create(() => ({

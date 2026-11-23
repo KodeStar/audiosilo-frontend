@@ -59,6 +59,7 @@ jest.mock('./service', () => ({ createPlaybackService: () => mockSvc }));
 const mockSaveProgress = jest.fn(async (..._a: unknown[]) => {});
 const mockWriteMirror = jest.fn(async (..._a: unknown[]) => {});
 const mockAckVersion = jest.fn(async (..._a: unknown[]) => {});
+const mockRecoverOpenSpan = jest.fn(async () => {});
 const mockLoadInitialProgress = jest.fn(async (..._a: unknown[]): Promise<ResumeLookup> => ({
   kind: 'empty',
 }));
@@ -151,6 +152,7 @@ jest.mock('./connection-generation', () => ({ connectionGeneration: () => mockGe
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
+    recoverOpenSpan: () => mockRecoverOpenSpan(),
     spanToEvent: actual.spanToEvent,
     spanIsBareMove: actual.spanIsBareMove,
     spanSaysSomething: actual.spanSaysSomething,
@@ -355,6 +357,27 @@ afterEach(async () => {
   await usePlayer.getState().stop();
   jest.clearAllTimers();
   jest.useRealTimers();
+});
+
+it('a play asked during launch recovery loads the last kept file place', async () => {
+  let recovered!: () => void;
+  const recovery = new Promise<void>((resolve) => (recovered = resolve));
+  mockRecoverOpenSpan.mockImplementationOnce(async () => {
+    await recovery;
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: row({ position: 62 }),
+      file: { path: order[1], pos: 12 },
+    });
+  });
+  const playing = start();
+  await settle(50);
+  expect(mockRecoverOpenSpan).toHaveBeenCalled();
+  expect(mockLoadInitialProgress).not.toHaveBeenCalled();
+  expect(mockSvc.load).not.toHaveBeenCalled();
+  recovered();
+  await playing;
+  expect((mockSvc.load as jest.Mock).mock.lastCall.slice(1, 3)).toEqual([1, 12]);
 });
 
 describe('without listening_sync (the PUT path, unchanged)', () => {
@@ -2828,6 +2851,22 @@ describe('what a span carries', () => {
       expect(selectBookLength(usePlayer.getState())).toBe(160);
     });
 
+    it.each([true, false])(
+      'a forced finish saves the whole length (listening sync %s)',
+      async (sync) => {
+        mockSync = sync;
+        await playOffline(withEnd(160));
+        usePlayer.getState().finishBook();
+        await settle();
+        const saved = sync
+          ? mockWriteMirror.mock.lastCall?.[0]
+          : mockSaveProgress.mock.lastCall?.[1];
+        expect(saved).toMatchObject({ finished: true, position: 160, duration: 160 });
+        expect(saved).not.toHaveProperty('file');
+        expect(saved).not.toHaveProperty('partial');
+      },
+    );
+
     it('sends no length when the download does not know it (the server checks none)', async () => {
       await playOffline(withEnd());
       expect(mockClosed.map((s) => s.duration)).toEqual([0]);
@@ -2902,6 +2941,38 @@ describe('the open span is kept every 5 s', () => {
     expect(stored().at(-1)).toEqual(['continue', 16, 23]);
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 1, 16]]);
   });
+
+  it.each([5_000, 10_000])(
+    'a kill during a reconcile hold after %i ms keeps the previous span and time',
+    async (beforeHold) => {
+      await start();
+      pushSnapshot(snap('playing', 0, 1));
+      await settle();
+      pushSnapshot(snap('playing', 0, 6));
+      jest.advanceTimersByTime(beforeHold);
+      await settle();
+      const before = structuredClone(mockStoreOpenSpan.mock.lastCall?.[0]) as OpenSpan;
+      expect(before.to.pos).toBe(6);
+      jest.advanceTimersByTime(3_000);
+      const release = holdSaves();
+      try {
+        pushSnapshot(snap('playing', 0, 11));
+        jest.advanceTimersByTime(2_000);
+        await settle();
+        expect(mockClosed).toHaveLength(0);
+        expect(mockStoreOpenSpan.mock.lastCall?.[0]).toMatchObject({
+          to: before.to,
+          endedAt: before.endedAt,
+        });
+      } finally {
+        release({ flush: false });
+      }
+      pushSnapshot(snap('playing', 0, 14));
+      jest.advanceTimersByTime(5_000);
+      await settle();
+      expect(mockStoreOpenSpan.mock.lastCall?.[0]).toMatchObject({ to: { pos: 14 } });
+    },
+  );
 
   // A native lock-screen move: the engine's landed place reaches the store before the move.
   it('never moves the span back: a remote move landing as the keep is due ends where it was', async () => {

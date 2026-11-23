@@ -21,6 +21,8 @@ const mockClient = { name: 'the book’s own client' };
 jest.mock('@/api/connection-clients', () => ({
   resolveClient: (id: string) => (id === 'c' ? mockClient : null),
 }));
+const mockRecover = jest.fn(async () => {});
+jest.mock('@/playback/listening-outbox', () => ({ recoverOpenSpan: () => mockRecover() }));
 const mockLookup = jest.fn();
 jest.mock('@/playback/progress-sync', () => ({
   loadInitialProgress: (...a: unknown[]) => mockLookup(...a),
@@ -89,10 +91,13 @@ beforeEach(() => {
 
 describe('resumeWithOverlap', () => {
   it('starts 30 s before a newer place this device holds, at its speed', async () => {
-    // Listened offline since: the newer place waits in the offline queue.
-    mockLookup.mockResolvedValue(
-      found({ position: 5000, playback_speed: 1.5, updated_at: ago(13) }),
-    );
+    // Launch recovery brings the mirror up to this device's newer offline place.
+    mockRecover.mockImplementationOnce(async () => {
+      await Promise.resolve();
+      mockLookup.mockResolvedValue(
+        found({ position: 5000, playback_speed: 1.5, updated_at: ago(13) }),
+      );
+    });
     await expect(resumeWithOverlap(at, saved)).resolves.toBe(true);
     expect(mockLookup).toHaveBeenCalledWith(mockClient, 'c', 1, at.path);
     expect(mockStart).toHaveBeenCalledWith(at, { position: 4970, speed: 1.5 });

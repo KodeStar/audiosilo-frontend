@@ -2720,14 +2720,12 @@ media GETs only.
     for book seconds, the range is 0.5x to 2x). On this device, any server, online or
     not: the mirror, **15 s**. On the sync path the open span is nearer, **5 s**: the
     next launch closes it into the outbox (`recoverOpenSpan`) and brings the mirror's
-    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`), so an
-    offline start resumes there, and online the span reaches the server with the launch's
-    send and the resume reads it back; a play that beats the launch's recovery has the
-    15 s. `mirrorSpanEnd` takes the span's end as the capture it would have been when it
-    was last kept, by the mirror's own rule (the newest record wins) and no further: only a
-    record older than the span's end, only forward, never a finished book's or a book with
-    no record, so a place written since stands (the listener's own move saves at once;
-    another tab's play; a server row). On the web it runs for a span another tab left
+    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). Resume waits
+    for that local recovery before reading the place, including when the server is offline.
+    A book with no record gets its first one from the span, with its last file, offset,
+    speed and capture time. An existing record advances only when it is older, behind and
+    unfinished. While a reconcile holds saves, the keeper leaves the span at its previous
+    place and time. On the web it runs for a span another tab left
     behind too, dated when that tab kept it, never now. The legacy path has no span: 15 s
     here, and the server (so every other device) holds the last PUT, up to 60 s back,
     until this device saves again.
@@ -3083,7 +3081,10 @@ media GETs only.
     playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
     leftover is closed into the outbox at the next launch, `recoverOpenSpan` (the mirror's
     record brought up to its end, `mirrorSpanEnd`: *The periodic save's pace*), and on the web
-    another tab's span is left to it while it is live, 30 s either side of now (a tab on an
+    a reload recovers its previous document's span immediately. `audiosilo.openSpanOwner`
+    in sessionStorage names that document. Its Web Lock protects a live tab when another
+    inherits its sessionStorage. Without Web Locks the early sweep requires a reload.
+    Other tabs' spans stay live for 30 s either side of now (a tab on an
     older build, no `owner`, while its `endedAt` is under 45 s old); a tab whose last copy
     another tab took that way plays on under a new id from where the copy ended,
     `takenFrom`/`goingOnFrom`, so what it played since is not a `duplicate`),
@@ -3738,7 +3739,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     (streaming what the download lacks) and the engine reloaded into it: it streams on, and a
     file the server no longer has is gone from the book. Offline (or no answer), a queue built
     from a download that ENDS EARLY (it lacks the book's last file, as the engine's order or
-    the server's last answer names it) is partial (`partialQueues`). A download missing only
+    the server's last answer names it) is partial (`BookQueue.partial`). A download missing only
     an earlier file (an intro) is not: it holds the book's end, and reaching that end
     finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
     the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
@@ -3772,10 +3773,13 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     queue's length**: its own audio is the downloaded part's, more than 10 s off the indexed
     book's whenever a whole file is missing, and the server refused every listen over it
     (`duration_mismatch`). Each partial queue carries the book's length on its server
-    (`partialQueues` maps it: `DownloadManifest.bookDuration`, kept from the chapters answer
+    (`queue.partial.bookDuration` comes from `DownloadManifest.bookDuration`, kept from the chapters answer
     that set `endsBefore`, else a server answer the start was given naming that end, else 0):
     a span sends it as its `duration` (0 sends none, and the server checks none) and a save
-    as its `duration`, so a percent read from the mirror is of the book. A listen refused
+    as its `duration`, so a percent read from the mirror is of the book. A forced finish
+    records the known whole-book length as both position and duration. Normal captures,
+    handoffs, recovered spans and the credits check the place with `placeEndsBook`.
+    A listen refused
     `duration_mismatch` over such a download goes back to the outbox at that length (or none)
     on every `flushAllOutboxes` (`resendMismatched`, through `downloadBookLength` in
     `kept-offline.ts`), once per length, so one refused again stays on the list. The end

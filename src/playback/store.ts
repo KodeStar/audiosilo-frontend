@@ -44,6 +44,7 @@ import {
   FINISHED_TOLERANCE,
   locate,
   locateBookPlace,
+  placeEndsBook,
   restreamQueue,
   shortOfFileEnd,
   toBookPosition,
@@ -71,6 +72,7 @@ import {
   newEventId,
   type OpenSpan,
   type OutboxEntry,
+  recoverOpenSpan,
   sendOnPageHide,
   type SpanEnd,
   spanIsBareMove,
@@ -645,6 +647,8 @@ let outputVolume = 1;
  * its owner, or by itself after `SAVE_HOLD_MAX_MS` (a slow check never loses listening).
  */
 let saveHold: { timer: ReturnType<typeof setTimeout>; expiresAt: number } | null = null;
+
+const savesHeld = (): boolean => saveHold !== null && Date.now() < saveHold.expiresAt;
 const SAVE_HOLD_MAX_MS = 5_000;
 /**
  * The download hot-swap moving the playing file to another track index (a download that
@@ -904,8 +908,6 @@ const SAVE_INTERVAL_MS = 15_000;
 /** The pace of what the save sends while nobody is looking or nothing is streaming: each
  * save is a request that wakes the radio by itself. */
 const QUIET_SAVE_INTERVAL_MS = 60_000;
-/** Treat within 5 s of the end as finished (defined beside the timeline maths). */
-export { FINISHED_TOLERANCE };
 const SLIP_TOLERANCE = 60; // a save more than this far below the resume floor is suspect
 
 /** Lower the resume floor after a deliberate user seek/jump, so a legitimate backward
@@ -1136,7 +1138,8 @@ async function persist(opts?: {
     saveHold = null;
   }
   if (saveHold && !forceFinished) return;
-  const total = nowPlaying.queue.total;
+  const { total, partial } = nowPlaying.queue;
+  const duration = partial?.bookDuration || total;
   const seeking = seekOf(nowPlaying);
   // A seek the engine could still refuse is no periodic save. A stop or a Mark as finished
   // saves the listener's chosen place before unloading (where the span closed, and the one
@@ -1152,7 +1155,7 @@ async function persist(opts?: {
     position = 0;
   }
   if (forceFinished) {
-    if (total > 0) position = Math.max(position, total); // a completed book reads as 100%
+    if (duration > 0) position = duration; // a completed book reads as 100%
   } else {
     if (position <= 0 && !(opts?.leaving && seeking)) return;
     // Guard against a slipped-through restart corrupting real progress: a position far
@@ -1176,13 +1179,8 @@ async function persist(opts?: {
     libraryId: nowPlaying.libraryId,
     path: nowPlaying.path,
     position,
-    // A partial queue's is the book's length on its server when known (`partialQueues`), so a
-    // percent read from the save is of the book, not of the downloaded part.
-    duration: partialQueues.get(nowPlaying.queue) || total,
-    // The end of a download that lacks the rest of its book is not the book's (D3, fe#185).
-    finished:
-      forceFinished ||
-      (total > 0 && position >= total - FINISHED_TOLERANCE && !endsPartial(nowPlaying)),
+    duration,
+    finished: forceFinished || placeEndsBook(position, total, !!partial),
     playback_speed: rate,
     device_id: deviceId || cachedDeviceId(),
     updated_at: new Date().toISOString(),
@@ -1191,7 +1189,7 @@ async function persist(opts?: {
     ...(forceFinished || !end?.file ? {} : { file: end.file, file_pos: end.filePos }),
     // Its queue ends before the book (D3): a span recovered past this save never reads its
     // end as the book's (`mirrorSpanEnd`).
-    ...(!forceFinished && endsPartial(nowPlaying) ? { partial: true as const } : {}),
+    ...(!forceFinished && partial ? { partial: true as const } : {}),
     ...(guarded ? { guard: true, guard_session: guard.id } : {}),
   };
   // Sync v2 (`listening_sync`): the place reaches the server as listening events (the
@@ -1707,6 +1705,8 @@ function cutListeningSpan(start: ListeningStart = 'continue') {
  * read while the book played; the history the PUT path began goes by `POST /history` up to
  * here). */
 function tickListeningSpan() {
+  // Cutting now would replace the last trusted keep with a span at the held place.
+  if (savesHeld()) return;
   if (seekOf(usePlayer.getState().nowPlaying)?.landedAt === null) return;
   if (!span) {
     openMissingSpan();
@@ -1742,6 +1742,9 @@ function openMissingSpan() {
  * too: what plays before a span opens is in no listening event, and the save loop's tick
  * may be a minute away (`saveIntervalMs`). */
 function keepOpenSpan() {
+  // Recovery dates the place by the keep. While a reconcile holds saves, keep the
+  // last trusted place and time for a launch that resumes before that check answers.
+  if (savesHeld()) return;
   const kept = span;
   if (!kept) {
     openMissingSpan();
@@ -2446,7 +2449,7 @@ function giveWayTo(claim: PlayingClaim) {
         path: np.path,
         position: at.pos,
         ...(at.file !== undefined ? { file: at.file, filePos: at.filePos } : {}),
-        finished: total > 0 && at.pos >= total - FINISHED_TOLERANCE && !endsPartial(np),
+        finished: placeEndsBook(at.pos, total, endsPartial(np)),
       });
     }
   }
@@ -2491,22 +2494,14 @@ function lateListener() {
 /** This tab gave way to another tab's play. */
 const gaveWayNotice = lateListener();
 
-/** Queues built from a download that ends before its book does, without the rest (an
- * adoption offline, `adoptLoadedBook`; a `playBook` from the download's own copy with no
- * server to stream from): their end is the downloaded part's, not the book's (D3, fe#185).
- * By queue, so any other start of the book (a new queue) is a whole one unless it adds
- * itself. Each with the book's length on its server (`DownloadManifest.bookDuration`, 0 when
- * unknown): the queue's own audio is only the downloaded part's. */
-const partialQueues = new WeakMap<BookQueue, number>();
-
-/** Whether `np`'s queue ends where its download does, short of the book's end. */
-const endsPartial = (np: NowPlaying | null): boolean => !!np && partialQueues.has(np.queue);
+/** Whether the queue ends before the book's last file. */
+const endsPartial = (np: NowPlaying | null): boolean => !!np?.queue.partial;
 
 /** The book's audio length a span of `queue` reports (Sync v2's `duration`): the queue's own,
  * but for a partial queue the book's on its server, 0 when unknown (the server then checks
  * nothing). The downloaded part's length is more than 10 s off the indexed book's whenever a
  * whole file is missing, and every such listen was refused `duration_mismatch`. */
-const bookAudioOf = (queue: BookQueue): number => partialQueues.get(queue) ?? queue.audio;
+const bookAudioOf = (queue: BookQueue): number => queue.partial?.bookDuration ?? queue.audio;
 
 /** The book's length on its server for a partial queue over `manifest`: what the download
  * kept from the answer that said where the book ends, else a server chapters answer the start
@@ -3280,7 +3275,7 @@ function tabPlaceOf(
   if (swapHold?.nowPlaying === np) return null;
   const { offsets, total } = np.queue;
   if (stopped.finished) {
-    if (!finished || (total > 0 && here >= total - FINISHED_TOLERANCE)) return null;
+    if (!finished || placeEndsBook(here, total, endsPartial(np))) return null;
     return { index: 0, positionInTrack: 0, pos: 0, finished: true };
   }
   const saved = Math.max(0, total > 0 ? Math.min(stopped.position, total) : stopped.position);
@@ -4737,15 +4732,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         transcode,
       );
       // A download that ends before its book does (`endsBefore`, D3, fe#185), played without
-      // the rest (offline, from the download's own copy): its end is a pause, as an adopted
-      // one's (`partialQueues`). A queue streaming the rest from the server holds that file.
+      // the rest (offline, from the download's own copy): its end is a pause. A queue
+      // streaming the rest from the server holds that file.
       const endsBefore = local ? dl?.manifest.endsBefore : undefined;
       if (endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0) {
-        partialQueues.set(queue, serverLengthOf(dl?.manifest, chapterData));
+        queue.partial = { bookDuration: serverLengthOf(dl?.manifest, chapterData) };
       }
-      // The book as it loads, built once the awaits below are over: its streams go with the
-      // token the connection holds then (`restreamTracks`), in the queue the place was found
-      // in (the same object: `partialQueues` keys on it).
+      // Build the loaded book after the place reads so its streams use the current token.
       const loadedBook = (): NowPlaying => {
         const now = clientNow();
         restreamQueue(queue, now, libraryId, book.rel_path);
@@ -4775,6 +4768,10 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // The server's place still to come for a downloaded book that stopped waiting for it.
       let late: Promise<LatePlace | null> | undefined;
       if (startBookPosition === undefined && startTrack === undefined) {
+        // Recover the last kept file place before the resume reads the mirror.
+        await recoverOpenSpan();
+        if (!current() || replaced()) return;
+        if (markedFinished()) return await callOff(svc, request);
         // A downloaded book never waits long on its server: not asked at all when it is known
         // to be unreachable, else for `DOWNLOADED_PLACE_WAIT_MS` (a frozen server held a car's
         // start for the whole request timeout, and the car gave up on it). Started from this
@@ -6039,7 +6036,7 @@ async function adoptNow(
     partial =
       (last !== undefined && trackIndexById(queue, last) < 0) ||
       (!!endsBefore && trackIndexById(queue, trackIdOf(libraryId, endsBefore)) < 0);
-    if (partial) partialQueues.set(queue, serverLengthOf(downloadedEntryOf(ref)?.manifest));
+    if (partial) queue.partial = { bookDuration: serverLengthOf(downloadedEntryOf(ref)?.manifest) };
   }
   // The engine's place is past the downloaded part: it stays paused at that part's end, and
   // the listener is told why (a play there would end at once).
@@ -6511,7 +6508,7 @@ export const selectIsEnded = (s: PlayerState): boolean => s.snapshot.state === '
  * adoption offline, D3, fe#185): reaching that end is never the book's end. */
 export const selectEndsPartial = (s: PlayerState): boolean => endsPartial(s.nowPlaying);
 /** The loaded book's length for a percent heard: the queue's, but a partial queue's is the
- * book's on its server when known (`partialQueues`), as its saves send, so the player's
+ * book's on its server when known, as its saves send, so the player's
  * percent is Home's. */
 export const selectBookLength = (s: PlayerState): number =>
-  s.nowPlaying ? partialQueues.get(s.nowPlaying.queue) || s.nowPlaying.queue.total : 0;
+  s.nowPlaying ? s.nowPlaying.queue.partial?.bookDuration || s.nowPlaying.queue.total : 0;

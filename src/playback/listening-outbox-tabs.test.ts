@@ -1,6 +1,7 @@
 import { Platform } from 'react-native';
 
 import type { ListeningEvent, ListeningSyncRequest } from '@/api/types';
+import { fakeWebLocks } from '@/testing/fake-web-locks';
 import { fakeBrowser, type FakeTab, sleep, until } from '@/testing/fake-browser';
 
 // The listening outbox across the tabs of the web player (fe#123, fe#211): each tab is its
@@ -80,7 +81,10 @@ type Tab = ReturnType<typeof openTab>;
 
 /** Open a tab of `browser`: its own copy of the outbox, with a client that answers
  * `applied` until the test says otherwise (`sync`). */
-function openTab(browser: ReturnType<typeof fakeBrowser>) {
+function openTab(
+  browser: ReturnType<typeof fakeBrowser>,
+  session = fakeBrowser().tab().localStorage,
+) {
   const tab = browser.tab();
   const client = {
     syncListening: jest.fn(applied),
@@ -93,6 +97,8 @@ function openTab(browser: ReturnType<typeof fakeBrowser>) {
   // The outbox follows the other tabs through the window's `storage` events.
   const g = globalThis as Record<string, unknown>;
   const before = { add: g.addEventListener, remove: g.removeEventListener };
+  const originalSession = Object.getOwnPropertyDescriptor(g, 'sessionStorage');
+  Object.defineProperty(g, 'sessionStorage', { configurable: true, value: session });
   g.addEventListener = tab.addEventListener;
   g.removeEventListener = tab.removeEventListener;
   let outbox!: typeof import('./listening-outbox');
@@ -100,16 +106,20 @@ function openTab(browser: ReturnType<typeof fakeBrowser>) {
   try {
     jest.isolateModules(() => {
       /* eslint-disable @typescript-eslint/no-require-imports */
+      require('react-native').Platform.OS = 'web';
       outbox = require('./listening-outbox') as typeof import('./listening-outbox');
       api = require('@/api/client') as typeof import('@/api/client');
       /* eslint-enable @typescript-eslint/no-require-imports */
     });
   } finally {
+    if (originalSession) Object.defineProperty(g, 'sessionStorage', originalSession);
+    else Reflect.deleteProperty(g, 'sessionStorage');
     g.addEventListener = before.add;
     g.removeEventListener = before.remove;
   }
   return {
     ...outbox,
+    session,
     tab,
     client,
     /** Answer this tab's sends with `fn` from here on. */
@@ -494,6 +504,98 @@ describe('a page that is going (sendOnPageHide) and an Undo in another tab', () 
 });
 
 describe('a tab that sweeps the span another tab left sends it (fe#211)', () => {
+  const keptSpan = () => ({
+    connectionId: 'c1',
+    libraryId: 3,
+    path: 'Author/Book',
+    id: 'crashed',
+    from: { pos: 110 },
+    to: { pos: 115 },
+    duration: 1000,
+    speed: 1,
+    start: 'resume' as const,
+    startedAt: new Date(Date.now() - 5000).toISOString(),
+    endedAt: new Date().toISOString(),
+  });
+
+  it('a reloaded tab recovers its recent span once and leaves a live tab playing', async () => {
+    const nav = globalThis.navigator;
+    const original = Object.getOwnPropertyDescriptor(nav, 'locks');
+    const locks = fakeWebLocks();
+    Object.defineProperty(nav, 'locks', { configurable: true, value: locks });
+    const tabs = [a, b];
+    try {
+      const kept = keptSpan();
+      await a.storeOpenSpan(kept);
+      await b.storeOpenSpan({ ...kept, id: 'live', path: 'Author/Other' });
+      const owner = a.session.getItem('audiosilo.openSpanOwner')!;
+      expect(owner).toEqual(expect.any(String));
+      expect(locks.names()).toContain(`audiosilo-open-span:${owner}`);
+      // A duplicated tab inherits the owner's sessionStorage while its original is playing.
+      const copy = fakeBrowser().tab().localStorage;
+      copy.setItem('audiosilo.openSpanOwner', owner);
+      const duplicate = openTab(browser, copy);
+      tabs.push(duplicate);
+      await duplicate.recoverOpenSpan();
+      expect(duplicate.sent()).toEqual([]);
+      expect(await a.storedOpenSpan()).toMatchObject({ id: 'crashed' });
+      locks.close(`audiosilo-open-span:${owner}`); // the crashed document is gone
+      const reloaded = openTab(browser, a.session);
+      tabs.push(reloaded);
+      await Promise.all([reloaded.recoverOpenSpan(), reloaded.recoverOpenSpan()]);
+      expect(JSON.parse(browser.data.get(OPEN_SPAN)!)).toEqual([
+        expect.objectContaining({ id: 'live' }),
+      ]);
+      await until(() => reloaded.sent().length === 1, 'the reloaded tab to send its span');
+      expect(reloaded.sent()).toEqual([['crashed']]);
+      expect(await b.storedOpenSpan()).toMatchObject({ id: 'live' });
+      await until(() => storedIds().length === 0, 'the recovered span to be acknowledged');
+      expect(JSON.parse(browser.data.get('audiosilo.progressMirror')!)).toMatchObject({
+        'c1:3:Author/Book': { position: 115, updated_at: kept.endedAt },
+      });
+    } finally {
+      await b.storeOpenSpan(null);
+      for (const tab of tabs) tab.resetOutboxForTests();
+      if (original) Object.defineProperty(nav, 'locks', original);
+      else Reflect.deleteProperty(nav, 'locks');
+    }
+  });
+
+  it.each(['reload', 'navigate'] as const)(
+    'without Web Locks, a %s handles a recent inherited span',
+    async (type) => {
+      const nav = globalThis.navigator;
+      const locks = Object.getOwnPropertyDescriptor(nav, 'locks');
+      const entries = Object.getOwnPropertyDescriptor(performance, 'getEntriesByType');
+      Object.defineProperty(nav, 'locks', { configurable: true, value: undefined });
+      Object.defineProperty(performance, 'getEntriesByType', {
+        configurable: true,
+        value: () => [{ type }],
+      });
+      const kept = { ...keptSpan(), owner: 'old-document', keptAt: Date.now() };
+      browser.data.set(OPEN_SPAN, JSON.stringify([kept]));
+      a.session.setItem('audiosilo.openSpanOwner', kept.owner);
+      try {
+        await a.recoverOpenSpan();
+        if (type === 'reload') {
+          await until(() => a.sent().length > 0, 'the recent span to be sent');
+          expect(a.sent()).toEqual([[kept.id]]);
+          await until(() => storedIds().length === 0, 'the recovered span to be acknowledged');
+        } else {
+          expect(await a.storedOpenSpan()).toMatchObject({ id: kept.id });
+          expect(a.sent()).toEqual([]);
+        }
+      } finally {
+        browser.data.delete(OPEN_SPAN);
+        a.resetOutboxForTests();
+        if (locks) Object.defineProperty(nav, 'locks', locks);
+        else Reflect.deleteProperty(nav, 'locks');
+        if (entries) Object.defineProperty(performance, 'getEntriesByType', entries);
+        else Reflect.deleteProperty(performance, 'getEntriesByType');
+      }
+    },
+  );
+
   it('at once, with no span of its own to close', async () => {
     const left = {
       connectionId: 'c1',

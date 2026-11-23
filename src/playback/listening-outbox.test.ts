@@ -535,16 +535,58 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await record()).toEqual(further);
   });
 
-  it('leaves a finished book, and a book with no record', async () => {
+  it('leaves a finished book', async () => {
     const done = capture({ position: 300, finished: true });
     await writeMirror(done);
     await relaunch();
     expect(await record()).toEqual(done);
+  });
 
-    await AsyncStorage.clear();
-    await relaunch();
-    expect(await record()).toBeNull();
+  it('creates the first mirror at the recovered file place for an offline resume', async () => {
+    const left = span();
+    await relaunch(left);
+    expect(await record()).toEqual({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: left.path,
+      position: left.to.pos,
+      file: left.to.file,
+      file_pos: left.to.filePos,
+      duration: left.duration,
+      finished: false,
+      playback_speed: left.speed,
+      updated_at: left.endedAt,
+      device_id: await getDeviceId(),
+      ack_version: left.baseVersion,
+    });
+    expect(resumeLookupOf(undefined, await readLocalPlaces(), 'c1', 3, left.path)).toMatchObject({
+      kind: 'progress',
+      file: { path: left.to.file, pos: left.to.filePos },
+    });
     expect(await outboxEvents('c1')).toHaveLength(1);
+  });
+
+  it('a removal during recovery clears the old listen and leaves no mirror for the next sign-in', async () => {
+    let reading!: () => void;
+    let finishRead!: () => void;
+    const started = new Promise<void>((resolve) => (reading = resolve));
+    const ready = new Promise<void>((resolve) => (finishRead = resolve));
+    setDownloadEndCheck(async () => {
+      reading();
+      await ready;
+      return undefined;
+    });
+    try {
+      const recovering = relaunch();
+      await started;
+      const removing = Promise.all(purges.map((purge) => purge('c1')));
+      finishRead();
+      await Promise.all([recovering, removing]);
+      expect(await record()).toBeNull();
+      expect(await outboxEvents('c1')).toEqual([]);
+    } finally {
+      setDownloadEndCheck(async () => undefined);
+    }
   });
 
   it('drops the file place of the older capture when the span has none', async () => {
