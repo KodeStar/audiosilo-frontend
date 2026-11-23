@@ -860,6 +860,15 @@ describe('stall watchdog promotes a stuck loading to error', () => {
     expect(usePlayer.getState().snapshot.state).toBe('error');
   });
 
+  it('a move asked to play on is stopped at once by a pause (the sleep timer, a press)', async () => {
+    await moveToPlayOnStalled();
+    await usePlayer.getState().pause();
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+    // Its time running out stops nothing more.
+    jest.advanceTimersByTime(30_000);
+    expect(mockSvc.pause).toHaveBeenCalledTimes(1);
+  });
+
   it('a move asked to play on is stopped at once when the listener moves again in the error', async () => {
     await moveToPlayOnStalled();
     await usePlayer.getState().seekInTrack(20);

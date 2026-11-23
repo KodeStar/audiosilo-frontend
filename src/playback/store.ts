@@ -3626,6 +3626,13 @@ export function playOnThroughStall(): void {
   seekPlayOn = { np, moves: localMoves, timer, holding: false };
 }
 
+/** The listener paused, or the sleep timer ran out, while a move asked to play on was held in
+ * its stall (`seekPlayOn`): its engine is stopped now, or it would start playing once the move
+ * lands, with nothing in the store asking it to (`pause` no-ops on an error). */
+export function stopPlayOnThroughStall(): void {
+  endSeekPlayOn(true);
+}
+
 /** The watchdog fired on the move asked to play on (`seekPlayOn`), the same book and no move
  * since: the stop waits for that move's time to be up. Whether it holds. */
 function holdStalledSeek(): boolean {
@@ -5013,6 +5020,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
   },
 
   pause: async () => {
+    stopPlayOnThroughStall();
     clearPlaybackIntent();
     if (playingOn) playOnStopped = true;
     const svc = await ensureService();
