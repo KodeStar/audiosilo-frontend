@@ -52,7 +52,7 @@ import { selectBookKey, selectBookPosition, showsFaultPlace, usePlayer } from '.
  * The chip's ten seconds run once the book plays or stands at its new place: a jump the
  * engine reports at the ask (the web's seek) and that then buffers, stalls into an error or
  * waits on a slow move keeps its chip, which counts its ten seconds again from the book's
- * next settled sample (`waitingJump`), so the way back is still offered once it lands.
+ * next settled sample (`expiry`), so the way back is still offered once it lands.
  *
  * Known limits, on purpose: a seek in the first `SETTLE_MS` after a book starts makes no
  * chip; a jump that happens while JS is suspended and lands within the playback
@@ -141,10 +141,9 @@ export function selectUndoFor(bookKey: string | null) {
     s.jump && bookKey !== null && s.jump.bookKey === bookKey ? s.jump : null;
 }
 
+/** The live undo's ten seconds; null with an undo live while its book has not settled since
+ * (loading, buffering, an error): kept until its next settled sample starts them again. */
 let expiry: ReturnType<typeof setTimeout> | null = null;
-/** The live undo whose book has not settled since it was recorded (loading, buffering, an
- * error): kept past its ten seconds, which start again at the book's next settled sample. */
-let waitingJump: JumpUndo | null = null;
 /** Where `undoJump` is taking the listener, so its own seek isn't recorded as a jump. */
 let undoLanding: { bookKey: string; position: number; until: number } | null = null;
 
@@ -152,32 +151,19 @@ let undoLanding: { bookKey: string; position: number; until: number } | null = n
 export function clearJumpUndo(): void {
   if (expiry) clearTimeout(expiry);
   expiry = null;
-  waitingJump = null;
   useJumpUndo.setState({ jump: null });
 }
 
 function setJump(jump: JumpUndo): void {
   if (expiry) clearTimeout(expiry);
-  waitingJump = null;
   useJumpUndo.setState({ jump });
   expiry = setTimeout(
     () => {
       expiry = null;
-      if (useJumpUndo.getState().jump !== jump) return;
-      // Its book still waits to settle: another ten seconds, until it does.
-      if (waitingJump === jump) renewJump(jump);
-      else useJumpUndo.setState({ jump: null });
+      if (useJumpUndo.getState().jump === jump) useJumpUndo.setState({ jump: null });
     },
     Math.max(0, jump.until - Date.now()),
   );
-}
-
-/** The same undo with its ten seconds from now, still waiting for its book if it was. */
-function renewJump(jump: JumpUndo): void {
-  const waiting = waitingJump === jump;
-  const renewed = { ...jump, until: Date.now() + UNDO_WINDOW_MS };
-  setJump(renewed);
-  if (waiting) waitingJump = renewed;
 }
 
 /** Record a detected jump from `from` to `to` in `bookKey` at `now`. */
@@ -208,7 +194,8 @@ function recordJump(bookKey: string, from: number, to: number, now: number): voi
 export function undoJump(): number | null {
   const player = usePlayer.getState();
   const jump = selectUndoFor(selectBookKey(player))(useJumpUndo.getState());
-  if (!jump || Date.now() > jump.until) return null;
+  // Past its ten seconds, unless it waits for its book to settle (no `expiry`).
+  if (!jump || (expiry !== null && Date.now() > jump.until)) return null;
   undoLanding = {
     bookKey: jump.bookKey,
     position: jump.from,
@@ -299,14 +286,15 @@ export function startJumpUndo(): () => void {
       state === 'playing' || state === 'paused' || (state === 'error' && showsFaultPlace());
     const live = useJumpUndo.getState().jump;
     if (!settledState) {
-      if (live?.bookKey === key) waitingJump = live;
+      // The chip waits for the book to settle.
+      if (live?.bookKey === key && expiry) {
+        clearTimeout(expiry);
+        expiry = null;
+      }
       return;
     }
     // Settled at last: the waiting chip's ten seconds start now.
-    if (live && live === waitingJump) {
-      waitingJump = null;
-      renewJump(live);
-    }
+    if (live && !expiry) setJump({ ...live, until: Date.now() + UNDO_WINDOW_MS });
 
     const now = Date.now();
     const unobserved = now <= suspendedUntil || (!foreground() && stalled(now));

@@ -369,7 +369,6 @@ describe('startJumpUndo', () => {
     report('error', 4000);
     jest.advanceTimersByTime(20_000);
     expect(jump()).toMatchObject({ from: 1003, bookKey: 'srv:1:a/book' });
-    expect(jump()!.until).toBeGreaterThan(Date.now());
     report('playing', 4000.2);
     expect(jump()!.until).toBe(Date.now() + UNDO_WINDOW_MS);
     jest.advanceTimersByTime(UNDO_WINDOW_MS - 1);
