@@ -5674,6 +5674,9 @@ async function switchCurrentBookToLocal() {
   } finally {
     // A refused swap or a failed load: the hold must not outlive it.
     releaseSwapHold(nowPlaying);
+    // A later swap of the same book may have replaced this hold (and been released in its
+    // place): a tab read waiting on this one is told it is over too, not left to time out.
+    if (hold) for (const resume of hold.waiting) resume(true);
   }
   // Again from where the listener moved to (the download is read again there, so one
   // removed meanwhile ends it).
