@@ -567,6 +567,22 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await outboxEvents('c1')).toHaveLength(1);
   });
 
+  it('creates no first mirror from a span that heard nothing', async () => {
+    // A span begun again where the engine was as an offer's answer landed (`answerAfterSpan`):
+    // kept before the move reached the engine, it is no word on the place.
+    const at = { pos: 16800, file: 'Author/Book/05.mp3', filePos: 1203.9 };
+    const now = '2026-10-25T07:33:30.000Z';
+    await relaunch(span({ from: at, to: at, startedAt: now, endedAt: now, start: 'continue' }));
+    expect(await record()).toBeNull();
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  it('never creates a finished first mirror: the span measures the audio, not the book', async () => {
+    // Within 5 s of the audio's end, where a book whose chapters run past it is not finished.
+    await relaunch(span({ to: { pos: 61198, file: 'Author/Book/05.mp3', filePos: 3000 } }));
+    expect(await record()).toMatchObject({ position: 61198, finished: false });
+  });
+
   it('a removal during recovery clears the old listen and leaves no mirror for the next sign-in', async () => {
     let reading!: () => void;
     let finishRead!: () => void;

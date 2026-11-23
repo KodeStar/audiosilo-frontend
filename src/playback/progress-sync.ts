@@ -1096,7 +1096,9 @@ function changeMirror(
  * - only a record OLDER than the span's end moves: a place written since stands (the
  *   listener's own move, which saves at once; another tab's play; a server row read since);
  * - only FORWARD: a span ending behind the record never moves a place back;
- * - a finished record stands. A first span supplies the record when none exists yet;
+ * - a finished record stands. A span that says something (`create`: heard, or a move)
+ *   supplies the record when none exists yet, never finished: its length is the audio's
+ *   (`OpenSpan.duration`), not the book's a save measures the end by (`bookLengthOf`);
  * - never finished at the end of a queue that ends before its book (D3): one the record
  *   was captured in (`partial`), or this device's download of the book when it lacks the
  *   book's last file (`downloadEndsBefore`), unless the span ended in that file (streamed:
@@ -1105,7 +1107,7 @@ function changeMirror(
  *   capture carries no `partial`.
  * The record becomes this device's, with the span's file place (fe#188) or none.
  */
-export async function mirrorSpanEnd(span: OpenSpan, since: number): Promise<void> {
+export async function mirrorSpanEnd(span: OpenSpan, since: number, create: boolean): Promise<void> {
   const { pos, file, filePos } = span.to;
   const endedAt = Date.parse(span.endedAt);
   if (!Number.isFinite(pos) || pos < 0 || !Number.isFinite(endedAt)) return;
@@ -1121,7 +1123,7 @@ export async function mirrorSpanEnd(span: OpenSpan, since: number): Promise<void
     knownSkew(span.connectionId),
   ]);
   await changeMirror(contentKey(span.connectionId, span.libraryId, span.path), (record) => {
-    if (removed()) return record;
+    if (removed() || (!record && !create)) return record;
     if (
       record &&
       (record.finished || pos <= record.position || !(endedAt > localTimeOf(record, skew)))
@@ -1135,7 +1137,7 @@ export async function mirrorSpanEnd(span: OpenSpan, since: number): Promise<void
       ...kept,
       position: pos,
       duration,
-      finished: placeEndsBook(pos, duration, !!record?.partial || shortEnd),
+      finished: !!record && placeEndsBook(pos, duration, !!record.partial || shortEnd),
       playback_speed: span.speed > 0 ? span.speed : (record?.playback_speed ?? 1),
       device_id: deviceId,
       updated_at: span.endedAt,

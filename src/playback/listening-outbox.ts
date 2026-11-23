@@ -585,7 +585,7 @@ async function closeLeftBehind(
     await appendClosed(closed, undefined, since);
     // The mirror is written less often than the span is kept: its record of the book is
     // brought up to where the span ended (never back, never over a newer record).
-    await mirrorSpanEnd(closed, since).catch(() => undefined);
+    await mirrorSpanEnd(closed, since, spanSaysSomething(closed)).catch(() => undefined);
   }
   if (left.length > 0) {
     await writeSpans(spans.filter((s) => !left.includes(s)));
