@@ -307,7 +307,7 @@ export interface PlaybackService {
   /**
    * Native (Android): the engine stopped wanting to play (its playWhenReady turned off), told
    * before the state that comes with it. A pause the store sent has reached the engine, so a
-   * `playing` it reports from here is a new play (the stall watchdog's fence ends,
+   * `playing` it reports from here is a new play (the fence of a pause the store sent ends,
    * `pauseFenceUntil`). Web Media Session also tells of its Pause or a refused Play, which
    * cancels that remote play request before a playing report. Optional.
    */
