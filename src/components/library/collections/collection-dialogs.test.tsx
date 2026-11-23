@@ -73,7 +73,11 @@ jest.mock('@/api/hooks', () => {
 /* eslint-disable import/first */
 import { type Connection, useSession } from '@/stores/session';
 
-import { AddToCollectionDialog, ShareCollectionDialog } from './collection-dialogs';
+import {
+  AddToCollectionDialog,
+  CollectionFormDialog,
+  ShareCollectionDialog,
+} from './collection-dialogs';
 /* eslint-enable import/first */
 
 const collection = (id: number, name: string, over: Partial<Collection> = {}): Collection => ({
@@ -370,5 +374,33 @@ describe('collection dialogs: Reconnect from a refused server', () => {
     await pressReconnect();
     expect(onOpenChange).toHaveBeenCalledWith(false);
     expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+});
+
+describe('CollectionFormDialog', () => {
+  beforeEach(() => mockCreate.mockReset());
+  const mountForm = () =>
+    mountWithPortal(<CollectionFormDialog open onOpenChange={jest.fn()} connectionId="c" />);
+
+  it('holds Create offline and says why, from the button and the keyboard', async () => {
+    mockOnline = false;
+    await mountForm();
+    expect(screen.getByText("You're offline. Reconnect to change collections.")).toBeTruthy();
+    const name = screen.getByLabelText('Name');
+    await fireEvent.changeText(name, 'Winter');
+    const create = screen.getByRole('button', { name: 'Create' });
+    expect(create).toBeDisabled();
+    await fireEvent.press(create);
+    await fireEvent(name, 'submitEditing');
+    expect(mockCreate).not.toHaveBeenCalled();
+  });
+
+  it('creates online', async () => {
+    mockCreate.mockResolvedValue(collection(9, 'Winter'));
+    await mountForm();
+    expect(screen.queryByText("You're offline. Reconnect to change collections.")).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('Name'), 'Winter');
+    await fireEvent.press(screen.getByRole('button', { name: 'Create' }));
+    expect(mockCreate).toHaveBeenCalledWith({ name: 'Winter', description: '' });
   });
 });

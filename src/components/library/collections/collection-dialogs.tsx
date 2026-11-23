@@ -34,6 +34,7 @@ import { ErrorNote } from '@/components/ui/query-state';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
+import { useDeviceOnline } from '@/lib/device-online';
 import { useDialogRead } from '@/lib/offline-state';
 
 import { findQueued } from '../use-queue-actions';
@@ -161,6 +162,7 @@ export function CollectionFormDialog({
 }) {
   const { t } = useTranslation();
   const form = useCollectionForm(connectionId, collection);
+  const online = useDeviceOnline();
 
   const submit = async () => {
     try {
@@ -186,10 +188,12 @@ export function CollectionFormDialog({
             <DialogDescription>{t('library.collection.form.newHint')}</DialogDescription>
           )}
         </DialogHeader>
+        {online ? null : <Text variant="muted">{t('library.collection.offline')}</Text>}
         <CollectionForm
           form={form}
           submitLabel={t(collection ? 'common.save' : 'library.collection.form.create')}
-          loading={form.pending}
+          disabled={!online}
+          loading={online && form.pending}
           onSubmit={() => void submit()}
           onCancel={() => onOpenChange(false)}
         />
