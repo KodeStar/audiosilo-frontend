@@ -156,6 +156,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
     // The resume lookup restores the saved speed itself.
     expect(mockSetRate).not.toHaveBeenCalled();
@@ -235,6 +236,7 @@ describe('startBookInPlace', () => {
       1.25,
       undefined,
       undefined,
+      expect.any(Number),
     );
     // Not a second speed change once the book is already playing (an audible flip).
     expect(mockSetRate).not.toHaveBeenCalled();
@@ -252,6 +254,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
   });
 
@@ -279,6 +282,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
   });
 
@@ -296,6 +300,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
   });
 
@@ -313,6 +318,7 @@ describe('startBookInPlace', () => {
       undefined,
       undefined,
       undefined,
+      expect.any(Number),
     );
 
     queryClient.clear();
@@ -332,6 +338,7 @@ describe('startBookInPlace', () => {
         undefined,
         undefined,
         undefined,
+        expect.any(Number),
       );
     } finally {
       jest.useRealTimers();
@@ -391,11 +398,11 @@ describe('startBookInPlace', () => {
     try {
       mockDeviceOnline = false;
       await expect(startBookInPlace(target)).resolves.toBe(true);
-      expect(mockPlayBook).toHaveBeenLastCalledWith(...fromDownload);
+      expect(mockPlayBook).toHaveBeenLastCalledWith(...fromDownload, expect.any(Number));
       mockDeviceOnline = true;
       mockReachable = false;
       await expect(startBookInPlace(target)).resolves.toBe(true);
-      expect(mockPlayBook).toHaveBeenLastCalledWith(...fromDownload);
+      expect(mockPlayBook).toHaveBeenLastCalledWith(...fromDownload, expect.any(Number));
       expect(mockItem).not.toHaveBeenCalled();
       expect(mockChapters).not.toHaveBeenCalled();
     } finally {
@@ -516,7 +523,12 @@ describe('startBookInPlace, a podcast episode', () => {
     mockItem.mockResolvedValue(episode(false));
     await expect(startBookInPlace(target, { position: 30 })).resolves.toBe(true);
     expect(mockPlayBook).not.toHaveBeenCalled();
-    expect(mockRequestFetch).toHaveBeenCalledWith(target, episode(false), { position: 30 });
+    expect(mockRequestFetch).toHaveBeenCalledWith(
+      target,
+      episode(false),
+      { position: 30 },
+      { askedAt: expect.any(Number) },
+    );
     // It leaves Up next when the fetch starts it (`fetched`), not before.
     expect(mockDrop).not.toHaveBeenCalled();
   });
@@ -527,7 +539,12 @@ describe('startBookInPlace, a podcast episode', () => {
     mockItem.mockResolvedValue(episode(false));
     const wanted = () => true;
     await expect(startBookInPlace(target, {}, { wanted })).resolves.toBe(true);
-    expect(mockRequestFetch).toHaveBeenCalledWith(target, episode(false), {}, { wanted });
+    expect(mockRequestFetch).toHaveBeenCalledWith(
+      target,
+      episode(false),
+      {},
+      { wanted, askedAt: expect.any(Number) },
+    );
   });
 
   it('plays a downloaded episode at once', async () => {

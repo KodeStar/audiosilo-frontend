@@ -1,8 +1,12 @@
+import { Platform } from 'react-native';
+
+import { contentKeyOf } from '@/lib/content-key';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import type { BookPlace } from '@/lib/paths';
 import { currentNavState } from '@/lib/root-stack';
-import { selectIsTransportLive, usePlayer } from '@/playback/store';
+import { bookPlayPressed, rememberPlayerPress } from '@/playback/playing-claim';
+import { playOnThroughStall, selectIsTransportLive, usePlayer } from '@/playback/store';
 
 import { navFor, type PlayTarget, playRoute } from './play-route';
 import { selectIsLoaded } from './playing-target';
@@ -64,15 +68,17 @@ export function usePlayBook() {
         await store.toggle();
         return;
       case 'player':
+        if (Platform.OS === 'web' && !loaded)
+          rememberPlayerPress(connectionId, contentKeyOf(target));
         if (route.bookPage) openBook(connectionId, libraryId, path);
         // The loaded book jumps and plays on here, so the player opens on it with no jump
         // left to apply: one paused would otherwise play from where it was before the
         // route's jump landed.
         openPlayer(connectionId, libraryId, path, loaded ? undefined : at);
-        if (loaded) await playOn(at);
+        if (loaded) await playOn(connectionId, at);
         return;
       case 'play-on':
-        await playOn(at);
+        await playOn(connectionId, at);
         return;
       case 'start':
         await startBookInPlace(target, at);
@@ -81,10 +87,21 @@ export function usePlayBook() {
 }
 
 /** The loaded book to `at` (`seekBook`, so the Undo chip offers the way back), then
- * playing on, also when it was paused. */
-async function playOn(at: BookPlace) {
+ * playing on, also when it was paused, or stopped during the seek (a stall's error, its
+ * end). Dated at the press: another tab's play since wins (`toggle`). Still live once the
+ * seek was asked (the web's resolves at the ask), a stall of it after is held until it lands,
+ * and it plays on from there (`playOnThroughStall`). */
+async function playOn(connectionId: string, at: BookPlace) {
   const store = usePlayer.getState();
-  if (at.file || at.position !== undefined) await store.seekBook(at.position ?? 0, at.file);
-  else if (at.track !== undefined) await store.goToTrack(at.track);
-  if (!selectIsTransportLive(usePlayer.getState())) await usePlayer.getState().toggle();
+  const askedAt = bookPlayPressed(connectionId);
+  const move =
+    at.file || at.position !== undefined
+      ? store.seekBook(at.position ?? 0, at.file)
+      : at.track !== undefined
+        ? store.goToTrack(at.track)
+        : null;
+  await move;
+  const player = usePlayer.getState();
+  if (!selectIsTransportLive(player)) await player.toggle(askedAt);
+  else if (move) playOnThroughStall();
 }

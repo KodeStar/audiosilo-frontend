@@ -32,9 +32,9 @@ jest.mock('@/api/connection-clients', () => ({
     return () => (mockLaunch = null);
   },
 }));
-// A removal ends the connection's sign-in first (the listening outbox's count).
+// A removal ends the connection's sign-in first (`connection-generation`).
 const mockGenerations = new Map<string, number>();
-jest.mock('./listening-outbox', () => ({
+jest.mock('./connection-generation', () => ({
   connectionGeneration: (cid: string) => mockGenerations.get(cid) ?? 0,
 }));
 const mockOnline: Record<string, boolean> = {};

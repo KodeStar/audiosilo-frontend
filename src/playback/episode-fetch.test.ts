@@ -31,6 +31,7 @@ import {
   retryEpisodeFetch,
   useEpisodeFetch,
 } from './episode-fetch';
+import * as claims from './playing-claim';
 import { blipDelay } from './episode-fetch-rules';
 /* eslint-enable import/first */
 
@@ -96,10 +97,39 @@ describe('requestEpisodeFetch', () => {
     requestEpisodeFetch(target, book, { position: 30 });
     expect(phase()).toBe('probing');
     await flush();
-    expect(mockStart.mock.calls).toEqual([[target, { position: 30 }, { fetched: true }]]);
+    expect(mockStart.mock.calls).toEqual([
+      [target, { position: 30 }, { askedAt: expect.any(Number), fetched: true }],
+    ]);
     expect(useEpisodeFetch.getState().pending).toBeNull();
     expect(mockClient!.podcastFetchStatus).not.toHaveBeenCalled();
     expect(mockClient!.retryPodcastFetch).not.toHaveBeenCalled();
+  });
+
+  it('gives a fetched episode the time of the original Play press', async () => {
+    const pressed = Date.now();
+    requestEpisodeFetch(target, book);
+    await flush();
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockStart).toHaveBeenCalledWith(
+      target,
+      {},
+      expect.objectContaining({ askedAt: pressed }),
+    );
+  });
+
+  it('ends a pending episode when a newer tab plays before the episode is ready', async () => {
+    requestEpisodeFetch(target, book);
+    await flush();
+    expect(phase()).toBe('waiting');
+    const askedAt = Date.now() + 1;
+    jest
+      .spyOn(claims, 'newerTabPlay')
+      .mockReturnValue({ connectionId: 'c1', tab: 'other', askedAt, sentAt: askedAt });
+    mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(mockStart).not.toHaveBeenCalled();
+    expect(useEpisodeFetch.getState().pending).toBeNull();
   });
 
   it('follows the fetch every 2 s, then reads the item again and starts once', async () => {
@@ -141,7 +171,11 @@ describe('requestEpisodeFetch', () => {
       queryKey: qk.podcastEpisodesOfShow('c1', 5, 'Daily News'),
     });
     expect(mockStart).toHaveBeenCalledTimes(1);
-    expect(mockStart).toHaveBeenCalledWith(target, {}, { fetched: true });
+    expect(mockStart).toHaveBeenCalledWith(
+      target,
+      {},
+      { askedAt: expect.any(Number), fetched: true },
+    );
     expect(useEpisodeFetch.getState().pending).toBeNull();
     // Nothing more is asked.
     await jest.advanceTimersByTimeAsync(10_000);
@@ -253,7 +287,9 @@ describe('requestEpisodeFetch', () => {
     expect(mockClient!.prepareEpisodeStream).toHaveBeenCalledTimes(1);
     mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
     await jest.advanceTimersByTimeAsync(2000);
-    expect(mockStart.mock.calls).toEqual([[target, { position: 600 }, { fetched: true }]]);
+    expect(mockStart.mock.calls).toEqual([
+      [target, { position: 600 }, { askedAt: expect.any(Number), fetched: true }],
+    ]);
   });
 
   // FE-13: a car start of an episode its server had still to fetch, given up on by the car's
@@ -283,7 +319,9 @@ describe('requestEpisodeFetch', () => {
     });
     requestEpisodeFetch(target, book, {}, { wanted: check });
     await flush();
-    expect(mockStart.mock.calls).toEqual([[target, {}, { fetched: true, wanted: check }]]);
+    expect(mockStart.mock.calls).toEqual([
+      [target, {}, { askedAt: expect.any(Number), fetched: true, wanted: check }],
+    ]);
     expect(useEpisodeFetch.getState().pending).toBeNull();
   });
 
@@ -295,7 +333,9 @@ describe('requestEpisodeFetch', () => {
     wanted = false;
     mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
     await jest.advanceTimersByTimeAsync(2000);
-    expect(mockStart.mock.calls).toEqual([[target, {}, { fetched: true }]]);
+    expect(mockStart.mock.calls).toEqual([
+      [target, {}, { askedAt: expect.any(Number), fetched: true }],
+    ]);
   });
 
   it("the car's start joining the listener's fetch can not call it off", async () => {
@@ -304,7 +344,9 @@ describe('requestEpisodeFetch', () => {
     requestEpisodeFetch(target, book, {}, { wanted: () => false });
     mockClient!.podcastFetchStatus.mockResolvedValue({ fetch: wire2b.ready });
     await jest.advanceTimersByTimeAsync(2000);
-    expect(mockStart.mock.calls).toEqual([[target, {}, { fetched: true }]]);
+    expect(mockStart.mock.calls).toEqual([
+      [target, {}, { askedAt: expect.any(Number), fetched: true }],
+    ]);
   });
 
   it('keeps waiting through a proxy 502 or the rate limiter while it follows the fetch', async () => {

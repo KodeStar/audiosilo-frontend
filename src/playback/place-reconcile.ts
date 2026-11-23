@@ -35,6 +35,7 @@ import {
 } from './progress-sync';
 import {
   answerAfterSpan,
+  chooseLoadedPlace,
   engineHoldsOtherBook,
   holdSaves,
   localMoveCount,
@@ -215,8 +216,8 @@ const offeredAt = new Map<string, { at: number; play: number; moves: number; toa
  *
  * `held`: the legacy PUT path's replay guard held a save of this book back for `row`
  * (fe#198; `onHeldSave`). There is no acknowledged version there (the row's own is new),
- * Stay saves this device's place at once (and lifts the session's guard), and a toast that
- * times out answers nothing: the place stays held, and is offered again next launch.
+ * Either answer lifts the session's guard, and Stay saves this device's place at once.
+ * A timeout keeps the guard. A later play or move can offer the held place again.
  *
  * `heldListen`: the sync answer kept the stored row over a listen from here. A new local
  * play or move offers that row again, even if its toast timed out. A held Stay also offers
@@ -239,7 +240,8 @@ export async function offerLoadedPlace(
   const moves = localMoveCount();
   const keptKey = placeKey(row);
   const previous = offeredAt.get(`${bookKey}|${row.device_id}`);
-  const changed = heldListen && (!previous || previous.play !== play || previous.moves !== moves);
+  const changed =
+    (held || heldListen) && (!previous || previous.play !== play || previous.moves !== moves);
   const ignored = (mirror?.ignored ?? []).filter((key) => !changed || key !== keptKey);
   const offer = offerOf(
     row,
@@ -284,6 +286,7 @@ export async function offerLoadedPlace(
           // (`answerAfterSpan`).
           void answerAfterSpan(np, answer).then(() => {
             if (selectBookKey(usePlayer.getState()) === bookKey) {
+              if (held) placeChecked(bookKey);
               quietly(usePlayer.getState().seekBook(offer.position));
             }
           });
@@ -291,14 +294,19 @@ export async function offerLoadedPlace(
       },
       closeLabel: t('player.placeOffer.stay'),
       onClose: () => {
+        if (selectBookKey(usePlayer.getState()) === bookKey) {
+          chooseLoadedPlace();
+          // The Stay belongs to this offer. Only a later move can re-offer it.
+          latest.moves = localMoveCount();
+        }
         void answer().then(() => {
           if (selectBookKey(usePlayer.getState()) !== bookKey) return;
           if (held) saveLoadedPlace();
           else standByPlace();
         });
       },
-      // Not answered: noted, so the same place is not offered again (no acknowledgement).
-      // A held save's is not noted: that would let the guard through, as a Stay does.
+      // Sync offers remember a timeout separately from an answer. Legacy holds use the
+      // play and move when the toast was shown, so a later choice can offer it again.
       onTimeout: () => {
         if (held) return;
         void ignoreOffer(np.connectionId, np.libraryId, np.path, row, offer.key).catch(

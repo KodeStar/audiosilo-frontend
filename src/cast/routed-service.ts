@@ -96,6 +96,7 @@ export class RoutedPlaybackService implements PlaybackService {
   private rateChange: ((rate: number) => void) | null = null;
   private landed: (() => void) | null = null;
   private playAsked: (() => void) | null = null;
+  private remotePlay: (() => void) | null = null;
   private ownLoad:
     ((trackIndex: number, positionInTrack: number, loaded: Promise<unknown>) => void) | null = null;
   private pauseAsked: (() => void) | null = null;
@@ -124,6 +125,9 @@ export class RoutedPlaybackService implements PlaybackService {
     });
     local.onPlayAsked?.(() => {
       if (this.mode === 'local') this.playAsked?.();
+    });
+    local.onRemotePlay?.(() => {
+      if (this.mode === 'local') this.remotePlay?.();
     });
     local.onPauseAsked?.(() => {
       if (this.mode === 'local') this.pauseAsked?.();
@@ -589,6 +593,9 @@ export class RoutedPlaybackService implements PlaybackService {
   }
   async showRoutePicker() {
     return (await this.local.showRoutePicker?.()) ?? false;
+  }
+  onRemotePlay(handler: (() => void) | null) {
+    this.remotePlay = handler;
   }
   onRemoteSeek(handler: ((positionInTrack: number) => void) | null) {
     this.local.onRemoteSeek?.(handler);

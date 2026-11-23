@@ -5,8 +5,10 @@ import { tabChannel } from '@/lib/tab-channel';
 import { fakeBrowser } from '@/testing/fake-browser';
 
 import {
+  bookPlayPressed,
   type GaveWay,
   givesWayTo,
+  newerTabPlay,
   type OwnPlay,
   PLAYING_CHANNEL,
   type PlayingClaim,
@@ -67,6 +69,27 @@ describe('givesWayTo (one tab plays at a time per connection)', () => {
     const aYields = givesWayTo(claim({ tab: 'tab-b', askedAt: 2000 }), a);
     const bYields = givesWayTo(claim({ tab: 'tab-a', askedAt: 2000 }), b);
     expect([aYields, bYields].filter(Boolean)).toHaveLength(1);
+  });
+
+  it('after the clock was set back, a play asked for since is the newer one', () => {
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      const hour = 60 * 60_000;
+      const then = 1_800_000_000_000;
+      clock.mockReturnValue(then - hour);
+      // This tab's play, from before the step, gives way to a claim asked for since.
+      expect(
+        givesWayTo(claim({ askedAt: then - hour, sentAt: then - hour }), mine({ askedAt: then })),
+      ).toBe(true);
+      // A claim of a play from before the step takes nothing from a play asked for since.
+      expect(
+        givesWayTo(claim({ askedAt: then, sentAt: then - hour }), mine({ askedAt: then - hour })),
+      ).toBe(false);
+      // Both from before it: the later stands, as ever.
+      expect(givesWayTo(claim({ askedAt: then + 5 }), mine({ askedAt: then }))).toBe(true);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("never to the tab's own claim", () => {
@@ -238,5 +261,80 @@ describe('playingClaims', () => {
     for (const t of tabs) t.claims.announce('c1', t.play.askedAt);
     await settle();
     expect(tabs.map((t) => t.play.live)).toEqual([false, true]); // the later ask stands
+  });
+
+  it('a newer claim found under the id the press was noted by, the other id of one connection', async () => {
+    const browser = fakeBrowser();
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.BroadcastChannel;
+    g.BroadcastChannel = browser.tab().BroadcastChannel;
+    setConnectionAliases({ c1: 'c1.7' });
+    try {
+      // The press noted under the target's (legacy) id, the claim made under the new one.
+      const pressed = bookPlayPressed('c1');
+      const other = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-z');
+      const made = other.announce('c1.7', pressed + 1);
+      await settle();
+      // Checked against the loaded book's (new) id.
+      expect(newerTabPlay('c1.7', pressed)).toEqual(made);
+      expect(newerTabPlay('c1', pressed)).toEqual(made);
+      expect(newerTabPlay('c1.7', pressed + 2)).toBeNull();
+    } finally {
+      g.BroadcastChannel = saved;
+      setConnectionAliases({});
+    }
+  });
+
+  it('a claim from before the clock was set back holds no press since, nor a newer claim off', async () => {
+    const browser = fakeBrowser();
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.BroadcastChannel;
+    g.BroadcastChannel = browser.tab().BroadcastChannel;
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      const hour = 60 * 60_000;
+      const then = Date.now();
+      clock.mockReturnValue(then);
+      bookPlayPressed('c1');
+      const other = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-z');
+      other.announce('c1', then);
+      await settle();
+      // The clock is set back an hour: that claim is "newer" than every press for an hour.
+      clock.mockReturnValue(then - hour);
+      expect(newerTabPlay('c1', bookPlayPressed('c1'))).toBeNull();
+      // A claim made since is still found.
+      const made = other.announce('c1', then - hour + 10);
+      await settle();
+      expect(newerTabPlay('c1', then - hour + 5)).toEqual(made);
+    } finally {
+      clock.mockRestore();
+      g.BroadcastChannel = saved;
+    }
+  });
+
+  it('a play from before the clock step, claimed again since, gives the kept claim to a play asked since', async () => {
+    const browser = fakeBrowser();
+    const g = globalThis as Record<string, unknown>;
+    const saved = g.BroadcastChannel;
+    g.BroadcastChannel = browser.tab().BroadcastChannel;
+    const clock = jest.spyOn(Date, 'now');
+    try {
+      const hour = 60 * 60_000;
+      const then = Date.now();
+      clock.mockReturnValue(then - hour);
+      // Another tab's play asked for before the step goes on (a buffer): claimed again, sent now.
+      const old = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-y');
+      const pressed = bookPlayPressed('c1');
+      old.announce('c1', then);
+      await settle();
+      // A third tab's play asked for since this press is the newer one, and is found.
+      const other = playingClaims(tabChannel(PLAYING_CHANNEL, browser.tab()), 'tab-z');
+      const made = other.announce('c1', pressed + 1);
+      await settle();
+      expect(newerTabPlay('c1', pressed)).toEqual(made);
+    } finally {
+      clock.mockRestore();
+      g.BroadcastChannel = saved;
+    }
   });
 });

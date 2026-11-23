@@ -146,6 +146,8 @@ async function appendedInTurn(
   mockAppended.push(...events.map((e) => (b === undefined ? e : { ...e, base_version: b })));
 }
 const mockAppendInTurn = jest.fn(appendedInTurn);
+// A removal ends the connection's sign-in (`connection-generation`).
+jest.mock('./connection-generation', () => ({ connectionGeneration: () => mockGeneration }));
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
@@ -169,7 +171,6 @@ jest.mock('./listening-outbox', () => {
       events: ListeningEvent[],
       base?: () => Promise<number | undefined>,
     ) => mockAppendInTurn(cid, events, base),
-    connectionGeneration: () => mockGeneration,
     afterInTurn: (_cid: string, op: () => Promise<void>) => op(),
     waitingInTurn: () => mockWaitingInTurn,
     flushOutbox: (...a: unknown[]) => mockFlushOutbox(...a),
@@ -436,6 +437,122 @@ describe('the replay guard on the PUT path', () => {
     await start();
     await playedTwoSaves('held');
     expect(guards()).toEqual([true, true]);
+  });
+
+  const stamps = () =>
+    mockSaveProgress.mock.calls.map((c) => (c[1] as { updated_at: string }).updated_at);
+
+  // A sign-out's stop saves the paused place again. Dated the sign-out, the guard's read (the
+  // server's row behind it, another device's move back) lets it through, and last-write-wins
+  // it then replaced that newer move.
+  it("a paused book's sign-out save keeps the stamp of the held capture that took its place", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 5 }),
+      unchecked: true,
+    });
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(10_000);
+    mockSaveProgress.mockResolvedValueOnce('held' as never);
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    const [held] = stamps();
+    jest.advanceTimersByTime(18_000);
+    await teardownBeforeTokenRevoke('c1');
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    expect(mockSaveProgress.mock.calls[1][1]).toMatchObject({
+      position: 51,
+      guard: true,
+      updated_at: held,
+    });
+  });
+
+  it("a book resumed and left paused, never captured, saves and signs out under its resume row's stamp", async () => {
+    const resumed = '2026-11-20T15:23:18.591Z';
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 51, updated_at: resumed }),
+      unchecked: true,
+    });
+    await start();
+    // The engine's first report is a pause (a refused autoplay): its capture is the resume's
+    // place, not a new one.
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    jest.advanceTimersByTime(18_000);
+    await teardownBeforeTokenRevoke('c1');
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    for (const [, save] of mockSaveProgress.mock.calls) {
+      expect(save).toMatchObject({ position: 51, guard: true, updated_at: resumed });
+    }
+  });
+
+  it("a resumed book's speed set while paused, after its first capture, is dated now", async () => {
+    mockLoadInitialProgress.mockResolvedValue({
+      kind: 'progress',
+      progress: row({ position: 51, updated_at: '2026-11-20T15:23:18.591Z' }),
+      unchecked: true,
+    });
+    await start();
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    jest.advanceTimersByTime(5_000);
+    const setAt = new Date().toISOString();
+    await usePlayer.getState().setRate(1.5);
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    expect(stamps()[1]).toBe(setAt);
+  });
+
+  it("a paused book's sign-out save away from its last capture is dated the stop", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(10_000);
+    pushSnapshot(snap('paused', 0, 51));
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    // The engine reports another place while paused, with no capture of it.
+    pushSnapshot(snap('paused', 0, 80));
+    await settle();
+    jest.advanceTimersByTime(18_000);
+    const stoppedAt = new Date().toISOString();
+    await teardownBeforeTokenRevoke('c1');
+    const last = mockSaveProgress.mock.calls.at(-1)?.[1] as { position: number };
+    expect(last.position).toBe(80);
+    expect(stamps().at(-1)).toBe(stoppedAt);
+  });
+
+  it("a rebuffering book's sign-out save at its last capture is dated the stop", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    pushSnapshot(snap('loading', 0, 5.3));
+    await settle();
+    jest.advanceTimersByTime(2_000);
+    const stoppedAt = new Date().toISOString();
+    await teardownBeforeTokenRevoke('c1');
+    expect(stamps().at(-1)).toBe(stoppedAt);
+  });
+
+  it("a playing book's sign-out save is dated the stop: the listener was there until then", async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    jest.advanceTimersByTime(15_000);
+    await settle();
+    expect(mockSaveProgress).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(3_000);
+    const stoppedAt = new Date().toISOString();
+    await teardownBeforeTokenRevoke('c1');
+    expect(mockSaveProgress).toHaveBeenCalledTimes(2);
+    expect(stamps()[1]).toBe(stoppedAt);
   });
 
   // The other device was still playing: its row had moved on from the one the offer named,

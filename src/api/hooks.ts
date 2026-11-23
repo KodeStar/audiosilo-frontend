@@ -501,7 +501,7 @@ export function allProgressQuery(cid: string, client: MaybeClient) {
     queryFn: client
       ? async () => {
           const rows = await client.allProgress();
-          await keepDownloadedPlaces(cid, rows);
+          void keepDownloadedPlaces(cid, rows);
           return rows;
         }
       : skipToken,

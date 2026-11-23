@@ -49,6 +49,11 @@ import { selectBookKey, selectBookPosition, showsFaultPlace, usePlayer } from '.
  *   a stalled heartbeat is noticed as the app comes back.
  * - The undo itself: `undoJump` marks its landing, which is then not recorded.
  *
+ * The chip's ten seconds run once the book plays or stands at its new place: a jump the
+ * engine reports at the ask (the web's seek) and that then buffers, stalls into an error or
+ * waits on a slow move keeps its chip, which counts its ten seconds again from the book's
+ * next settled sample (`expiry`), so the way back is still offered once it lands.
+ *
  * Known limits, on purpose: a seek in the first `SETTLE_MS` after a book starts makes no
  * chip; a jump that happens while JS is suspended and lands within the playback
  * allowance can't be told from listening; re-loading the SAME book at a far position
@@ -136,6 +141,8 @@ export function selectUndoFor(bookKey: string | null) {
     s.jump && bookKey !== null && s.jump.bookKey === bookKey ? s.jump : null;
 }
 
+/** The live undo's ten seconds; null with an undo live while its book has not settled since
+ * (loading, buffering, an error): kept until its next settled sample starts them again. */
 let expiry: ReturnType<typeof setTimeout> | null = null;
 /** Where `undoJump` is taking the listener, so its own seek isn't recorded as a jump. */
 let undoLanding: { bookKey: string; position: number; until: number } | null = null;
@@ -187,7 +194,8 @@ function recordJump(bookKey: string, from: number, to: number, now: number): voi
 export function undoJump(): number | null {
   const player = usePlayer.getState();
   const jump = selectUndoFor(selectBookKey(player))(useJumpUndo.getState());
-  if (!jump || Date.now() > jump.until) return null;
+  // Past its ten seconds, unless it waits for its book to settle (no `expiry`).
+  if (!jump || (expiry !== null && Date.now() > jump.until)) return null;
   undoLanding = {
     bookKey: jump.bookKey,
     position: jump.from,
@@ -276,7 +284,18 @@ export function startJumpUndo(): () => void {
     // Keep the last settled sample.
     const settledState =
       state === 'playing' || state === 'paused' || (state === 'error' && showsFaultPlace());
-    if (!settledState) return;
+    const live = useJumpUndo.getState().jump;
+    if (!settledState) {
+      // The chip waits for the book to settle: still moving (loading) or stalled (an error).
+      // Not at the book's end or a load at rest: nothing more lands there.
+      if ((state === 'loading' || state === 'error') && live?.bookKey === key && expiry) {
+        clearTimeout(expiry);
+        expiry = null;
+      }
+      return;
+    }
+    // Settled at last: the waiting chip's ten seconds start now.
+    if (live && !expiry) setJump({ ...live, until: Date.now() + UNDO_WINDOW_MS });
 
     const now = Date.now();
     const unobserved = now <= suspendedUntil || (!foreground() && stalled(now));

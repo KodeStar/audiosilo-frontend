@@ -178,6 +178,7 @@ import {
 } from './place-reconcile';
 import {
   cutListeningSpanNow,
+  localMoveCount,
   LONG_PAUSE_MS,
   PICK_UP_WAIT_MS,
   selectBookPosition,
@@ -263,9 +264,10 @@ let stop: () => void = () => {};
 
 /** Book loaded here, resumed at 100 s, played to 105 s and paused: the save of that
  * pause is this device's last (`mockMirror`). */
-async function loadedAndPaused() {
+async function loadedAndPaused(unchecked = false) {
   mockLoadInitialProgress.mockResolvedValueOnce({
     kind: 'progress',
+    ...(unchecked ? { unchecked: true } : {}),
     progress: record({
       position: 100,
       device_id: 'this-device',
@@ -1595,7 +1597,9 @@ describe('a save the replay guard held back (the PUT path)', () => {
     await settle();
     const offer = lastToast();
     expect(offer.title).toBe('On Phone you were at 10:40. Jump there?');
+    const moves = localMoveCount();
     offer.onClose();
+    expect(localMoveCount()).toBeGreaterThan(moves);
     await settle();
     expect(mockMarkAnswered).toHaveBeenCalledWith(
       'c1',
@@ -1608,13 +1612,19 @@ describe('a save the replay guard held back (the PUT path)', () => {
     expect(seeks()).toEqual([]);
   });
 
-  it('Jump moves there', async () => {
-    await loadedAndPaused();
+  it('Jump lifts the session guard for saves at the chosen place', async () => {
+    await loadedAndPaused(true);
     mockHeld?.(heldSave(), further('held-2'), mockMirror);
     await settle();
     lastToast().action.onPress();
     await settle();
     expect(seeks()).toEqual([640]);
+    pushSnapshot(snap('playing', 640));
+    pushSnapshot(snap('paused', 643));
+    await settle();
+    const capture = mockSaveProgress.mock.calls.at(-1)?.[1];
+    expect(capture).toMatchObject({ position: 643 });
+    expect(capture).not.toHaveProperty('guard');
   });
 
   it('a toast nobody answers answers nothing: the place stays held', async () => {
@@ -1632,5 +1642,28 @@ describe('a save the replay guard held back (the PUT path)', () => {
     mockHeld?.(heldSave({ path: 'Another/Book.m4b' }), further('held-4'), mockMirror);
     await settle();
     expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('offers a timed-out legacy place again on a new play or move, once per choice', async () => {
+    await loadedAndPaused(true);
+    const held = () => mockHeld?.(heldSave(), further('held-again'), mockMirror);
+    held();
+    await settle();
+    lastToast().onTimeout();
+    held();
+    expect(mockToast).toHaveBeenCalledTimes(1);
+
+    jest.setSystemTime(Date.now() + 1000);
+    await usePlayer.getState().toggle();
+    held();
+    await settle();
+    expect(mockToast).toHaveBeenCalledTimes(2);
+    lastToast().onTimeout();
+    await usePlayer.getState().seekBook(150);
+    held();
+    held();
+    await settle();
+    expect(mockToast).toHaveBeenCalledTimes(3);
+    expect(mockMarkAnswered).not.toHaveBeenCalled();
   });
 });
