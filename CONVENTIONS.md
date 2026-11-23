@@ -3185,7 +3185,9 @@ media GETs only.
   is playing or loading an older play gives way (`giveWayTo`). Its span closes at the claim
   time, it pauses its engine and it shows "Playing in another tab" when the listener looks
   there (`other-tab-notice.ts`). The book stays loaded. A press in that tab can take it back.
-  A tab with a failed stream also pauses its engine when another tab takes over.
+  A tab with a failed stream also pauses its engine when another tab takes over. A Cast
+  receiver's `playing` sent before a give-way pause reached it is paused again, never read as
+  the receiver's own Play, until the receiver reports the pause (`CAST_GIVE_WAY_FENCE_MS`).
   `playAskedAt` dates a book start from the press, before its metadata and place lookups.
   The web player carries it through the player route, a seek before resuming a paused book,
   and a podcast episode waiting to be fetched. A web Media

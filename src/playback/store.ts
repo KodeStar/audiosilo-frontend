@@ -204,8 +204,9 @@ let yieldedAttempt = -1;
 /** Pending stall→error timer and its deadline (see armStallWatchdog). */
 let stallTimer: ReturnType<typeof setTimeout> | null = null;
 let stallDeadline: number | null = null;
-/** Until when a `playing` report may be older than the stall watchdog's pause (`fireStallWatchdog`):
- * sent before the pause reached the engine, and the pause wins. A time, not the pause's
+/** Until when a `playing` report may be older than the stall watchdog's pause (`fireStallWatchdog`),
+ * or a Cast receiver's than a give-way pause (`giveWayTo`): sent before the pause reached the
+ * engine, and the pause wins. A time, not the pause's
  * promise: Android's resolves before the engine has paused. */
 let stallPauseUntil = 0;
 /** A play asked of the engine from outside the app that the store follows
@@ -585,6 +586,9 @@ export function onOtherBookReported(listener: (news: OtherBookNews) => void): ()
 }
 /** How long the engine's reports sent before the watchdog's pause can take to arrive. */
 const STALL_PAUSE_FENCE_MS = 1_000;
+/** The same for a Cast receiver's statuses before a tab's give-way pause (`giveWayTo`): they
+ * cross the network, and the fence ends at the receiver's `paused` anyway. */
+const CAST_GIVE_WAY_FENCE_MS = 3_000;
 /** The whole-book position the current book resumed from, kept as a running high-water
  * mark. `persist` refuses to save a position far below this unless the user deliberately
  * seeked back (which lowers it) - so a slipped-through restart-at-0 can never overwrite
@@ -2392,6 +2396,10 @@ function giveWayTo(claim: PlayingClaim) {
   }
   // Pause even when the engine has yet to report the play it was asked for.
   clearPlaybackIntent();
+  // A Cast receiver still buffering can report the play it buffered for before this pause
+  // reaches it: no play of the receiver's own (`castPlay`), so it is paused again until the
+  // receiver reports the pause (`stallPauseUntil`).
+  if (service?.isCasting?.()) stallPauseUntil = Date.now() + CAST_GIVE_WAY_FENCE_MS;
   void service
     ?.pause()
     .catch((e: unknown) => console.warn('[player] could not pause for another tab', e));

@@ -736,6 +736,24 @@ describe.each([
     expect([a.gaveWay(), b.gaveWay()]).toEqual([1, 1]);
   });
 
+  // A receiver still buffering when its tab gave way can report the play it buffered for
+  // before the pause reaches it: no play of the receiver's own, so it claims nothing back.
+  it('a Cast receiver buffering as its tab gives way leaves the other tab playing', async () => {
+    await a.start(5);
+    a.engine.svc.isCasting.mockReturnValue(true);
+    a.engine.buffer();
+    const release = a.engine.holdPause();
+    await sleep(5);
+    await b.start(30);
+    await until(() => a.gaveWay() === 1, 'A to give way');
+    await a.engine.svc.play(); // the buffered play, sent before the pause landed
+    release();
+    await until(() => a.player().snapshot.state === 'paused', 'A to pause');
+    await sleep(40);
+    expect(b.player().snapshot.state).toBe('playing');
+    expect(b.gaveWay()).toBe(0);
+  });
+
   it('a newer play wins while an older OS Play is still waiting for audio', async () => {
     await a.start(5);
     await a.player().pause();
