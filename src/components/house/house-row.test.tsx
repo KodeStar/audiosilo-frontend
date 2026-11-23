@@ -15,8 +15,10 @@ jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openBook: (...a: unknown[]) => mockOpenBook(...a) }),
   openHousehold: (...a: unknown[]) => mockOpenHousehold(...a),
 }));
-const mockBookCover = jest.fn(() => null);
-jest.mock('@/components/library/book-cover', () => ({ BookCover: () => mockBookCover() }));
+const mockBookCover = jest.fn((_props: { noArt?: boolean }) => null);
+jest.mock('@/components/library/book-cover', () => ({
+  BookCover: (p: { noArt?: boolean }) => mockBookCover(p),
+}));
 
 /** Per connection: the caller's setting and the house's answer (undefined = loading,
  * an error, or a server without `household`: the hooks hand back no data). */
@@ -69,17 +71,16 @@ beforeEach(() => {
   mockListening.mockReset();
   mockOpenBook.mockReset();
   mockOpenHousehold.mockReset();
+  mockBookCover.mockClear();
   mockFocused = true;
   mockLayout = 'desktop';
 });
 
 describe('HouseRow', () => {
-  it('shows the path label without requesting art when the holding book is outside the grant', async () => {
-    mockBookCover.mockClear();
+  it('asks for no art when the holding book is outside the grant', async () => {
     share('a', [row({ path: 'Book/CD1', title: 'CD1', cover_unavailable: true })]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
-    expect(screen.getByText('CD1')).toBeTruthy();
-    expect(mockBookCover).not.toHaveBeenCalled();
+    expect(mockBookCover).toHaveBeenCalledWith(expect.objectContaining({ noArt: true }));
   });
 
   it('shows each housemate with the book, a state line and a spoken sentence', async () => {
@@ -97,7 +98,7 @@ describe('HouseRow', () => {
     ]);
     await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
 
-    expect(mockBookCover).toHaveBeenCalled();
+    expect(mockBookCover).toHaveBeenCalledWith(expect.objectContaining({ noArt: undefined }));
     expect(screen.getByText('Listening in the house')).toBeTruthy();
     expect(screen.getByText('Hearthside · shared by choice')).toBeTruthy();
     const list = screen.getByLabelText('Listening in the house on Hearthside');

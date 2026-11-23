@@ -7,7 +7,6 @@ import type { HouseListeningRow } from '@/api/types';
 import { HomeSection } from '@/components/home/home-section';
 import { BookCover } from '@/components/library/book-cover';
 import { Portrait } from '@/components/series/portrait';
-import { Cover } from '@/components/ui/cover';
 import { PressableRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { useLayout } from '@/lib/layout';
@@ -117,18 +116,15 @@ function HouseCard({
           {copy.line}
         </Text>
       </View>
-      {row.cover_unavailable ? (
-        <Cover label={copy.title} size={COVER} />
-      ) : (
-        <BookCover
-          connectionId={connectionId}
-          libraryId={row.library_id}
-          path={row.path}
-          width={COVER}
-          title={copy.title}
-          author={row.author ?? undefined}
-        />
-      )}
+      <BookCover
+        connectionId={connectionId}
+        libraryId={row.library_id}
+        path={row.path}
+        width={COVER}
+        title={copy.title}
+        author={row.author ?? undefined}
+        noArt={row.cover_unavailable}
+      />
     </PressableRow>
   );
 }

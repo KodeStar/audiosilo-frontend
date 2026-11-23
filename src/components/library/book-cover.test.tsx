@@ -131,6 +131,13 @@ describe('BookCover', () => {
     expect(source().uri).toBe('https://s/libraries/1/cover?path=A/B&size=640');
   });
 
+  it('asks the server for nothing when it holds no cover the caller may read', async () => {
+    await render(<BookCover {...props} noArt />);
+    expect(mockApi.coverUrl).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('cover-image')).toBeNull();
+    expect(screen.queryByText('Dune')).toBeTruthy();
+  });
+
   it('takes an unreachable server as one without thumbnails', async () => {
     mockInfo = { isError: true };
     await render(<BookCover {...props} />);
