@@ -1674,7 +1674,11 @@ async function applyAnswer(
   const deviceId = await getDeviceId();
   for (const row of rows) {
     if (keptMine(row, deviceId, events, results)) {
-      await ackVersion(connectionId, row.library_id, row.path, row.version, row);
+      // A mirror that could not be read is left as it is (`updateMirror` rejects); the rest
+      // of the answer still lands.
+      await ackVersion(connectionId, row.library_id, row.path, row.version, row).catch(
+        () => undefined,
+      );
     }
     // The book's cached progress is the place Resume plays (`bookPlace`, fe#211), as its
     // own read answers (`fetchBookProgress`): a row the server kept over this device's

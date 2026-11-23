@@ -76,7 +76,8 @@ export function ListeningOfferLine({
     // After the span this book still has open closes (`answerAfterSpan`): what was heard
     // before the answer is not sent on the row's version.
     void answerAfterSpan(target, () =>
-      answerOffer(connectionId, libraryId, path, row, offer.key),
+      // A mirror that could not be read is left as it is: the play still goes.
+      answerOffer(connectionId, libraryId, path, row, offer.key).catch(() => undefined),
     ).then(() => onPlay(offer.position));
   };
   return (

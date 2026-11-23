@@ -266,7 +266,9 @@ export async function offerLoadedPlace(
   shownOffers.add(`${bookKey}|${offer.key}`);
   const latest = { at: Date.now(), play, moves, toastId: last?.toastId };
   offeredAt.set(fromDevice, latest);
-  const answer = () => answerOffer(np.connectionId, np.libraryId, np.path, row, offer.key);
+  // A mirror that could not be read is left as it is: the Jump still moves.
+  const answer = () =>
+    answerOffer(np.connectionId, np.libraryId, np.path, row, offer.key).catch(() => undefined);
   whenActive(() => {
     const now = usePlayer.getState();
     if (selectBookKey(now) !== bookKey || !now.nowPlaying || offeredAt.get(fromDevice) !== latest)

@@ -53,6 +53,7 @@ import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
 import { setConnectionAliases } from '@/lib/connection-id';
+import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { connectionGeneration } from './connection-generation';
@@ -1067,6 +1068,41 @@ describe('flushOutbox', () => {
       row,
     );
     expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBe(42);
+  });
+
+  it('a mirror that cannot be read leaves the rest of the answer to land', async () => {
+    const deviceId = await getDeviceId();
+    await appendEvents('c1', [listen('a')]);
+    const row: Progress = {
+      library_id: 3,
+      path: 'Author/Book',
+      position: 16800,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1.2,
+      version: 42,
+      device_id: deviceId,
+      updated_at: '2026-10-25T07:33:30.000Z',
+    };
+    client(async (body) => answer(body, () => ({ status: 'applied' }), [row]));
+    const told: unknown[] = [];
+    const stop = onSyncAnswer((_cid, rows) => told.push(rows));
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    getItem.mockImplementation((key: string) =>
+      key === PROGRESS_MIRROR_KEY ? Promise.reject(new Error('unreadable')) : read(key),
+    );
+    try {
+      await flushOutbox('c1');
+    } finally {
+      getItem.mockImplementation(read);
+      stop();
+    }
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['progress', 'c1', 3, 'Author/Book'],
+      row,
+    );
+    expect(told).toEqual([[row]]);
   });
 
   it("caches this device's newer place, with the row, when the server kept another device's (fe#211)", async () => {
