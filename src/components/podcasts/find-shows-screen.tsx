@@ -1,5 +1,5 @@
 import { router } from 'expo-router';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
@@ -168,8 +168,17 @@ function FindShowsAccessState({ connectionId }: { connectionId: string }) {
   // `offline`: a server's failed answer (an `ApiError`) is `failed` whatever the network
   // does since, but its Retry can't work until the network is back.
   const { unread, offline } = useDialogRead(info);
+  // A Retry with nothing kept puts the read back to pending with no error, so the failure
+  // is remembered here until that read settles: the sentence stays, its Retry busy, and the
+  // page never drops to its skeleton for the whole ask.
+  const [retrying, setRetrying] = useState(false);
+  const retry = () => {
+    setRetrying(true);
+    void info.refetch().finally(() => setRetrying(false));
+  };
   if (unread === 'offline') return <OfflineState hint={t('common.offlinePage')} />;
-  if (unread === 'failed') {
+  const asking = retrying && info.isFetching;
+  if (unread === 'failed' || asking) {
     const refusal = refusedServer(connectionId, info.error);
     if (refusal) return <ServerRefusal {...refusal} />;
     return (
@@ -179,11 +188,7 @@ function FindShowsAccessState({ connectionId }: { connectionId: string }) {
         action={
           offline
             ? undefined
-            : {
-                label: t('common.retry'),
-                onPress: () => void info.refetch(),
-                loading: info.isFetching,
-              }
+            : { label: t('common.retry'), onPress: retry, loading: info.isFetching }
         }
       />
     );

@@ -1,4 +1,4 @@
-import { fireEvent, screen } from '@testing-library/react-native';
+import { act, fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
 import { mountWithPortal } from '@/testing/render-overlay';
@@ -37,12 +37,14 @@ let mockLibrariesPaused = false;
 let mockLibrariesError: Error | null = null;
 let mockServerPaused = false;
 let mockServerError: Error | null = null;
+let mockServerFetching = false;
 const mockServerRetry = jest.fn();
 const mockLibrariesCids = new Set<string>();
 jest.mock('@/api/hooks', () => ({
   useServerInfo: () => ({
     isPaused: mockServerPaused,
     error: mockServerError,
+    isFetching: mockServerFetching,
     refetch: mockServerRetry,
   }),
   useCapability: (flag: string, cid?: string) => {
@@ -129,7 +131,8 @@ beforeEach(() => {
   mockLibrariesError = null;
   mockServerPaused = false;
   mockServerError = null;
-  mockServerRetry.mockReset();
+  mockServerFetching = false;
+  mockServerRetry.mockReset().mockResolvedValue(undefined);
   mockLibrariesCids.clear();
   mockCaps = { podcasts: true, podcast_discovery: true, podcast_opml: true };
   mockSetParams.mockReset();
@@ -220,6 +223,30 @@ describe('FindShowsScreen', () => {
     expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
     await fireEvent.press(screen.getByText('Retry'));
     expect(mockServerRetry).toHaveBeenCalled();
+  });
+
+  // TanStack puts a refetch with no data back to pending with no error, so the failure is
+  // gone from the query while Retry's read runs.
+  it('keeps the failed check with a busy Retry while Retry asks again', async () => {
+    mockCaps = {};
+    mockServerError = new ApiError(502, 'bad gateway');
+    let settle = () => {};
+    mockServerRetry.mockImplementation(() => {
+      mockServerError = null;
+      mockServerFetching = true;
+      return new Promise<void>((resolve) => (settle = resolve));
+    });
+    const view = await mountWithPortal(<FindShowsScreen />);
+    await fireEvent.press(screen.getByText('Retry'));
+    await view.rerender(<FindShowsScreen />);
+    expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeBusy();
+    // Failed again: the sentence with Retry ready.
+    mockServerError = new ApiError(502, 'bad gateway');
+    mockServerFetching = false;
+    await act(async () => settle());
+    expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Retry' })).not.toBeBusy();
   });
 
   it("offers no Retry for a server's failed answer while the device is offline", async () => {
