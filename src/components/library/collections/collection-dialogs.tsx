@@ -17,7 +17,7 @@ import {
   useUpdateCollection,
 } from '@/api/hooks';
 import type { Collection, HouseholdMember } from '@/api/types';
-import { serverRefusalState } from '@/components/layout/server-refusal-state';
+import { readRefusalState } from '@/components/layout/server-refusal-state';
 import { CheckRow } from '@/components/ui/check-row';
 import { collectionsMembers } from '@/components/household/household-model';
 import { Button } from '@/components/ui/button';
@@ -214,7 +214,8 @@ export function CollectionFormDialog({
 /** One of the listener's collections in "Add to collection": checked when it holds the
  * book (read from the collection itself, only while the dialog is open); pressing adds
  * the book or takes it out (by the item's own path: a remove is exact). `onReconnect`
- * closes the dialog before a refused read's Reconnect opens the sign-in page. */
+ * closes the dialog before a refused read's Reconnect opens the sign-in page (a refused
+ * `/server`, or the server's 401 on this read: `readRefusalState`). */
 function CollectionToggle({
   collection,
   offline,
@@ -254,7 +255,7 @@ function CollectionToggle({
   };
   if (read.unread === 'failed') {
     return (
-      serverRefusalState(detail.error, connectionId, onReconnect) ?? (
+      readRefusalState(detail.error, connectionId, onReconnect) ?? (
         <ErrorNote
           message={t('library.collection.addTo.readFailed', { name: collection.name })}
           onRetry={disabled ? undefined : () => void detail.refetch()}
@@ -356,7 +357,7 @@ export function AddToCollectionDialog({
         ) : (
           <>
             {unread === 'failed' ? (
-              (serverRefusalState(error, connectionId, close) ?? (
+              (readRefusalState(error, connectionId, close) ?? (
                 <ErrorNote
                   message={t('library.collections.error')}
                   onRetry={offline ? undefined : () => void refetch()}
@@ -475,7 +476,7 @@ export function ShareCollectionDialog({
         </DialogHeader>
         {offline ? <Text variant="muted">{t('library.collection.share.offline')}</Text> : null}
         {failed ? (
-          (serverRefusalState(targets.error, connectionId, () => onOpenChange(false)) ?? (
+          (readRefusalState(targets.error, connectionId, () => onOpenChange(false)) ?? (
             <ErrorNote
               message={t('library.collection.share.error')}
               onRetry={offline ? undefined : () => void targets.refetch()}

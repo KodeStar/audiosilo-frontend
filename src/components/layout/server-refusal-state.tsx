@@ -1,5 +1,6 @@
 import { useTranslation } from 'react-i18next';
 
+import { isSignedOutError } from '@/api/client';
 import { type RefusedServer, refusedServer, ServerReadError } from '@/api/server-read-error';
 import { EmptyState } from '@/components/ui/empty-state';
 import { useSession } from '@/stores/session';
@@ -20,6 +21,20 @@ export function serverRefusalState(
       ? refusedServer(connectionId, error.cause)
       : undefined;
   return refusal ? <ServerRefusal {...refusal} onReconnect={onReconnect} /> : null;
+}
+
+/** `serverRefusalState` for a dialog's own read, which also takes the server's 401 on that
+ * read: a revoked token. `/server` answers anyone, so its check never refuses one, and a
+ * Retry could never work; signing in again (with the dialog closed first) can. */
+export function readRefusalState(
+  error: unknown,
+  connectionId: string | undefined,
+  onReconnect?: () => void,
+) {
+  if (connectionId && isSignedOutError(error)) {
+    return <ServerRefusal connectionId={connectionId} proxy={false} onReconnect={onReconnect} />;
+  }
+  return serverRefusalState(error, connectionId, onReconnect);
 }
 
 /** One recovery per refused server, on a page that reads every server. */

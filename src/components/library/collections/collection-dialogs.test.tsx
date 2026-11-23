@@ -410,6 +410,63 @@ describe('collection dialogs: Reconnect from a refused server', () => {
   });
 });
 
+// A revoked token: `/server` answers anyone, so only the dialog's own read is refused (a
+// 401). Its Retry could never work, so it offers Reconnect, which closes the dialog first.
+describe("collection dialogs: Reconnect from the server's 401 on the dialog's own read", () => {
+  const signedOut = { id: 'c', name: 'Hearthside', needsReconnect: 'auth' } as Connection;
+  const revoked = () => new ApiError(401, 'unauthorized');
+  beforeEach(() => {
+    useSession.setState({ connections: [signedOut] });
+    mockDetailError = null;
+  });
+
+  async function pressReconnect() {
+    expect(screen.getByText('Sign in again to Hearthside')).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
+    await fireEvent.press(screen.getByRole('button', { name: 'Reconnect' }));
+  }
+
+  it("closes Add to collection from its list's 401", async () => {
+    mockCollectionsError = revoked();
+    mockCollections = undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <AddToCollectionDialog
+        open
+        onOpenChange={onOpenChange}
+        connectionId="c"
+        libraryId={1}
+        path="Author/Book"
+        title="Book"
+      />,
+    );
+    expect(screen.queryByText("Couldn't load your collections")).toBeNull();
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it.each([false, true])('closes Share from its 401 (kept people: %s)', async (kept) => {
+    mockTargetsError = revoked();
+    mockTargets = kept ? [{ id: 12, username: 'evie' }] : undefined;
+    const onOpenChange = jest.fn();
+    await mountWithPortal(
+      <ShareCollectionDialog open onOpenChange={onOpenChange} connectionId="c" collection={road} />,
+    );
+    expect(screen.queryByText("Couldn't load the people on this server")).toBeNull();
+    await pressReconnect();
+    expect(onOpenChange).toHaveBeenCalledWith(false);
+    expect(mockReconnect).toHaveBeenCalledWith(signedOut);
+  });
+
+  it("keeps Retry for a proxy's own 401", async () => {
+    mockCollectionsError = new ApiError(401, 'proxy', undefined, undefined, true);
+    mockCollections = undefined;
+    await mount();
+    expect(screen.getByText('Retry')).toBeTruthy();
+  });
+});
+
 describe('CollectionFormDialog', () => {
   beforeEach(() => mockCreate.mockReset());
   const mountForm = () =>
