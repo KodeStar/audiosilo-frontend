@@ -12,7 +12,9 @@ import { useState } from 'react';
 export function useHeldTopInset(top: number, window: { width: number; height: number }): number {
   const key = `${window.width}x${window.height}`;
   const [held, setHeld] = useState<Record<string, number>>(() => ({ [key]: top }));
-  const seen = held[key];
-  if (seen === undefined || top > seen) setHeld({ ...held, [key]: top });
-  return Math.max(seen ?? 0, top);
+  const seen = held[key] ?? 0;
+  // Kept only when there is room to hold: a size with no inset (every size on the web) adds
+  // no key and no render.
+  if (top > seen) setHeld({ ...held, [key]: top });
+  return Math.max(seen, top);
 }
