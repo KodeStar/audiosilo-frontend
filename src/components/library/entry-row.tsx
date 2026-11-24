@@ -2,6 +2,7 @@ import { Link } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { isFavouriteOf } from '@/api/favourite-match';
 import { useFavourites } from '@/api/hooks';
 import type { FsEntry } from '@/api/types';
 import { Icon } from '@/components/ui/icon';
@@ -37,9 +38,7 @@ export function EntryRow({
   const isDir = entry.is_dir;
   const { data: favourites } = useFavourites();
   const toggleFavourite = useFavouriteAction();
-  const isFavourite = !!favourites?.some(
-    (f) => f.library_id === libraryId && f.path === entry.path,
-  );
+  const isFavourite = !!favourites?.some((f) => isFavouriteOf(f, libraryId, entry.path));
   // Plain folders drill in; book folders (indexed or pending) and audio leaves open
   // the book screen.
   const opensBook = !isDir || entry.is_book || entry.pending_book;

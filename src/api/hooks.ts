@@ -86,6 +86,7 @@ import {
 } from './client';
 import { type RefusedServer, refusedServer, ServerReadError } from './server-read-error';
 import { resolveClient } from './connection-clients';
+import { isFavouriteOf } from './favourite-match';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteFailure, useReachability } from './reachability';
 import type {
@@ -856,7 +857,7 @@ export function useCapabilitiesAllRead(): {
 
 /** Whether a query failed with nothing known: an error, held for the network, or asked
  * again after a failure (a fetch with no data puts the query back to pending and clears its
- * error, so only the count of its failures still says it failed, as `useKnownBook` reads). */
+ * error, so only the count of its failures still says it failed). `useKnownBook` reads it too. */
 function failedRead(r: {
   data?: unknown;
   isError: boolean;
@@ -1222,12 +1223,9 @@ export function useKnownBook(
   const query = useBook(libraryId, path, connectionId, opts);
   // A down server's own failure can be a timeout away.
   const serverDown = useReachability((s) => s.online[cid] === false);
-  // A failed item asked again has no error while it waits (a fetch without data resets it),
-  // so the count of its failures says it failed. `isPaused`, not `fetchStatus`: a refetch
-  // alone redraws no row.
-  const stuck =
-    query.data === undefined &&
-    (query.isError || query.isPaused || query.errorUpdateCount > 0 || serverDown);
+  // A failed item asked again still failed (`failedRead`). `isPaused`, not `fetchStatus`: a
+  // refetch alone redraws no row.
+  const stuck = failedRead(query) || (query.data === undefined && serverDown);
   return useMemo(
     () => query.data ?? (stuck ? listedBook(cid, libraryId, path) : undefined),
     [query.data, stuck, cid, libraryId, path],
@@ -2041,8 +2039,8 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
       if (!prev) favouritesUnreadRun.add(cid);
       qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
         const list = cur ?? [];
-        if (!on) return list.filter((f) => !(f.library_id === libraryId && f.path === path));
-        if (list.some((f) => f.library_id === libraryId && f.path === path)) return list;
+        if (!on) return list.filter((f) => !isFavouriteOf(f, libraryId, path));
+        if (list.some((f) => isFavouriteOf(f, libraryId, path))) return list;
         // Minimal optimistic stub; onSettled refetch fills in is_book/title/etc.
         const stub: Favourite = {
           library_id: libraryId,
@@ -2075,7 +2073,7 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
       // mutation's onMutate runs before it waits its turn, so its snapshot can hold another
       // toggle's optimistic edit, one that has failed since too. The last one to settle
       // reads the list.
-      const same = (f: Favourite) => f.library_id === libraryId && f.path === path;
+      const same = (f: Favourite) => isFavouriteOf(f, libraryId, path);
       const at = ctx.prev?.findIndex(same) ?? -1;
       const before = at >= 0 ? ctx.prev?.[at] : undefined;
       qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
