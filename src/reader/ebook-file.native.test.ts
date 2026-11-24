@@ -184,6 +184,23 @@ describe('localEbook', () => {
     expect(mockDownload).not.toHaveBeenCalled();
   });
 
+  // fe#354: only an open of the cache's own copy marks its folder, however the download's
+  // uri is spelled (here with a trailing slash the file system drops).
+  it('never marks the cache opened for the download’s own copy', async () => {
+    mockTree.set(SAVED, 1234);
+    mockTree.set(BOOK, 1000);
+    await expect(localEbook({ ...args, saved: `${SAVED}/` })).resolves.toEqual({
+      uri: SAVED,
+      size: 1234,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(files().some((f) => f.endsWith('/opened'))).toBe(false);
+    // The cache's own copy, opened: its folder is marked.
+    await expect(localEbook(args)).resolves.toEqual({ uri: BOOK, size: 1000 });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(files().filter((f) => f.endsWith('/opened'))).toEqual([`${FOLDER}/opened`]);
+  });
+
   it('fetches when the download’s copy is gone from the device, or empty', async () => {
     await expect(localEbook({ ...args, saved: 'file:///docs/gone/book.epub' })).resolves.toEqual({
       uri: BOOK,

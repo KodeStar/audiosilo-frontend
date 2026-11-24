@@ -172,8 +172,9 @@ export async function localEbook({
   const here = existingEbook({ connectionId, libraryId, path, size, saved });
   if (here) {
     assertReadable(here.size);
-    if (here.uri !== saved) void markOpened(cacheDir(connectionId, libraryId, path));
-    return here;
+    // Only the cache's own copy: the download's lives elsewhere, never trimmed.
+    if (here.cached) void markOpened(cacheDir(connectionId, libraryId, path));
+    return { uri: here.uri, size: here.size };
   }
   // Too large for the reader, or for the room left: said before a byte is fetched. The
   // reader's own older copies make room first, when they can.
@@ -336,23 +337,23 @@ function trimCache(keep?: string, room = 0): void {
 }
 
 /** The book's EPUB already on this device, not empty: the download's copy (`saved`), else
- * the cache file for the server's `size`; null when neither is there. */
+ * the cache file for the server's `size` (`cached`); null when neither is there. */
 function existingEbook({
   connectionId,
   libraryId,
   path,
   size,
   saved,
-}: EbookFileRef): LocalEbook | null {
+}: EbookFileRef): (LocalEbook & { cached: boolean }) | null {
   if (saved) {
     const file = new File(saved);
     const bytes = sizeOf(file);
-    if (bytes > 0) return { uri: file.uri, size: bytes };
+    if (bytes > 0) return { uri: file.uri, size: bytes, cached: false };
   }
   if (size === undefined) return null;
   const file = new File(cacheDir(connectionId, libraryId, path), cacheName(size));
-  const cached = sizeOf(file);
-  return cached > 0 ? { uri: file.uri, size: cached } : null;
+  const bytes = sizeOf(file);
+  return bytes > 0 ? { uri: file.uri, size: bytes, cached: true } : null;
 }
 
 /** The reader's cached copy of the book's EPUB for the server's `size`, else null: a
