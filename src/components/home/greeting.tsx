@@ -75,7 +75,7 @@ export function Greeting({
   // Once a minute, so "synced 2 min ago" and the part of the day stay true.
   const minute = useMinuteClock();
   const now = new Date(minute);
-  const date = formatLongDate(now);
+  const date = formatLongDate(now, locale);
   const part = greetingPart(now.getHours());
   const greeting = name ? t(GREETING[part].named, { name }) : t(GREETING[part].plain);
 
