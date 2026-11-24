@@ -9,6 +9,12 @@ jest.mock('@/playback/store', () =>
   require('@/testing/player-store-mock').createPlayerStoreMock(),
 );
 jest.mock('../transport', () => ({ trackLabel: () => '' }));
+// Whether VoiceOver or TalkBack is on (screen-reader's own tests).
+let mockScreenReader = false;
+jest.mock('@/lib/screen-reader', () => ({
+  ...jest.requireActual('@/lib/screen-reader'),
+  useScreenReader: () => mockScreenReader,
+}));
 
 /* eslint-disable import/first */
 import { createPageScroll, PageScrollContext } from '../page-scroll';
@@ -123,7 +129,10 @@ describe('ChaptersPanel inline in the page', () => {
       done(0, listTop),
     );
   });
-  afterEach(() => nativeMethods.measureInWindow.mockReset());
+  afterEach(() => {
+    nativeMethods.measureInWindow.mockReset();
+    mockScreenReader = false;
+  });
 
   /** The panel inline in a page 800 high, laid out and measured. */
   async function inPage() {
@@ -195,6 +204,14 @@ describe('ChaptersPanel inline in the page', () => {
     await act(async () => page.props.onContentSizeChange());
     expect(screen.getByText('Chapter 101')).toBeTruthy();
     expect(screen.queryByText('Chapter 301')).toBeNull();
+  });
+
+  it('draws every row of a long list with a screen reader on', async () => {
+    mockScreenReader = true;
+    open(3, 150);
+    await inPage();
+    expect(screen.queryByTestId('chapters-page-rows')).toBeNull();
+    expect(screen.getByText('Chapter 150')).toBeTruthy();
   });
 
   it('draws every row with no page around it', async () => {

@@ -25,6 +25,7 @@ import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDurationOrZero } from '@/lib/format';
 import { openingIndex, openingOffset } from '@/lib/list-opening';
 import { quietly } from '@/lib/quietly';
+import { useScreenReader } from '@/lib/screen-reader';
 import { isLargeText, scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
@@ -85,8 +86,10 @@ export function inlineRows(
  * room is held, but only the rows near the visible part of the page are drawn
  * (`inlineRows`), so a book of a thousand chapters scrolls as one of ten. The page scrolls
  * the list (a nested virtual list would never know its viewport), so the list follows the
- * page's scroll (`usePageScroll`) and measures where it sits in it. A screen reader or a
- * keyboard moving past the drawn rows scrolls the page, which draws the next ones.
+ * page's scroll (`usePageScroll`) and measures where it sits in it. A keyboard moving past
+ * the drawn rows scrolls the page, which draws the next ones. With VoiceOver or TalkBack on
+ * the list draws every row instead (`ChaptersPanel`): a swipe never waits on the page's
+ * scroll or a measurement, nor skips a spacer to a row far down.
  */
 function PageRows({
   page,
@@ -229,7 +232,7 @@ const Row = memo(function Row({ index, label, state, side, height, wrap, onPress
  * whole-book timeline lists its files instead. `virtualized` (in a sheet, or as the
  * desktop column's own scroller) opens on the current chapter; inline in a scrolling
  * page it is a plain list, drawn only near the visible part of the page when it is long
- * (`PageRows`).
+ * (`PageRows`) and no screen reader is on.
  */
 export function ChaptersPanel({
   virtualized = false,
@@ -253,6 +256,7 @@ export function ChaptersPanel({
   const rowHeight = chapterRowHeight(scale);
   const { height: windowHeight } = useWindowDimensions();
   const page = usePageScroll();
+  const screenReader = useScreenReader();
   const list = useRef<FlatList<string>>(null);
   /** The list (this mount of it) once it was first laid out, when one that opened at its top
    * is scrolled to the current row (`openingIndex`): one that mounts again (the panel stayed
@@ -315,7 +319,7 @@ export function ChaptersPanel({
   );
 
   if (!virtualized) {
-    if (page && labels.length > INLINE_ALL_UP_TO) {
+    if (page && !screenReader && labels.length > INLINE_ALL_UP_TO) {
       return <PageRows page={page} count={labels.length} rowHeight={rowHeight} render={render} />;
     }
     return <View>{labels.map((_, i) => render(i))}</View>;
