@@ -1802,10 +1802,12 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `version` is the book's `cover_version`, sent as `v=` purely as a cache buster; a
 `/me/progress` row, a `Favourite`, an `FsEntry` and a `HouseListeningRow` carry their book's
 too (server#215; the `FsEntry`'s is mirrored only, folder rows draw no cover); a progress
-row's cover (Home's tiles, Now and Previously on cards, the Finish what you started shelf,
-See all, Up next's suggestions, the palette, the car) takes the row's own before its
-`/item`'s, so the URL does not change as the book loads, and a progress edit's echo (which
-carries none) keeps the listed row's);
+row's cover (Home's tiles, Now and Previously on cards, See all, Up next's suggestions, the
+palette, the car) takes the row's own before its `/item`'s, so the URL does not change as
+the book loads (the Finish what you started shelf reads no `/item`: the row's alone), and a
+progress edit's echo (which carries none) keeps the listed row's; a favourite's cover (Home's
+rail, the Favourites page, the Collections mode's Favourites card) and a household row's
+take theirs);
 `bookMeta(..., {includePrevious, hideSpoilers})` and `useBookMeta(..., opts)`
 (`meta_bundle`; each variant has its own `qk.bookMeta` key; `nextBook` and an
 `includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains
