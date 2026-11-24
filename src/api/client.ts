@@ -1514,7 +1514,9 @@ export class ApiClient {
    * it). The body is exactly `{library_id, feed_url}`, plus `private: true` only when the
    * listener says so (`false` can't override the server's own detection), and `title` when
    * the caller knows the show's name (a directory result): the request row's label until
-   * the show is added (v2.7.0; an older server ignores it, a private feed's is never kept). */
+   * the show is added (v2.7.0; a private feed's is never kept). An older server refuses the
+   * unknown field (400, nothing followed), so prefer `useFollowPodcastByUrl`, which sends it
+   * only to a server with `podcast_request_dismiss`. */
   followPodcastByUrl(
     libraryId: number,
     feedUrl: string,

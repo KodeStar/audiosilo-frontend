@@ -207,6 +207,24 @@ describe('useOpmlImport', () => {
       });
     });
 
+    it("labels the new request with the list's name for the show, on a server that takes one", async () => {
+      mockClient.serverInfo.mockResolvedValueOnce({
+        capabilities: { podcasts: true, podcast_request_dismiss: true },
+      } as never);
+      const one = failed(1, 'https://example.com/...');
+      const { result } = await started([one]);
+      mockClient.followPodcastByUrl.mockResolvedValue({
+        state: 'subscribing',
+        request: { id: 55, state: 'queued', library_id: 7 },
+      });
+      await act(async () => result.current.retryRow(one));
+      await act(async () => jest.advanceTimersByTimeAsync(0));
+      expect(mockClient.followPodcastByUrl).toHaveBeenCalledWith(7, 'https://example.com/one.xml', {
+        private: undefined,
+        title: 'One',
+      });
+    });
+
     it("offers none when the list's address there is not the row's feed", async () => {
       // The server's label names another host than the list holds at that place.
       const two = failed(2, 'https://example.com/...');

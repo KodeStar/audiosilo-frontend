@@ -3307,14 +3307,22 @@ async function storeFollowByUrl(qc: QueryClient, cid: string, answer: PodcastFol
 
 /** Follow a feed by its address in a podcast library (capability `podcasts`): a
  * directory result, a pasted address. `private` only when the listener says the feed is
- * theirs alone; `title` the show's name when the caller has it (a directory result), the
- * request row's label. The cache takes the answer (`storeFollowByUrl`). */
+ * theirs alone; `title` the show's name when the caller has it (a directory result, an
+ * imported list's row), the request row's label. **`title` is sent ONLY to a server known to
+ * take it**: the server's decoder refuses unknown fields (an older one answers the follow 400
+ * and follows nothing), and it came in the same server change (v2.7.0) as
+ * `podcast_request_dismiss`, so that flag gates it (not known yet counts as no; the follow
+ * still goes, unlabelled). The cache takes the answer (`storeFollowByUrl`). */
 export function useFollowPodcastByUrl(connectionId?: string) {
+  const takesTitle = useCapability('podcast_request_dismiss', connectionId) === true;
   return useCapabilityMutation(
     'podcasts',
     connectionId,
     (api, v: { libraryId: number; feedUrl: string; private?: boolean; title?: string }) =>
-      api.followPodcastByUrl(v.libraryId, v.feedUrl, { private: v.private, title: v.title }),
+      api.followPodcastByUrl(v.libraryId, v.feedUrl, {
+        private: v.private,
+        title: takesTitle ? v.title : undefined,
+      }),
     ({ qc, cid }, answer) => storeFollowByUrl(qc, cid, answer),
   );
 }

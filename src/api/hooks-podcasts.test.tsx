@@ -287,6 +287,38 @@ describe('follow by address', () => {
     // Read again after the answer is in.
     expect(qc.getQueryState(qk.myPodcasts('c1'))?.isInvalidated).toBe(true);
   });
+
+  it('sends a title only to a server that takes it (an older one refuses the field)', async () => {
+    const answer = { state: 'subscribing', request: request({ id: 82 }) } as const;
+    const vars = { libraryId: 5, feedUrl: 'https://f/x', title: 'The Show' };
+    const old = await mount({ podcasts: true }, () => ({
+      m: useFollowPodcastByUrl(),
+      known: useCapability('podcasts'),
+    }));
+    await waitFor(() => expect(old.result.current.known).toBe(true));
+    mockClients.c1.followPodcastByUrl.mockResolvedValue(answer);
+    await act(async () => {
+      await old.result.current.m.mutateAsync(vars);
+    });
+    expect(mockClients.c1.followPodcastByUrl).toHaveBeenLastCalledWith(5, 'https://f/x', {
+      private: undefined,
+      title: undefined,
+    });
+
+    const fresh = await mount({ podcasts: true, podcast_request_dismiss: true }, () => ({
+      m: useFollowPodcastByUrl(),
+      known: useCapability('podcast_request_dismiss'),
+    }));
+    await waitFor(() => expect(fresh.result.current.known).toBe(true));
+    mockClients.c1.followPodcastByUrl.mockResolvedValue(answer);
+    await act(async () => {
+      await fresh.result.current.m.mutateAsync(vars);
+    });
+    expect(mockClients.c1.followPodcastByUrl).toHaveBeenLastCalledWith(5, 'https://f/x', {
+      private: undefined,
+      title: 'The Show',
+    });
+  });
 });
 
 describe('check, export', () => {

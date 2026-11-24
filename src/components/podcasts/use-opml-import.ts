@@ -59,6 +59,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   /** The list's feed addresses and names by `outline_index`, once its bytes are read. */
   const [outline, setOutline] = useState<ReturnType<typeof outlineEntries> | null>(null);
   const feeds = outline?.feeds ?? null;
+  const titles = outline?.titles ?? null;
   // The rows followed again by hand, with the list they belong to (`list`, one more for
   // each new list or none): a follow answered after another list was picked must not land
   // on that list's row at the same place.
@@ -188,7 +189,8 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
         });
       };
       settle({ kind: 'busy' });
-      followByUrl({ libraryId, feedUrl }).then(
+      // The list's name for the show labels its new request, as the wave's own would.
+      followByUrl({ libraryId, feedUrl, title: titles?.get(index) }).then(
         (answer) =>
           settle({
             kind: 'answered',
@@ -218,7 +220,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
         },
       );
     },
-    [feeds, list, followByUrl, libraryId, t],
+    [feeds, titles, list, followByUrl, libraryId, t],
   );
 
   return {
@@ -234,7 +236,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     stop: useCallback(() => waves.current?.stop(), []),
     retry: useCallback(() => waves.current?.retry(), []),
     /** Each row's name in the list, by `outline_index` (`outlineTitles`). */
-    titles: outline?.titles ?? null,
+    titles,
     /** The rows followed again by hand, by `outline_index` (`withRetries`). */
     retries,
     /** Whether retrying the same address can help and the list holds its address. */
