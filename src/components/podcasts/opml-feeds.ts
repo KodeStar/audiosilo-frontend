@@ -1,6 +1,8 @@
 import type { OpmlImportRow } from '@/api/types';
 import { sameOrigin } from '@/lib/same-origin';
 
+import { isWebAddress, redactUrls } from './feed-redact';
+
 /**
  * The feed address of each subscription in an OPML list, by the import rows'
  * `outline_index` (server v2.4.0's import Try again): the server reports only a redacted
@@ -129,6 +131,19 @@ export function rowFeedUrl(
   const labelled = row.feed.replace(/\/\.\.\.$/, '').toLowerCase();
   // `URL.origin` is lower case without a default port, as the server's label writes it.
   return sameOrigin(url, { origin: labelled }) ? url : null;
+}
+
+/** What an import row is called (fe#126): the list's own name for it, else its show's
+ * folder, else the server's (redacted) label for its address. Any web address in the name
+ * is redacted as the server redacts a follow's title (`redactUrls`), and a name that is
+ * only an address gives way to the folder or the server's label: the list is read on the
+ * device, so its name for a private feed may be that feed's address, token and all. */
+export function importRowLabel(
+  row: Pick<OpmlImportRow, 'path' | 'feed'>,
+  title: string | null,
+): string | null {
+  if (title && !isWebAddress(title)) return redactUrls(title);
+  return row.path || row.feed || (title ? redactUrls(title) : null);
 }
 
 /** The text of a picked list's bytes (UTF-8, as the server reads it; Expo's runtime

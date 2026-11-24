@@ -24,6 +24,7 @@ import {
   stillAdding,
   withEndedRequests,
 } from './find-shows-model';
+import { importRowLabel } from './opml-feeds';
 import { pickOpml } from './opml-pick';
 import {
   canRetryImport,
@@ -293,8 +294,7 @@ const ImportRow = memo(function ImportRow({
   const { t } = useTranslation();
   // The server marks a list's private feeds; a row with no usable feed has none to mark.
   const hasFeed = row.feed !== null && row.status !== 'invalid' && row.status !== 'duplicate';
-  // The list's own name for the show (fe#126), else its folder, else its redacted address.
-  const label = title || row.path || row.feed;
+  const label = importRowLabel(row, title);
   return (
     <RowSurface
       testID={`opml-row-${row.outline_index}`}

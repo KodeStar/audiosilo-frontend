@@ -222,6 +222,29 @@ describe('OpmlImportPanel', () => {
     expect(r(3).getByText('Night Owls')).toBeTruthy();
   });
 
+  it("never shows a name's private address in full", async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          titles: new Map([
+            [1, 'https://feeds.example.com/p/abc?key=s3cr3t'],
+            [2, 'Listen at https://feeds.example.com/p/abc?key=s3cr3t today'],
+          ]),
+          state: state({ kind: 'done' }, [
+            row(1, { private: true, feed: 'https://feeds.example.com/...' }),
+            row(2, { private: true }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    const r = (i: number) => within(screen.getByTestId(`opml-row-${i}`));
+    expect(r(1).getByText('https://feeds.example.com/...')).toBeTruthy();
+    expect(r(2).getByText('Listen at https://feeds.example.com/... today')).toBeTruthy();
+    expect(screen.queryByText(/s3cr3t/)).toBeNull();
+  });
+
   it('numbers the feeds 1..n when a folder outline came first (BRIDGE-06)', async () => {
     await render(
       <OpmlImportPanel

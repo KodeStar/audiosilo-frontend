@@ -1,4 +1,4 @@
-import { opmlText, outlineFeeds, outlineTitles, rowFeedUrl } from './opml-feeds';
+import { importRowLabel, opmlText, outlineFeeds, outlineTitles, rowFeedUrl } from './opml-feeds';
 
 const opml = (body: string) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0"><head><title>t</title></head><body>${body}</body></opml>`;
@@ -135,5 +135,34 @@ describe('outlineTitles', () => {
     const emoji = outlineTitles(opml(`<outline title="${'x'.repeat(499)}\u{1F3A7}tail"/>`)).get(1);
     expect(emoji).toBe(`${'x'.repeat(499)}\u{1F3A7}`);
     expect([...outlineTitles('<opml><body><outline title="A" <broken></body></opml>')]).toEqual([]);
+  });
+});
+
+describe('importRowLabel', () => {
+  const row = { path: null, feed: 'https://feeds.example.com/...' };
+
+  it('keeps a plain name as the list gave it', () => {
+    expect(importRowLabel({ ...row, path: 'Morning' }, 'Morning Brief')).toBe('Morning Brief');
+  });
+
+  it("shows the folder, else the server's label, for a name that is only an address", () => {
+    const title = 'https://feeds.example.com/rss.xml';
+    expect(importRowLabel({ ...row, path: 'Daily News' }, title)).toBe('Daily News');
+    expect(importRowLabel(row, title)).toBe('https://feeds.example.com/...');
+    expect(importRowLabel({ path: null, feed: null }, title)).toBe('https://feeds.example.com/...');
+  });
+
+  it("never shows a private feed's token", () => {
+    const title = 'https://feeds.example.com/p/abc123?key=s3cr3t-token';
+    for (const r of [row, { path: null, feed: null }]) {
+      expect(importRowLabel(r, title)).not.toMatch(/s3cr3t|abc123|key=/);
+    }
+    expect(importRowLabel(row, `Bonus (${title})`)).toBe('Bonus (https://feeds.example.com/...');
+  });
+
+  it('falls back to the folder, then the label, with no name', () => {
+    expect(importRowLabel({ ...row, path: 'Daily News' }, null)).toBe('Daily News');
+    expect(importRowLabel(row, null)).toBe('https://feeds.example.com/...');
+    expect(importRowLabel({ path: null, feed: null }, null)).toBeNull();
   });
 });
