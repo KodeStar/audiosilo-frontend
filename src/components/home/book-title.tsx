@@ -63,7 +63,7 @@ export function ProgressTile({
       path={item.path}
       title={bookTitle(book?.title, item.path)}
       author={book?.author}
-      coverVersion={book?.cover_version}
+      coverVersion={item.cover_version ?? book?.cover_version}
       caption={caption}
       captionHasProgress
       width={width}

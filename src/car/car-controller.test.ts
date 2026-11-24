@@ -727,6 +727,26 @@ describe('startCarSync', () => {
     );
   });
 
+  it("names a progress row's artwork by the row's cover_version, else its book's", async () => {
+    connect(['c1']);
+    mockClients.c1 = fakeClient({
+      progress: [
+        makeProgress({ path: 'P1', position: 60, cover_version: 'pv1' }),
+        makeProgress({ path: 'P2', position: 60, updated_at: '2026-01-15' }),
+      ],
+      items: {
+        P1: makeBook({ rel_path: 'P1', cover_version: 'bv1' }),
+        P2: makeBook({ rel_path: 'P2', cover_version: 'bv2' }),
+      },
+    });
+    stop = startCarSync();
+    await settle();
+    const names = (ensureArtwork as jest.Mock).mock.calls.map(([name]) => name);
+    expect(names).toContain('c1:2:P1#pv1.jpg');
+    // A row from an older server (no cover_version) takes its book's.
+    expect(names).toContain('c1:2:P2#bv2.jpg');
+  });
+
   it("fetches a cover with its connection's proxy headers for that address (fe#167)", async () => {
     connect(['c1']);
     const client = fakeClient({ books: [makeBook({ rel_path: 'L1' })] });

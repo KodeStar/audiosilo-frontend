@@ -148,11 +148,12 @@ function useGoToItems(): PaletteItem[] {
  * read the same `/item` entries). */
 const TITLE_STALE_MS = 10 * 60_000;
 
-/** The titles of the books Continue listening offers: a progress row carries only a path,
- * so each book's `/item` is read (the entry Home's tiles and the book page share, so it is
- * usually cached already). Undefined while one is unknown (`bookTitle` falls back to the
- * path's last part). */
-function useProgressTitles(items: readonly SourcedProgress[], enabled: boolean) {
+/** The books Continue listening offers, for their titles and the cover version of a row
+ * that carries none (an older server): a progress row carries only a path, so each book's
+ * `/item` is read (the entry Home's tiles and the book page share, so it is usually cached
+ * already). Undefined while one is unknown (`bookTitle` falls back to the path's last
+ * part). */
+function useProgressBooks(items: readonly SourcedProgress[], enabled: boolean) {
   const apis = useApis();
   return useQueries({
     queries: items.map((p) => ({
@@ -165,7 +166,7 @@ function useProgressTitles(items: readonly SourcedProgress[], enabled: boolean) 
       staleTime: TITLE_STALE_MS,
       enabled,
     })),
-    combine: (results) => results.map((r) => r.data?.title),
+    combine: (results) => results.map((r) => r.data),
   });
 }
 
@@ -195,7 +196,12 @@ function useBookItems(
           subtitle: [b.author, sourceOf(b.connectionId, b.library_id, b.connectionName)]
             .filter(Boolean)
             .join(' · '),
-          cover: { connectionId: b.connectionId, libraryId: b.library_id, path: b.rel_path },
+          cover: {
+            connectionId: b.connectionId,
+            libraryId: b.library_id,
+            path: b.rel_path,
+            version: b.cover_version,
+          },
           run: () => openBook(b.connectionId, b.library_id, b.rel_path),
         };
       }),
@@ -207,25 +213,31 @@ function useBookItems(
     () => progress.filter(isInProgress).slice(0, MAX_CONTINUE),
     [progress],
   );
-  const titles = useProgressTitles(inProgress, !query);
+  const progressBooks = useProgressBooks(inProgress, !query);
   const continueListening = useMemo(
     () =>
       inProgress.map((p, i): PaletteItem => {
         const percent = percentHeard(p.position, p.duration, false);
         return {
           id: `continue:${p.connectionId}:${p.library_id}:${p.path}`,
-          title: bookTitle(titles[i], p.path),
+          title: bookTitle(progressBooks[i]?.title, p.path),
           subtitle: [
             t('palette.listened', { percent }),
             sourceOf(p.connectionId, p.library_id, p.connectionName),
           ]
             .filter(Boolean)
             .join(' · '),
-          cover: { connectionId: p.connectionId, libraryId: p.library_id, path: p.path },
+          cover: {
+            connectionId: p.connectionId,
+            libraryId: p.library_id,
+            path: p.path,
+            // The row's own, as Home's tiles: else its book's.
+            version: p.cover_version ?? progressBooks[i]?.cover_version,
+          },
           run: () => openBook(p.connectionId, p.library_id, p.path),
         };
       }),
-    [inProgress, titles, sourceOf, t, openBook],
+    [inProgress, progressBooks, sourceOf, t, openBook],
   );
 
   return { books, continueListening };
@@ -289,7 +301,10 @@ function CoverThumb({ cover, label }: { cover: PaletteCover; label: string }) {
   const api = useApi(cover.connectionId);
   return (
     <Cover
-      source={{ uri: api.coverUrl(cover.libraryId, cover.path), headers: api.authHeaders() }}
+      source={{
+        uri: api.coverUrl(cover.libraryId, cover.path, { version: cover.version }),
+        headers: api.authHeaders(),
+      }}
       label={label}
       rounded="rounded-cover"
       size={36}

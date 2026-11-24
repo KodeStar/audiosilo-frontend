@@ -174,7 +174,9 @@ export function queuedSeconds(entries: readonly QueueEntry[], progress: Progress
 /** One "Continue the series and more" row. */
 export type Suggestion =
   | { kind: 'next'; ref: BookRef; series: string }
-  | { kind: 'progress'; ref: BookRef; percent: number }
+  /** `coverVersion`: the progress row's `cover_version` (the cover URL's cache buster),
+   * when its server sends one. */
+  | { kind: 'progress'; ref: BookRef; percent: number; coverVersion?: string }
   | { kind: 'ghost'; title: string; position: string; workId: string };
 
 /** Whether `a` and `b` name one book: the same path, or one a part path (a disc folder, a
@@ -208,7 +210,7 @@ export function pickSuggestions({
   /** This server's saved progress, newest first. */
   inProgress: readonly Pick<
     Progress,
-    'library_id' | 'path' | 'position' | 'duration' | 'finished'
+    'library_id' | 'path' | 'position' | 'duration' | 'finished' | 'cover_version'
   >[];
   limit?: number;
 }): Suggestion[] {
@@ -249,6 +251,7 @@ export function pickSuggestions({
       kind: 'progress',
       ref: { library_id: p.library_id, path: p.path },
       percent: state.kind === 'progress' ? state.percent : 0,
+      coverVersion: p.cover_version,
     });
     seen.add(entryKey(p));
   }

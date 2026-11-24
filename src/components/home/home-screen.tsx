@@ -420,6 +420,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
                   title={bookTitle(f.title, f.path)}
                   author={f.author}
                   caption={f.author}
+                  coverVersion={f.cover_version}
                   server={serverLabel(f.connectionId)}
                   width={width}
                 />

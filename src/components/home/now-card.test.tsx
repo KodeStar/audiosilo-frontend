@@ -37,11 +37,28 @@ jest.mock('@/playback/store', () => ({
   selectIsPlaying: () => false,
 }));
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
+  useOptionalApi: () => ({
+    coverUrl: (_lib: number, path: string, o?: { version?: string }) =>
+      `https://s/cover?path=${path}${o?.version ? `&v=${o.version}` : ''}`,
+    authHeaders: () => ({}),
+  }),
   useApis: () => [],
   useApiRegistry: () => ({ clients: new Map(), connections: [] }),
   ConnectionScope: ({ children }: { children: unknown }) => children,
 }));
+
+// The cover's image URL (the real Cover still renders).
+let mockCoverUri: string | undefined;
+jest.mock('@/components/ui/cover', () => {
+  const actual = jest.requireActual('@/components/ui/cover');
+  return {
+    ...actual,
+    Cover: (p: { source?: string | { uri?: string } | null }) => {
+      mockCoverUri = typeof p.source === 'string' ? p.source : (p.source?.uri ?? undefined);
+      return actual.Cover(p);
+    },
+  };
+});
 
 // The second chapter's title (the one the listener is in).
 let mockSecondTitle = 'Holden';
@@ -161,6 +178,15 @@ beforeEach(() => {
 });
 
 describe('NowCard', () => {
+  it("versions the cover URL by the progress row's cover_version", async () => {
+    mockCoverUri = undefined;
+    await render(<NowCard at={at} playable saved={{ ...saved, cover_version: 'nv1' }} />);
+    expect(mockCoverUri).toMatch(/[?&]v=nv1$/);
+    // A row from an older server (and a book without one) asks without a version.
+    await render(<NowCard at={at} playable saved={saved} />);
+    expect(mockCoverUri).not.toMatch(/[?&]v=/);
+  });
+
   // v2.5.1 PLAYER-02: offline, Resume on a book that isn't downloaded went nowhere.
   it("says a book isn't downloaded, instead of a Resume that can't start, offline", async () => {
     mockDeviceOnline = false;

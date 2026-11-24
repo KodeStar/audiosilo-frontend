@@ -101,6 +101,7 @@ export function CollectionsMode({ connectionId }: LibraryModeProps) {
                   path: f.path,
                   title: bookTitle(f.title, f.path),
                   author: f.author,
+                  coverVersion: f.cover_version,
                 }))}
               />
             }
