@@ -50,6 +50,11 @@ jest.mock('expo-file-system', () => {
     bytes() {
       return mockBytes(this.uri);
     }
+    // A write lands now: its modification time is the clock's.
+    async write(text: string) {
+      mockTree.set(this.uri, text.length);
+      mockTimes.set(this.uri, Date.now());
+    }
     delete() {
       if (!this.exists) throw new Error(`nothing at ${this.uri}`);
       mockTree.delete(this.uri);
@@ -415,12 +420,51 @@ describe('localEbook: size, disk and cache (fe#172)', () => {
     expect(files().sort()).toEqual([`${FOLDER}/book-${250 * MB}.epub`, other(2)].sort());
   });
 
-  it('says no room when even its own copies could not make enough', async () => {
+  it('says no room when even its own copies could not make enough, dropping none of them', async () => {
     const old = `file:///cache/reader/c2/1/${pathSlug('Old')}/book-1.epub`;
     mockTree.set(old, 10 * MB);
     mockFreeOf = () => (mockTree.has(old) ? 10 * MB : 20 * MB);
     await expect(localEbook({ ...args, size: 100 * MB })).rejects.toBeInstanceOf(EbookStorageError);
     expect(mockDownload).not.toHaveBeenCalled();
+    // 10 MB could never cover a 90 MB shortfall: the copy stays, to open offline (fe#354).
+    expect(files()).toEqual([old]);
+  });
+
+  it('drops the copies opened longest ago, not fetched longest ago (fe#354)', async () => {
+    const other = (n: number) => `file:///cache/reader/c2/1/${pathSlug(`B/${n}`)}/book-1.epub`;
+    for (const n of [1, 2, 3]) {
+      mockTree.set(other(n), 200 * MB);
+      mockTimes.set(other(n), n);
+    }
+    // The first fetched is read again: opened now, it is the newest.
+    await localEbook({ ...args, connectionId: 'c2', libraryId: 1, path: 'B/1', size: 1 });
+    expect(mockDownload).not.toHaveBeenCalled();
+    mockDownload.mockImplementation(async () => 200 * MB);
+    await localEbook({ ...args, size: 200 * MB });
+    const book = `${FOLDER}/book-${200 * MB}.epub`;
+    const opened = `file:///cache/reader/c2/1/${pathSlug('B/1')}/opened`;
+    expect(files().sort()).toEqual([book, other(1), opened].sort());
+  });
+
+  it('drops the folders a trim leaves empty, and no folder still holding a copy', async () => {
+    const other = (n: number) => `file:///cache/reader/c2/${n}/${pathSlug('B')}/book-1.epub`;
+    for (const n of [1, 2, 3]) {
+      // Each folder as the native one stands: there with its copy, and after it.
+      mockTree.set(`file:///cache/reader/c2/${n}`, 'dir');
+      mockTree.set(`file:///cache/reader/c2/${n}/${pathSlug('B')}`, 'dir');
+      mockTree.set(other(n), 200 * MB);
+      mockTimes.set(other(n), n);
+    }
+    // The second book was opened once, then dropped: its mark goes with its folder.
+    mockTree.set(`file:///cache/reader/c2/2/${pathSlug('B')}/opened`, 13);
+    mockTimes.set(`file:///cache/reader/c2/2/${pathSlug('B')}/opened`, 2);
+    mockDownload.mockImplementation(async () => 200 * MB);
+    await localEbook({ ...args, size: 200 * MB });
+    const left = [...mockTree.keys()].filter((k) => k.startsWith('file:///cache/reader/c2'));
+    expect(left.sort()).toEqual(
+      ['file:///cache/reader/c2/3', `file:///cache/reader/c2/3/${pathSlug('B')}`, other(3)].sort(),
+    );
+    expect(files().sort()).toEqual([`${FOLDER}/book-${200 * MB}.epub`, other(3)].sort());
   });
 
   it('keeps the book just fetched even when it alone fills the cache', async () => {

@@ -29,12 +29,14 @@ import type { OpenedEbook } from './ebook-identity';
  * ebook change) fetches it again and drops the old copy. It goes with its connection
  * (`clearEbookCache`, on sign-out and on removing the connection), and the whole cache is
  * held to `MAX_EBOOK_BYTES`, so one book of the largest size the reader opens always fits:
- * after each fetch the copies fetched longest ago go first.
+ * after each fetch the copies opened longest ago go first (an open of a cached copy marks
+ * its folder, `OPENED`), and a folder left empty goes with them.
  *
  * A book over `MAX_EBOOK_BYTES` (the server's size, the copy's own length) is refused as too
- * large before any fetch or transfer, and a fetch that finds no room (once the cache's own
- * copies fetched longest ago have made what room they can), or a copy the cache could not
- * take, is a storage failure (`EbookStorageError`) that leaves no partial file (fe#172).
+ * large before any fetch or transfer, and a fetch that finds no room (the cache's own copies
+ * opened longest ago make room first, when dropping them can make enough), or a copy the
+ * cache could not take, is a storage failure (`EbookStorageError`) that leaves no partial
+ * file (fe#172).
  */
 
 const ROOT = 'reader';
@@ -45,6 +47,9 @@ function cacheDir(connectionId: string, libraryId: number, path: string): Direct
 
 /** The cache file of the book at the server's `ebook.size`. */
 const cacheName = (size: number) => `book-${size}.epub`;
+
+/** A book folder's mark of its last open: its own modification time is when (fe#354). */
+const OPENED = 'opened';
 
 /** A book's EPUB as a local file. */
 export type LocalEbook = { uri: string; size: number };
@@ -94,9 +99,10 @@ function drop(entry: File | Directory): void {
   }
 }
 
-// The `.part` names of the fetches running now, in this process: the only parts a cleanup
-// keeps. Numbered, so two opens of one book never share one.
-const fetching = new Set<string>();
+// The `.part` names of the fetches running now, in this process, with their book folders:
+// the only parts a cleanup keeps, and folders it never drops. Numbered, so two opens of one
+// book never share one.
+const fetching = new Map<string, string>();
 let parts = 0;
 
 /** Drops a book folder's files but `keep` and the live parts: another size's copy, a part
@@ -166,6 +172,7 @@ export async function localEbook({
   const here = existingEbook({ connectionId, libraryId, path, size, saved });
   if (here) {
     assertReadable(here.size);
+    if (here.uri !== saved) await markOpened(cacheDir(connectionId, libraryId, path));
     return here;
   }
   // Too large for the reader, or for the room left: said before a byte is fetched. The
@@ -191,7 +198,7 @@ export async function localEbook({
   const name = `${file.name}.${++parts}.part`;
   const part = new File(dir, name);
   const { url, headers } = api.ebookRequest(libraryId, path);
-  fetching.add(name);
+  fetching.set(name, bare(dir.uri));
   let got: number;
   try {
     try {
@@ -233,25 +240,63 @@ export async function localEbook({
   return { uri: file.uri, size: got };
 }
 
+/** Marks a cached copy's book folder as opened now (`OPENED`), so the trim keeps the
+ * books read lately over the ones fetched lately. Best effort: unmarked, the copy's own
+ * fetch time stands. */
+async function markOpened(dir: Directory): Promise<void> {
+  try {
+    await new File(dir, OPENED).write(String(Date.now()));
+  } catch {
+    // the trim goes by the fetch time instead
+  }
+}
+
+/** When `file` was last written (0, first to go, when it can't say). */
+function writtenAt(file: File): number {
+  try {
+    return nativeNumber(file.modificationTime ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
 /** A cached copy, with what the trim needs. */
 type CachedCopy = { file: File; size: number; at: number };
 
-/** Every cached EPUB under `dir`, its folders walked (connection, library, book). */
+/** Every cached EPUB under `dir`, its folders walked (connection, library, book), each at
+ * its last open: its folder's `OPENED` mark, else when it was fetched. */
 function cachedCopies(dir: Directory, into: CachedCopy[] = []): CachedCopy[] {
-  for (const entry of dir.list()) {
+  const entries = dir.list();
+  const mark = entries.find((e): e is File => e instanceof File && e.name === OPENED);
+  const opened = mark ? writtenAt(mark) : 0;
+  for (const entry of entries) {
     if (entry instanceof Directory) {
       cachedCopies(entry, into);
-    } else if (!fetching.has(entry.name)) {
-      let at = 0;
-      try {
-        at = nativeNumber(entry.modificationTime ?? 0);
-      } catch {
-        // an unknown time goes first
-      }
-      into.push({ file: entry, size: sizeOf(entry), at });
+    } else if (entry !== mark && !fetching.has(entry.name)) {
+      into.push({ file: entry, size: sizeOf(entry), at: Math.max(writtenAt(entry), opened) });
     }
   }
   return into;
+}
+
+/** A folder's uri without the trailing slash the native one carries. */
+const bare = (uri: string) => uri.replace(/\/+$/, '');
+
+/** Drops the folder at `uri` when it holds nothing but its `OPENED` mark, then its parents
+ * the same way, up to (not) the cache's own folder `root`; never a folder a fetch is
+ * writing into. Best effort. */
+function dropEmptyFolders(uri: string, root: string): void {
+  const live = [...fetching.values()];
+  for (let at = uri; at.startsWith(`${root}/`); at = at.slice(0, at.lastIndexOf('/'))) {
+    if (live.some((d) => d === at || d.startsWith(`${at}/`))) return;
+    try {
+      const dir = new Directory(at);
+      if (dir.list().some((e) => e.name !== OPENED)) return;
+      dir.delete();
+    } catch {
+      return;
+    }
+  }
 }
 
 /** How many bytes the device lacks for `size` more (0 when it has room, or can't say). */
@@ -262,9 +307,11 @@ async function shortOf(size: number): Promise<number> {
 
 /**
  * Holds the reader's cache, every connection's copies together, to `MAX_EBOOK_BYTES`, and
- * `room` bytes below what it holds (a fetch the device has no room for): the copies fetched
+ * `room` bytes below what it holds (a fetch the device has no room for): the copies opened
  * longest ago go first, never `keep` (the copy this open fetched) or a part a fetch is
- * writing. Best effort: a copy dropped is fetched again on its next open.
+ * writing, and the folders they leave empty go with them. When dropping all it may would
+ * still not get there, it drops none: a copy dropped for nothing is a fetch on its next
+ * open. Best effort: a copy dropped is fetched again on its next open.
  */
 function trimCache(keep?: string, room = 0): void {
   try {
@@ -273,13 +320,16 @@ function trimCache(keep?: string, room = 0): void {
     const copies = cachedCopies(root);
     let total = copies.reduce((sum, c) => sum + c.size, 0);
     const limit = Math.min(MAX_EBOOK_BYTES, total - room);
-    copies.sort((a, b) => a.at - b.at);
-    for (const copy of copies) {
+    const droppable = copies.filter((c) => c.file.uri !== keep).sort((a, b) => a.at - b.at);
+    if (total - droppable.reduce((sum, c) => sum + c.size, 0) > limit) return;
+    const left = new Set<string>();
+    for (const copy of droppable) {
       if (total <= limit) break;
-      if (copy.file.uri === keep) continue;
       drop(copy.file);
       total -= copy.size;
+      left.add(copy.file.uri.slice(0, copy.file.uri.lastIndexOf('/')));
     }
+    for (const folder of left) dropEmptyFolders(folder, bare(root.uri));
   } catch {
     // the system clears the cache directory in time anyway
   }
