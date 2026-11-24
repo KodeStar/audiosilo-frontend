@@ -110,6 +110,19 @@ export function communityCredit(
   return work?.generated?.[dimension] ? undefined : work?.attribution;
 }
 
+/** The book page's Characters panel credit: the community's CC BY-SA credit (the work's
+ * `attribution`) under a list of its own (`communityCredit`), or under the earlier books'
+ * community characters below it (`previous`: the panel's previous books), even when this
+ * book's list was generated here (server#218). */
+export function charactersCredit(
+  work: { attribution?: BookMetaAttribution; generated?: BookMetaGenerated } | undefined,
+  shown: { list: boolean; previous: boolean },
+): BookMetaAttribution | undefined {
+  return (shown.list && !work?.generated?.characters) || shown.previous
+    ? work?.attribution
+    : undefined;
+}
+
 /** Where a Recaps panel's "Generated on this server" chips go and whether it carries the
  * community's credit (see `recapMarks`). */
 export type RecapMarks = {
@@ -118,7 +131,8 @@ export type RecapMarks = {
   /** The parts disagree: a chip on the generated list, or on the generated summary. */
   list: boolean;
   summary: boolean;
-  /** Some part shown is the community's: the panel ends with its CC BY-SA credit. */
+  /** Some part shown is the community's (the earlier books' recaps included): the panel
+   * ends with its CC BY-SA credit. */
   credit: boolean;
 };
 
@@ -130,16 +144,18 @@ export type RecapMarks = {
  * generated). A community summary beside a generated list keeps its credit. An older
  * server sends no `recap_summary`, so its `recaps` stands for the summary too: there a
  * community summary beside a generated list goes uncredited, as before 1e. `shown` says
- * which parts the panel renders.
+ * which parts the panel renders; `previous`, that it ends with the earlier books' recaps,
+ * the community's, so a panel whose own parts were all generated still credits them and
+ * marks its generated parts one by one rather than heading the panel (server#218).
  */
 export function recapMarks(
   generated: BookMetaGenerated | undefined,
-  shown: { list: boolean; summary: boolean },
+  shown: { list: boolean; summary: boolean; previous?: boolean },
 ): RecapMarks {
   const list = !!generated?.recaps;
   const summary = generated?.recap_summary ?? list;
   const generatedShown = (shown.list && list) || (shown.summary && summary);
-  const communityShown = (shown.list && !list) || (shown.summary && !summary);
+  const communityShown = (shown.list && !list) || (shown.summary && !summary) || !!shown.previous;
   const mixed = generatedShown && communityShown;
   return {
     panel: generatedShown && !communityShown,

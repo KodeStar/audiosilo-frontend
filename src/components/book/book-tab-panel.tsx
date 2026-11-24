@@ -13,7 +13,7 @@ import {
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import {
-  communityCredit,
+  charactersCredit,
   type ListeningProgress,
   recapMarks,
 } from '@/components/library/meta-gating';
@@ -92,6 +92,7 @@ export function BookTabPanel({
       const marks = recapMarks(work?.generated, {
         list: recaps.length > 0,
         summary: community.summaryVisible,
+        previous: community.previousBooks.length > 0,
       });
       return (
         <View className="gap-4">
@@ -125,9 +126,12 @@ export function BookTabPanel({
             previousBooks={community.previousBooks}
             coverFor={coverFor}
           />
-          {characters.length > 0 ? (
-            <Attribution attribution={communityCredit(work, 'characters')} />
-          ) : null}
+          <Attribution
+            attribution={charactersCredit(work, {
+              list: characters.length > 0,
+              previous: community.previousBooks.length > 0,
+            })}
+          />
         </View>
       );
     }
