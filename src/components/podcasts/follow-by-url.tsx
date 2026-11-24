@@ -59,13 +59,16 @@ export function FollowByUrl({
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const { data: shows } = usePodcastShows(libraryId, connectionId);
   // How the request on its way ended (null while open or not read yet, `unknown` once the
   // list no longer holds it: dismissed under it, or past the list's week; nothing is said
   // then, never "Adding" again). The follow put its request in the list (`storeFollowByUrl`).
   const ended = outcome?.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
   const request =
     outcome?.kind === 'adding' ? requests?.find((r) => r.id === outcome.requestId) : undefined;
+  // The added show's name, from the library's show list (read only once there is one).
+  const { data: shows } = usePodcastShows(libraryId, connectionId, {
+    enabled: ended?.kind === 'following',
+  });
   // The show it follows now: the follow's own answer, or the request that ended added.
   const followed =
     outcome?.kind === 'following'

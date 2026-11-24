@@ -45,8 +45,10 @@ export function FollowRequests({
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { data } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  // An added show's row reads its name from the library's show list.
-  const { data: shows } = usePodcastShows(libraryId, connectionId);
+  // An added show's row reads its name from the library's show list (read only for one).
+  const { data: shows } = usePodcastShows(libraryId, connectionId, {
+    enabled: !!data?.some((r) => requestShow(r) !== null),
+  });
   const canDismiss = useCapability('podcast_request_dismiss', connectionId) === true;
   const dismiss = useDismissPodcastRequest(connectionId);
   if (!data?.length) return null;
@@ -94,9 +96,9 @@ function RequestRow({
   const themed = useThemeColors();
   const { openPodcastShow } = useOpen();
   const open = isOpenRequest(request);
-  // Ended without a show: failed or cancelled, the rows Dismiss takes off.
-  const unadded = !open && request.state !== 'done';
-  const failed = unadded && request.state !== 'cancelled';
+  const failed = !open && request.state !== 'done' && request.state !== 'cancelled';
+  // The rows the server lets Dismiss take off (an ended state this build doesn't know isn't).
+  const dismissable = request.state === 'failed' || request.state === 'cancelled';
   const show = requestShow(request);
   const label = requestLabel(request, shows);
   return (
@@ -137,7 +139,7 @@ function RequestRow({
           onPress={() => openPodcastShow(connectionId, show.libraryId, show.path)}
         />
       ) : null}
-      {onDismiss && unadded ? (
+      {onDismiss && dismissable ? (
         <Button
           variant="ghost"
           size="icon"
