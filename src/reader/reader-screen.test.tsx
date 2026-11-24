@@ -77,9 +77,19 @@ jest.mock('expo-status-bar', () => ({
     return null;
   },
 }));
-// Whether VoiceOver or TalkBack is on (screen-reader's own tests).
+// Whether VoiceOver or TalkBack is on (screen-reader's own tests); the rest of the module
+// is the real one (the toast starts its watch as it loads).
 let mockScreenReader = false;
-jest.mock('@/lib/screen-reader', () => ({ useScreenReader: () => mockScreenReader }));
+jest.mock('@/lib/screen-reader', () => ({
+  ...jest.requireActual('@/lib/screen-reader'),
+  useScreenReader: () => mockScreenReader,
+}));
+// Whether the reader is the screen on top (a page opened over it is not).
+let mockFocused = true;
+jest.mock('expo-router', () => ({
+  ...jest.requireActual('expo-router'),
+  useIsFocused: () => mockFocused,
+}));
 jest.mock('@/playback/progress-sync', () => ({ getDeviceId: () => Promise.resolve('dev') }));
 // The connection while it needs signing in again (sign-in-again's own tests); the sign-in
 // state itself is the real one.
@@ -148,7 +158,7 @@ jest.mock('./reading-progress', () => ({
 /* eslint-disable import/first */
 import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
-import { ReaderScreen, tocOpeningIndex } from './reader-screen';
+import { focusStaysIn, keyboardFocus, ReaderScreen, tocOpeningIndex } from './reader-screen';
 import { loadAutoHide, loadReaderTheme, saveAutoHide, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
@@ -231,6 +241,7 @@ describe('ReaderScreen', () => {
     mockNarrating = false;
     mockPlaying = true;
     mockScreenReader = false;
+    mockFocused = true;
   });
 
   describe('saving the place', () => {
@@ -537,6 +548,8 @@ describe('ReaderScreen', () => {
     const bar = () => screen.queryByLabelText('Close the reader', { includeHiddenElements: true });
     const turn = () => say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
     const statusBarHidden = () => mockStatusBar?.hidden;
+    // Back on for the next test, whatever this one did (or where it stopped).
+    afterEach(() => saveAutoHide(true));
 
     it('hides the top bar and the status bar at the first page turn, and a centre tap shows them', async () => {
       await mount();
@@ -606,7 +619,6 @@ describe('ReaderScreen', () => {
       await turn();
       expect(bar()).toBeTruthy();
       expect(statusBarHidden()).toBe(false);
-      await saveAutoHide(true);
     });
 
     it('opens with the bar kept when auto-hide was turned off before', async () => {
@@ -615,7 +627,45 @@ describe('ReaderScreen', () => {
       await opened();
       await turn();
       expect(bar()).toBeTruthy();
-      await saveAutoHide(true);
+    });
+
+    it('shows the status bar while a page opened over the reader is on top', async () => {
+      const { rerender } = await mount();
+      await opened();
+      await turn();
+      expect(statusBarHidden()).toBe(true);
+      // Reconnect's sign-in pushed over it: the reader stays mounted, its bar hidden.
+      mockFocused = false;
+      await rerender(<ReaderScreen connectionId="c1" libraryId={1} path="A/Book" />);
+      expect(bar()).toBeNull();
+      expect(statusBarHidden()).toBe(false);
+    });
+  });
+
+  describe("the web's keyboard focus on the screen's controls (fe#246)", () => {
+    const element = (tagName: string, focusVisible: boolean) => ({
+      tagName,
+      matches: (selector: string) => selector === ':focus-visible' && focusVisible,
+    });
+
+    it("holds the bar for a keyboard's focus on the screen's controls, not a click's or the book's", () => {
+      expect(keyboardFocus({ target: element('DIV', true) })).toBe(true);
+      expect(keyboardFocus({ target: element('DIV', false) })).toBe(false);
+      // The book's frame: focus in the book is the reader's, reading.
+      expect(keyboardFocus({ target: element('IFRAME', true) })).toBe(false);
+      expect(keyboardFocus({})).toBe(false);
+    });
+
+    it('lets the focus move between the controls, and leave into the book', () => {
+      const edge = element('DIV', true);
+      const frame = element('IFRAME', true);
+      const screenRoot = { contains: (node: unknown) => node === edge || node === frame };
+      const blur = (relatedTarget: unknown) =>
+        focusStaysIn({ currentTarget: screenRoot, nativeEvent: { relatedTarget } });
+      expect(blur(edge)).toBe(true);
+      expect(blur(frame)).toBe(false);
+      expect(blur(null)).toBe(false);
+      expect(blur(element('DIV', true))).toBe(false);
     });
   });
 

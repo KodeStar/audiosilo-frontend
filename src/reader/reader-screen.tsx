@@ -17,7 +17,8 @@ import Animated, {
   SlideOutUp,
   useReducedMotion,
 } from 'react-native-reanimated';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSafeAreaFrame, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useIsFocused } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 
 import { ApiError, isSignedOutError } from '@/api/client';
@@ -153,8 +154,9 @@ const loadFailure = (e: unknown): ReaderFailure =>
  *
  * Immersive mode (fe#246, `useReaderChrome`): the top bar lies over the page and hides a few
  * seconds after it shows or at the first page turn, the status bar with it in the apps; a tap
- * in the middle of the page shows it again. Off in the reader menu, and never with a screen
- * reader on: the bar then sits above the page.
+ * in the middle of the page shows it again, as (web) the keyboard's focus on the screen's own
+ * controls does. Off in the reader menu, and never with a screen reader on: the bar then
+ * sits above the page.
  */
 export function ReaderScreen({
   connectionId,
@@ -251,10 +253,13 @@ export function ReaderScreen({
   const immersive = autoHideOn && !screenReader;
   // The status bar hides with the top bar in the apps. In immersive mode the room above the
   // page keeps the most it was for this window size, so the status bar going never lays the
-  // book out again either.
-  const heldTop = useHeldTopInset(insets.top, useWindowDimensions());
+  // book out again either. The size is the insets' own frame, which comes with them (the
+  // window's dimensions come apart from them: a rotation would hold the last
+  // orientation's inset).
+  const heldTop = useHeldTopInset(insets.top, useSafeAreaFrame());
   const topInset = immersive ? heldTop : insets.top;
   const reduced = useReducedMotion();
+  const focused = useIsFocused();
 
   const [opened, setOpened] = useState<{ title: string; toc: TocEntry[]; rtl: boolean } | null>(
     null,
@@ -401,7 +406,9 @@ export function ReaderScreen({
   const show = shown === null && opened !== null;
 
   // The top bar in immersive mode (fe#246): held on screen while a menu or the contents from
-  // it are open, or (the web) the keyboard's focus is in it.
+  // it are open, or (the web) the keyboard's focus is on the screen's own controls (the bar,
+  // the page edges, the cards), never the book's: a keyboard user tabbing out of the book
+  // brings the hidden bar back, as a centre tap does.
   const [menuOpen, setMenuOpen] = useState(false);
   const [focusIn, setFocusIn] = useState(false);
   const chrome = useReaderChrome({
@@ -571,20 +578,7 @@ export function ReaderScreen({
   // The top bar: close, the title and where the reader is, then the narration, the contents,
   // the text size and the page colours.
   const bar = (
-    <View
-      className="flex-row items-center gap-1 border-b border-border px-2 py-1.5"
-      // The web: it stays while the keyboard's focus is in it (not a click's, which stays on
-      // the button pressed).
-      {...(Platform.OS === 'web'
-        ? {
-            onFocus: (e: { nativeEvent: unknown }) => setFocusIn(keyboardFocus(e.nativeEvent)),
-            // Only once the focus leaves the bar, not as it moves between its buttons.
-            onBlur: (e: { currentTarget: unknown; nativeEvent: unknown }) => {
-              if (!focusStaysIn(e)) setFocusIn(false);
-            },
-          }
-        : {})}
-    >
+    <View className="flex-row items-center gap-1 border-b border-border px-2 py-1.5">
       <Button
         variant="ghost"
         size="icon"
@@ -658,7 +652,9 @@ export function ReaderScreen({
     <>
       {Platform.OS !== 'web' ? (
         <StatusBar
-          hidden={!chrome.shown}
+          // Only while the reader is on top: a page opened over it (Reconnect's sign-in)
+          // leaves it mounted, and its status bar would stay hidden there.
+          hidden={focused && !chrome.shown}
           animated={!reduced}
           hideTransitionAnimation={reduced ? 'none' : 'slide'}
         />
@@ -666,9 +662,20 @@ export function ReaderScreen({
       <View
         className="flex-1 bg-card"
         // Web: a modal layer, so the player's keys (arrows skip, Space plays) stand back
-        // while reading; the reader's own keys name it as theirs.
+        // while reading; the reader's own keys name it as theirs. The top bar stays while
+        // the keyboard's focus is on the screen's controls (not a click's, which stays on
+        // the button pressed; nor the book's frame), and only once it leaves them, not as it
+        // moves between them.
         {...(Platform.OS === 'web'
-          ? { role: 'dialog' as const, 'aria-modal': true, dataSet: { layer: READER_LAYER } }
+          ? {
+              role: 'dialog' as const,
+              'aria-modal': true,
+              dataSet: { layer: READER_LAYER },
+              onFocus: (e: { nativeEvent: unknown }) => setFocusIn(keyboardFocus(e.nativeEvent)),
+              onBlur: (e: { currentTarget: unknown; nativeEvent: unknown }) => {
+                if (!focusStaysIn(e)) setFocusIn(false);
+              },
+            }
           : {})}
         // Hidden from a screen reader under its Contents sheet.
         {...behind}
@@ -782,10 +789,16 @@ export function ReaderScreen({
   );
 }
 
-/** Whether a focus event (the web's) landed by the keyboard: its element shows its focus
- * ring (`:focus-visible`). */
-function keyboardFocus(event: unknown): boolean {
+/** Whether an element is the book's frame (the web's reader iframe). */
+const isBookFrame = (node: unknown): boolean =>
+  (node as { tagName?: unknown } | null)?.tagName === 'IFRAME';
+
+/** Whether a focus event (the web's) landed by the keyboard on one of the screen's own
+ * controls: its element shows its focus ring (`:focus-visible`) and is not the book's frame
+ * (focus there is the reader's, in the book). */
+export function keyboardFocus(event: unknown): boolean {
   const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
+  if (isBookFrame(target)) return false;
   try {
     return target?.matches?.(':focus-visible') === true;
   } catch {
@@ -793,11 +806,12 @@ function keyboardFocus(event: unknown): boolean {
   }
 }
 
-/** Whether a blur (the web's) moves the focus to another element inside the one it left. */
-function focusStaysIn(e: { currentTarget: unknown; nativeEvent: unknown }): boolean {
+/** Whether a blur (the web's) moves the focus to another of the screen's controls inside
+ * the element it left: into the book's frame it leaves them. */
+export function focusStaysIn(e: { currentTarget: unknown; nativeEvent: unknown }): boolean {
   const next = (e.nativeEvent as { relatedTarget?: unknown }).relatedTarget;
   const box = e.currentTarget as { contains?: (node: unknown) => boolean };
-  return next != null && box.contains?.(next) === true;
+  return next != null && !isBookFrame(next) && box.contains?.(next) === true;
 }
 
 /** The reader's layer name (`data-layer`), for its own keyboard shortcuts. */

@@ -1418,11 +1418,15 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   `settleChrome`) under `useReaderChrome`. It never hides with the setting off (the reader
   menu's "Hide while reading", `loadAutoHide`, per device, default on), a screen reader on
   (`useScreenReader`, `src/lib/screen-reader.ts`), no book on the page, or the reader menu,
-  the contents or (web) the keyboard's focus in the bar. While it can hide, the bar lies over
+  the contents or (web) the keyboard's focus on the screen's own controls (the bar, the page
+  edges, the cards; never the book's frame), so a keyboard user tabbing out of the book
+  brings the hidden bar back. While it can hide, the bar lies over
   the page (`Animated.View`, a slide that reduce motion drops), so showing it never lays the
   book out again; the room above the page is the page's colour and holds its largest top
-  inset per window size, since the status bar (hidden with the bar in the apps,
-  expo-status-bar) going would shrink it on Android. The Android navigation bar stays (no
+  inset per window size (`useHeldTopInset`, each size its own, keyed by the insets' own
+  `useSafeAreaFrame`, which comes with them), since the status bar (hidden with the bar in
+  the apps, expo-status-bar, and only while the reader is the screen on top: Reconnect's
+  sign-in opens over it) going would shrink it on Android. The Android navigation bar stays (no
   `expo-navigation-bar`). The centre tap is the reader document's `centreTap`
   (`reader/src/taps.js`): a click in the page's middle half (a section's click placed by its
   frame, which scrolls sideways under the page), never one a link or a read-along sentence
