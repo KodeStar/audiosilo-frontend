@@ -2,8 +2,16 @@ let mockDevice: { languageTag: string; languageCode: string | null }[] = [];
 jest.mock('expo-localization', () => ({ getLocales: () => mockDevice }));
 
 /* eslint-disable import/first */
-import { regionalLocale } from './locale';
+import { act, renderHook } from '@testing-library/react-native';
+import type { getLocales } from 'expo-localization';
+import i18next from 'i18next';
+import { driveAppState } from '@/testing/app-state';
+
+import { regionalLocale, useLocale } from './locale';
 /* eslint-enable import/first */
+
+// The locale module's own listener was added as the test setup imported it.
+const app = driveAppState();
 
 const en = (languageTag: string) => ({ languageTag, languageCode: languageTag.split('-')[0] });
 
@@ -41,5 +49,36 @@ describe('getLocale', () => {
       i18n.language = 'de';
       expect(locale()).toBe('de');
     });
+  });
+});
+
+describe('useLocale', () => {
+  // fe#358: the device's region changed in its settings while the app was away; back in
+  // front, a memoized caller's dates follow it.
+  it("follows the device's region once the app is back in front", async () => {
+    // The module the test setup's own read of the locale bound to, not this file's mock.
+    const device = jest
+      .spyOn(
+        jest.requireActual<typeof import('expo-localization')>('expo-localization'),
+        'getLocales',
+      )
+      .mockImplementation(() => mockDevice as ReturnType<typeof getLocales>);
+    const back = () => act(async () => app.becomes('active'));
+    const language = i18next.language;
+    i18next.language = 'en';
+    try {
+      const { result, unmount } = await renderHook(() => useLocale());
+      mockDevice = [en('en-GB')];
+      await back();
+      expect(result.current).toBe('en-GB');
+      mockDevice = [en('en-AU')];
+      await back();
+      expect(result.current).toBe('en-AU');
+      await unmount();
+    } finally {
+      device.mockRestore();
+      mockDevice = [];
+      i18next.language = language;
+    }
   });
 });

@@ -103,27 +103,10 @@ jest.mock('./use-series-data', () => ({
 /* eslint-disable import/first */
 import { useSeriesOrderings } from '@/stores/series-orderings';
 import { mountWithPortal } from '@/testing/render-overlay';
+import { seriesBook as book } from '@/testing/series-fixtures';
 
 import { SeriesPage } from './series-page';
 /* eslint-enable import/first */
-
-function book(title: string, index: number, extra: Partial<Book> = {}): Book {
-  return {
-    id: index,
-    library_id: 1,
-    rel_path: `Corey/${title}`,
-    is_folder: true,
-    title,
-    author: 'James S. A. Corey',
-    series: 'The Expanse',
-    series_index: index,
-    narrator: 'Jefferson Mays',
-    duration: 36_000,
-    format: 'm4b',
-    size: 1,
-    ...extra,
-  };
-}
 
 const lw = book('Leviathan Wakes', 1, { asin: 'B1' });
 const cw = book("Caliban's War", 2, { asin: 'B2' });

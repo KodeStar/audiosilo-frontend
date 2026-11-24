@@ -1,4 +1,4 @@
-import { engineTick, engineTicker } from './engine-ticks';
+import { engineTick, engineTicker, engineTimeout, engineTimeoutsTick } from './engine-ticks';
 
 /** `seconds` of engine events, one a second, with no JS timer firing (Android with the
  * screen off). */
@@ -162,5 +162,67 @@ describe('engineTicker', () => {
     eventsOnly(1);
     expect(first.fn).toHaveBeenCalledTimes(1);
     expect(second.fn).not.toHaveBeenCalled();
+  });
+});
+
+describe('engineTimeout', () => {
+  beforeEach(() => jest.useFakeTimers());
+  afterEach(() => jest.useRealTimers());
+
+  it('runs once from its timer', () => {
+    const fn = jest.fn();
+    engineTimeout(fn, 3_000);
+    jest.advanceTimersByTime(2_999);
+    expect(fn).not.toHaveBeenCalled();
+    jest.advanceTimersByTime(1);
+    eventsOnly(5);
+    jest.advanceTimersByTime(10_000);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  // fe#158: Android pauses the timer with the screen off; an engine event past the deadline
+  // runs it, and the timer does not run it again.
+  it('runs once from the first engine event past its deadline', () => {
+    const fn = jest.fn();
+    engineTimeout(fn, 3_000);
+    eventsOnly(2);
+    expect(fn).not.toHaveBeenCalled();
+    eventsOnly(1);
+    expect(fn).toHaveBeenCalledTimes(1);
+    jest.advanceTimersByTime(10_000);
+    eventsOnly(3);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('never runs once cancelled', () => {
+    const fn = jest.fn();
+    engineTimeout(fn, 3_000).cancel();
+    eventsOnly(5);
+    jest.advanceTimersByTime(10_000);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  // The store's late landing: its tickers wait a turn, the stall watchdog does not.
+  it('runs a timeout past its deadline from engineTimeoutsTick, and no ticker', () => {
+    const fn = jest.fn();
+    const tick = jest.fn();
+    const ticker = engineTicker(tick, 1_000);
+    ticker.start();
+    engineTimeout(fn, 3_000);
+    jest.setSystemTime(Date.now() + 3_000);
+    engineTimeoutsTick();
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(tick).not.toHaveBeenCalled();
+    ticker.stop();
+  });
+
+  it('does not run one an earlier timeout cancelled in the same pass', () => {
+    const second = jest.fn();
+    let later: { cancel(): void } | undefined;
+    engineTimeout(() => later?.cancel(), 3_000);
+    later = engineTimeout(second, 3_000);
+    eventsOnly(3);
+    jest.advanceTimersByTime(10_000);
+    expect(second).not.toHaveBeenCalled();
   });
 });

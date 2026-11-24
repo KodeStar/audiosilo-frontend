@@ -232,27 +232,32 @@ const GROWING_STEP = 1024 * 1024;
  * changing on every progress tick. */
 const wholeSteps = (bytes: number) => Math.floor(bytes / GROWING_STEP) * GROWING_STEP;
 
-/** What the given connections' running downloads have written so far, in whole megabytes
- * (`storageBar`'s `growing`). */
+/** What the given connections' unfinished downloads hold, in whole megabytes
+ * (`storageBar`'s `growing`): a running one what it has written (`heldBytes`), and one that
+ * failed, or waits to try again, the files its attempt finished, which stay on the device
+ * (fe#358: they dropped out of the figure as the download failed). */
 export function growingBytes(
   entries: Record<string, DownloadEntry>,
   connectionIds: readonly string[],
 ): number {
   let sum = 0;
-  for (const e of Object.values(entries))
-    if (e.status === 'downloading' && connectionIds.includes(e.connectionId)) sum += e.bytes;
+  for (const e of Object.values(entries)) {
+    if (e.status === 'downloaded' || !connectionIds.includes(e.connectionId)) continue;
+    sum += e.status === 'downloading' ? heldBytes(e) : keptBytes(e);
+  }
   return wholeSteps(sum);
 }
+
+/** The files a download has finished, in bytes. */
+const keptBytes = (e: DownloadEntry) =>
+  e.manifest.files.reduce((sum, f) => sum + (f.bytes ?? 0), 0);
 
 /** Bytes a download holds on the device, whatever its state: `entryBytes`, or the files it
  * has kept when they are more (a retry counts from 0 again, and only then passes the files
  * its failed attempt finished, which never left the device). */
 function heldBytes(e: DownloadEntry): number {
   if (e.status === 'downloaded') return entryBytes(e);
-  return Math.max(
-    e.bytes,
-    e.manifest.files.reduce((sum, f) => sum + (f.bytes ?? 0), 0),
-  );
+  return Math.max(e.bytes, keptBytes(e));
 }
 
 /** What every download holds, by its key: what the engine's measure counted of each as it

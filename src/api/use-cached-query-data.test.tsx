@@ -3,7 +3,7 @@ import { act, renderHook } from '@testing-library/react-native';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { queryClient } from './provider';
-import { useCachedQueryData } from './use-cached-query-data';
+import { useCachedQueryData, useCachedQueryState } from './use-cached-query-data';
 
 const KEY = ['cached-probe', 1] as const;
 
@@ -45,5 +45,30 @@ describe('useCachedQueryData', () => {
     } finally {
       subscribe.mockRestore();
     }
+  });
+});
+
+describe('useCachedQueryState', () => {
+  it('reads what it picks from the entry, and follows it', async () => {
+    queryClient.setQueryData(KEY, 'first');
+    const { result } = await renderHook(() =>
+      useCachedQueryState(KEY, (s) => s?.dataUpdatedAt ?? 0),
+    );
+    const first = result.current;
+    expect(first).toBeGreaterThan(0);
+    jest.spyOn(Date, 'now').mockReturnValue(first + 5_000);
+    try {
+      await act(async () => void queryClient.setQueryData(KEY, 'second'));
+    } finally {
+      jest.restoreAllMocks();
+    }
+    expect(result.current).toBe(first + 5_000);
+  });
+
+  it('picks from nothing without an entry', async () => {
+    const { result } = await renderHook(() =>
+      useCachedQueryState(KEY, (s) => s?.dataUpdatedAt ?? 0),
+    );
+    expect(result.current).toBe(0);
   });
 });

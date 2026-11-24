@@ -148,7 +148,7 @@
     },
     "apiKeys": {
       "label": "Chaves de API pessoais",
-      "hint": "Chaves com nome que permitem que scripts e painéis acedam a este servidor em seu nome. Cada chave age como você e pode ser revogada a qualquer momento.",
+      "hint": "Chaves com nome que permitem que scripts e painéis acedam a este servidor em seu nome. Cada chave age com a sua identidade e pode ser revogada a qualquer momento.",
       "nameLabel": "Nome da chave",
       "namePlaceholder": "ex.: Painel de casa",
       "create": "Criar chave de API",
@@ -211,6 +211,7 @@
     "connections": {
       "manage": "Gerir {{name}}",
       "signedOut": "Sessão terminada",
+      "serverReset": "Servidor reposto",
       "remove": "Remover {{name}}",
       "add": "Adicionar um servidor",
       "removeConfirm": {
@@ -377,7 +378,7 @@
       "reason": {
         "duration_mismatch": "Esta cópia do livro tem uma duração diferente da do servidor.",
         "too_old": "Tem mais de 90 dias.",
-        "too_large": "É grande demais para o servidor aceitar.",
+        "too_large": "É demasiado grande para o servidor aceitar.",
         "no_access": "Já não podes abrir este livro no servidor.",
         "not_found": "O livro já não está no servidor.",
         "unknown_kind": "O servidor não conhece este tipo de audição.",
@@ -459,7 +460,7 @@
       "pairingRefused": "Esta ligação de emparelhamento expirou ou já foi usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingUnusable": "Esta ligação de emparelhamento não pode ser usada. Pede uma nova, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingSpent": "Esta ligação foi usada, mas o início de sessão não terminou. Pede uma ligação nova.",
-      "pairingTryAgain": "Tentar o link de novo",
+      "pairingTryAgain": "Tentar a ligação novamente",
       "pairingServerError": "O servidor não conseguiu concluir o emparelhamento. Tenta de novo, ou introduz o teu código de convite no ecrã de início de sessão.",
       "pairingReachError": "Não foi possível contactar o servidor para concluir o emparelhamento.",
       "pairingReachSelfSigned": "Não foi possível contactar o servidor. Se usar o seu próprio certificado (autoassinado), atualiza o servidor ou liga-te a partir da rede de casa.",
@@ -656,9 +657,9 @@
       "storySoFar": "A história até agora",
       "countOf": "{{chapter}} de {{total}}",
       "notDownloaded": "Não transferido",
-      "notDownloadedHint": "Este livro não está neste dispositivo. Ele toca quando você voltar a ficar online.",
-      "notDownloadedServerHint": "Este livro não está neste dispositivo. Ele toca quando {{name}} voltar a responder.",
-      "episodeOfflineHint": "Este episódio toca quando você voltar a ficar online.",
+      "notDownloadedHint": "Este livro não está neste dispositivo. Toca quando voltar a estar online.",
+      "notDownloadedServerHint": "Este livro não está neste dispositivo. Toca quando {{name}} voltar a responder.",
+      "episodeOfflineHint": "Este episódio toca quando voltar a estar online.",
       "episodeServerHint": "Este episódio toca quando {{name}} voltar a responder."
     },
     "week": {
@@ -734,7 +735,7 @@
     },
     "newEpisodes": {
       "title": "Episódios novos",
-      "sub": "Dos programas que você segue",
+      "sub": "Dos programas que segue",
       "allShows": "Todos os programas",
       "caption": "{{show}} · {{when}}"
     }
@@ -1133,7 +1134,7 @@
       "otherApps": "Outros apps",
       "unknownServer": "Servidor desconhecido",
       "freeDevice": "{{size}} livres neste dispositivo.",
-      "browserRoom": "Cerca de {{size}} disponíveis para este navegador. Ele pode apagar os downloads se o disco encher.",
+      "browserRoom": "Cerca de {{size}} disponíveis para este navegador. O navegador pode apagar os downloads se o disco encher.",
       "browserUnknown": "O navegador pode apagar os downloads se o disco encher."
     },
     "rules": {
@@ -1156,14 +1157,14 @@
         "off": "Não"
       },
       "keepAheadStatus": {
-        "idle": "Começa quando você toca um livro.",
+        "idle": "Começa quando toca um livro.",
         "never": "Ative os downloads automáticos para usar isto.",
-        "working": "Preparando os próximos livros.",
+        "working": "A preparar os próximos livros.",
         "ready": "Os próximos livros estão prontos offline.",
-        "waiting": "Aguardando o Wi-Fi.",
+        "waiting": "À espera do Wi-Fi.",
         "noSpace": "Em pausa: não há espaço livre suficiente. Os downloads automáticos sempre deixam pelo menos 1 GB livre.",
         "failed": "O download de um dos próximos livros parou. Tente de novo em Transferências.",
-        "declined": "Os próximos livros ficam como estão: você os removeu.",
+        "declined": "Os próximos livros ficam como estão: removeu-os.",
         "unavailable": "Este navegador não consegue manter os próximos livros offline."
       },
       "episodes": {
@@ -1178,7 +1179,7 @@
     },
     "browser": {
       "title": "Como os downloads funcionam num navegador",
-      "body": "O áudio fica no armazenamento deste navegador, só com uma conexão segura (https). O navegador pode apagá-lo quando falta espaço, e no iPhone e no iPad o Safari para a reprodução em segundo plano. Para ouvir offline com confiança, use o app para iOS ou Android."
+      "body": "O áudio fica no armazenamento deste navegador, só com uma ligação segura (https). O navegador pode apagá-lo quando falta espaço, e no iPhone e no iPad o Safari para a reprodução em segundo plano. Para ouvir offline com confiança, use a app para iOS ou Android."
     },
     "inProgress": {
       "title": "Em andamento"
@@ -1187,10 +1188,10 @@
       "meta": "{{server}} · {{size}}",
       "progress": "{{percent}}% · faltam {{size}}",
       "percent": "{{percent}}%",
-      "queued": "Aguardando para começar",
+      "queued": "À espera para começar",
       "gettingOnServer": "A transferir no teu servidor",
       "gettingOnServerPercent": "A transferir no teu servidor {{percent}}%",
-      "waitingWifi": "Aguardando o Wi-Fi",
+      "waitingWifi": "À espera do Wi-Fi",
       "noSpace": "Precisa de mais espaço livre",
       "keptAhead": "Preparado",
       "stoppedAt": "Parou em {{percent}}%",
@@ -1209,7 +1210,7 @@
       "storageDevice": "Este dispositivo ficou sem espaço.",
       "storageBrowser": "O navegador ficou sem espaço.",
       "unservable": "Guardado, mas a reprodução offline ainda não está pronta. Recarrega a app e tenta de novo.",
-      "removed": "Você não está mais conectado a este servidor.",
+      "removed": "Já não tem sessão iniciada neste servidor.",
       "interrupted": "A app fechou antes de terminar.",
       "missing": "Alguns dos ficheiros já não estão neste dispositivo.",
       "serverFetch": "{{server}} não conseguiu obter este episódio.",
@@ -1217,19 +1218,19 @@
       "noAccess": "Esta conta não pode obter este episódio de {{server}}.",
       "unknown": "O download parou.",
       "notInBrowser": "Este navegador não consegue reproduzir este livro offline. Remova-o para liberar o espaço.",
-      "kept": "Seus {{percent}}% estão guardados.",
+      "kept": "Os seus {{percent}}% estão guardados.",
       "restart": "Tentar de novo recomeça do início."
     },
     "ready": {
       "title": "Pronto offline",
-      "sub_one": "{{count}} livro · toca sem conexão",
-      "sub_other": "{{count}} livros · tocam sem conexão",
+      "sub_one": "{{count}} livro · toca sem ligação",
+      "sub_other": "{{count}} livros · tocam sem ligação",
       "serverSize": "{{server}} · {{size}}"
     },
     "episodes": {
       "title": "Episódios de podcast",
-      "sub_one": "{{count}} episódio · toca sem conexão",
-      "sub_other": "{{count}} episódios · tocam sem conexão"
+      "sub_one": "{{count}} episódio · toca sem ligação",
+      "sub_other": "{{count}} episódios · tocam sem ligação"
     },
     "remove": {
       "title": "Remover este download?",
@@ -1244,11 +1245,11 @@
     },
     "unsupported": {
       "title": "Os downloads não estão disponíveis aqui",
-      "insecure": "O áudio offline precisa de uma conexão segura (https). Abra o player via https ou use o app para iOS ou Android.",
-      "noCache": "Este navegador não consegue guardar áudio offline. Use um navegador atual ou o app para iOS ou Android.",
-      "noWorker": "A reprodução offline ainda não está pronta neste navegador. Recarregue a página e, se não resolver, use o app para iOS ou Android."
+      "insecure": "O áudio offline precisa de uma ligação segura (https). Abra o leitor por https ou use a app para iOS ou Android.",
+      "noCache": "Este navegador não consegue guardar áudio offline. Use um navegador atual ou a app para iOS ou Android.",
+      "noWorker": "A reprodução offline ainda não está pronta neste navegador. Atualize a página e, se não resolver, use a app para iOS ou Android."
     },
-    "loading": "Carregando downloads",
+    "loading": "A carregar os downloads",
     "orphans": {
       "title": "Sem sessão iniciada",
       "body": "Transferências de uma conta que já não tem sessão iniciada neste dispositivo. Inicie sessão nela outra vez para as ouvir, ou remova-as para libertar espaço."
@@ -1537,13 +1538,13 @@
       "about": "Cerca de {{value}}",
       "cost": "Custo do agente de IA",
       "noEstimate": "Ainda sem estimativa",
-      "subscription": "O agente usa uma assinatura, então isto é uma parte dos limites dela, não uma conta.",
+      "subscription": "O agente usa uma subscrição, por isso isto gasta parte dos limites dela, não é uma fatura.",
       "results": "Os resultados aparecem",
       "onThisServer": "Neste servidor",
       "earlier_one": "Gerar antes também para {{count}} livro anterior",
       "earlier_other": "Gerar antes também para {{count}} livros anteriores",
       "notWritable": "O Bridge não consegue gravar nesta biblioteca. Verifique o mapeamento dela na página do Bridge.",
-      "agentNotReady": "O agente de IA do Bridge não está pronto. Entre com ele pela página do Bridge.",
+      "agentNotReady": "O agente de IA do Bridge não está pronto. Inicie sessão no agente na página do Bridge.",
       "estimateFailed": "Não foi possível obter uma estimativa do Bridge. Tente de novo daqui a pouco.",
       "unavailable": "O Bridge não oferece isto no momento.",
       "detectOpen": "Os capítulos do livro ainda estão a ser procurados. Toca em Gerar quando terminar: a transcrição é reutilizada.",
@@ -1593,9 +1594,9 @@
       "failedTitle": "A geração falhou",
       "failedGeneric": "O Bridge parou com um erro.",
       "openConsole": "Abra o console para resolver.",
-      "byItself": "Ele continua sozinho.",
-      "retryAt": "Ele tenta de novo sozinho às {{time}}.",
-      "retryOn": "Ele tenta de novo sozinho em {{day}} às {{time}}.",
+      "byItself": "Continua sozinho.",
+      "retryAt": "Volta a tentar sozinho às {{time}}.",
+      "retryOn": "Volta a tentar sozinho em {{day}} às {{time}}.",
       "tryAgain": "Tentar novamente",
       "cancelFailed": "Não foi possível cancelar. Tente de novo daqui a pouco."
     },
@@ -1638,7 +1639,7 @@
       "chapters": "Não foi possível associar os capítulos com segurança.",
       "chaptersNotDetected": "O Bridge não conseguiu encontrar os capítulos na narração.",
       "ebook": "Não foi possível ler o e-book.",
-      "core": "O livro precisa antes de um registro no AudioSilo Meta.",
+      "core": "O livro precisa primeiro de um registo no AudioSilo Meta.",
       "contrib": "Contribuir não está configurado no Bridge.",
       "share": "À espera de confirmar que este livro ainda deve ser partilhado. Até lá, não é partilhado mais nada.",
       "changed": "Os ficheiros do livro mudaram durante a leitura.",
@@ -2618,7 +2619,7 @@
       "codec": "O formato de áudio não toca em dispositivos Cast e o servidor não o consegue converter.",
       "no-connection": "O servidor não tem sessão iniciada neste dispositivo. Inicia sessão de novo para o transmitir.",
       "titleEpisode": "Este episódio não pode ser transmitido",
-      "episode": "Episódios de podcast ainda não podem ser transmitidos, então este fica neste dispositivo.",
+      "episode": "Os episódios de podcast ainda não podem ser transmitidos, por isso este fica neste dispositivo.",
       "proxy": "O seu servidor está atrás de um proxy de início de sessão, que um dispositivo Cast não consegue atravessar."
     },
     "failed": {
@@ -2958,7 +2959,7 @@
       "accessTitle": "O que pode {{name}} ouvir?",
       "stopsSharing": "Ao mudar para tudo, deixa de partilhar as suas coleções com {{name}}.",
       "kid": "Conta infantil",
-      "kidBody": "Sem palavra-passe nem chaves de API. É você quem inicia a sessão.",
+      "kidBody": "Sem palavra-passe nem chaves de API. A sessão é iniciada por si.",
       "kidA11y": "Conta infantil para {{name}}",
       "kidConfirm": {
         "title": "Tornar a conta de {{name}} infantil?",
@@ -3011,12 +3012,12 @@
       "emptyHint": "Os programas aparecem aqui quando alguém os segue no seu servidor.",
       "filterLabel": "Quais programas",
       "all": "Todos",
-      "following": "Seguindo",
+      "following": "A seguir",
       "newEpisode": "Episódio novo {{when}}",
       "privateBadge": "Feed privado",
       "loadError": "Não foi possível carregar os programas.",
       "addShows": "Adicionar programas",
-      "addShowsHint": "Pesquise em um diretório, cole o endereço de um feed ou importe uma lista de outro app.",
+      "addShowsHint": "Pesquise num diretório, cole o endereço de um feed ou importe uma lista de outra app.",
       "actionsMenu": "Mais ações de programas"
     },
     "show": {
@@ -3031,8 +3032,8 @@
       "noEpisodes": "Ainda não há episódios",
       "loadError": "Não foi possível carregar este programa.",
       "notFound": "Este programa não está disponível",
-      "notFoundHint": "Talvez ninguém o siga mais, ou ele não foi compartilhado com você.",
-      "loadingMore": "Carregando mais episódios..."
+      "notFoundHint": "Talvez já ninguém o siga, ou não foi partilhado consigo.",
+      "loadingMore": "A carregar mais episódios..."
     },
     "episode": {
       "trailer": "Trailer",
@@ -3054,14 +3055,14 @@
       "tryAgainLabel": "Tentar transferir {{title}} de novo",
       "finished": "Concluído",
       "timelineChangedTitle": "O áudio mudou",
-      "timelineChanged": "O áudio deste episódio mudou desde que você começou (os anúncios podem variar). Seu ponto continua como estava."
+      "timelineChanged": "O áudio deste episódio mudou desde que começou (os anúncios podem variar). O seu ponto continua como estava."
     },
     "follow": {
       "follow": "Seguir",
-      "following": "Seguindo",
+      "following": "A seguir",
       "unfollow": "Deixar de seguir",
       "confirmPrivateTitle": "Deixar de seguir este feed privado?",
-      "confirmPrivateBody": "Você vai precisar do endereço do feed para segui-lo de novo.",
+      "confirmPrivateBody": "Vai precisar do endereço do feed para o voltar a seguir.",
       "errorModuleOff": "Seguir programas está desativado neste servidor.",
       "errorKid": "Peça a um adulto para seguir programas.",
       "errorDemo": "Na demonstração não é possível seguir programas.",
@@ -3071,7 +3072,7 @@
     "fetch": {
       "title": "A transferir este episódio",
       "body": "O teu servidor está a transferir o episódio. Começa assim que estiver pronto.",
-      "queued": "Esperando a vez",
+      "queued": "À espera da vez",
       "progress": "{{received}} de {{total}}",
       "progressUnknown": "{{received}} até agora",
       "failedTitle": "Não foi possível transferir este episódio",
@@ -3086,13 +3087,13 @@
         "library_not_writable": "O teu servidor não pode guardar episódios nesta biblioteca.",
         "fetch_limit": "Já há cinco episódios a caminho. Tente de novo quando um estiver pronto.",
         "demo_account": "A demonstração só toca episódios que já estão no servidor.",
-        "too_large": "Este episódio é grande demais para o seu servidor.",
+        "too_large": "Este episódio é demasiado grande para o seu servidor.",
         "identity_changed": "Este episódio mudou no feed. Abra o programa para encontrá-lo de novo.",
         "signed_out": "A tua sessão neste servidor terminou. Inicia sessão de novo e tenta outra vez.",
         "no_access": "Esta conta não tem acesso a este episódio.",
         "proxy_refused": "O proxy de início de sessão do servidor recusou este dispositivo. Atualiza os cabeçalhos de proxy em Conta e tenta outra vez.",
-        "other": "Algo deu errado ao baixar. Tente de novo mais tarde.",
-        "show_unreadable": "O teu servidor não consegue ler a pasta deste programa, por isso não pode obter episódios. Pede a quem gere o teu servidor que verifique as permissões da pasta."
+        "other": "Algo correu mal ao transferir. Tente novamente mais tarde.",
+        "show_unreadable": "O seu servidor não consegue ler a pasta deste programa, por isso não pode obter episódios. Peça a quem gere o seu servidor que verifique as permissões da pasta."
       }
     },
     "find": {
@@ -3121,11 +3122,11 @@
         "viewOn": "Ver em {{provider}}",
         "follow": "Seguir",
         "followLabel": "Seguir {{title}}",
-        "adding": "Adicionando",
-        "following": "Seguindo",
+        "adding": "A adicionar",
+        "following": "A seguir",
         "openShow": "Abrir programa",
         "searchAgain": "Pesquisar de novo",
-        "loading": "Pesquisando...",
+        "loading": "A pesquisar...",
         "lastResults": "Estes são os últimos resultados para «{{query}}»."
       },
       "provider": {
@@ -3133,49 +3134,49 @@
         "podcast_index": "Podcast Index"
       },
       "searchError": {
-        "rateLimitedWait": "Você pesquisou muito agora há pouco. Tente de novo em {{seconds}} s.",
-        "rateLimited": "Você pesquisou muito agora há pouco. Tente de novo em um minuto.",
+        "rateLimitedWait": "Pesquisou muitas vezes há pouco. Tente novamente daqui a {{seconds}} s.",
+        "rateLimited": "Pesquisou muitas vezes há pouco. Tente novamente daqui a um minuto.",
         "providerBusyWait": "O diretório está ocupado. Tente de novo em {{seconds}} s.",
-        "providerBusy": "O diretório está ocupado. Tente de novo em um minuto.",
-        "busy": "Seu servidor está ocupado pesquisando. Tente de novo em instantes.",
+        "providerBusy": "O diretório está ocupado. Tente novamente daqui a um minuto.",
+        "busy": "O seu servidor está ocupado a pesquisar. Tente novamente daqui a instantes.",
         "timeout": "O diretório não respondeu a tempo. Tente de novo.",
-        "rejected": "Seu servidor não pode usar o Podcast Index agora. Tente o Apple Podcasts.",
+        "rejected": "O seu servidor não pode usar o Podcast Index agora. Experimente o Apple Podcasts.",
         "unavailable": "Não foi possível acessar o diretório. Tente mais tarde.",
         "providerUnavailable": "O Podcast Index não está configurado neste servidor.",
         "off": "A pesquisa de programas está desativada neste servidor.",
         "invalidQuery": "Use de 2 a 200 caracteres.",
         "invalidCountry": "O diretório não conhece a região deste dispositivo.",
         "other": "Não foi possível pesquisar. Tente de novo.",
-        "noAccess": "Este app não pode usar podcasts neste servidor. Atualize o app e tente de novo."
+        "noAccess": "Esta app não pode usar podcasts neste servidor. Atualize a app e tente novamente."
       },
       "refusal": {
         "moduleOff": "Os podcasts estão desativados neste servidor.",
         "kid": "Peça a um adulto para adicionar programas.",
         "demo": "Na demonstração não é possível fazer isso.",
-        "noAccess": "Você só pode adicionar programas a uma biblioteca compartilhada inteira com você.",
+        "noAccess": "Só pode adicionar programas a uma biblioteca partilhada consigo por inteiro.",
         "notPodcastLibrary": "Esta biblioteca não é de podcasts."
       },
       "followError": {
         "invalidFeedUrl": "Esse endereço de feed não pode ser usado. Confira e tente de novo.",
-        "privacyConflict": "Este feed já está sendo adicionado com a outra configuração de privacidade. Espere terminar e tente de novo.",
-        "cantAddNow": "Seu servidor não pode adicionar programas novos agora. Tente mais tarde.",
+        "privacyConflict": "Este feed já está a ser adicionado com a outra definição de privacidade. Espere que termine e tente novamente.",
+        "cantAddNow": "O seu servidor não pode adicionar programas novos agora. Tente mais tarde.",
         "notWritable": "O teu servidor não pode guardar programas nesta biblioteca.",
-        "tooMany": "Cinco programas já estão sendo adicionados. Tente de novo quando um terminar.",
+        "tooMany": "Já estão cinco programas a ser adicionados. Tente novamente quando um terminar.",
         "other": "Não foi possível seguir esse programa. Tente de novo."
       },
       "address": {
         "label": "Endereço do feed",
         "placeholder": "https://example.com/feed.xml",
-        "hint": "Cole o endereço do feed RSS do programa, do site dele ou do seu app de podcasts.",
+        "hint": "Cole o endereço do feed RSS do programa, do site do programa ou da sua app de podcasts.",
         "private": "Feed privado",
-        "privateHint": "Para um feed só seu, como um pago ou de assinantes. Só você verá o programa, e ele nunca é exportado.",
+        "privateHint": "Para um feed só seu, como um pago ou para subscritores. Só a sua conta verá o programa, e nunca é exportado.",
         "submit": "Seguir",
         "empty": "Cole o endereço de um feed.",
         "notHttp": "Use um endereço que comece com http:// ou https://.",
-        "tooLong": "Esse endereço é longo demais.",
-        "following": "Você segue {{title}}.",
-        "adding": "Adicionando o programa. Ele aparece em Programas quando estiver pronto.",
-        "followingPublic": "Você segue {{title}}. Ele já estava nesta biblioteca como feed público, então não é privado.",
+        "tooLong": "Esse endereço é demasiado longo.",
+        "following": "Segue {{title}}.",
+        "adding": "A adicionar o programa. Aparece em Programas quando estiver pronto.",
+        "followingPublic": "Segue {{title}}. Já estava nesta biblioteca como feed público, por isso não é privado.",
         "failed": "Não foi possível adicionar o programa.",
         "cancelled": "A adição do programa foi cancelada."
       },
@@ -3183,12 +3184,12 @@
       "accessFailed": "Não foi possível verificar se podes adicionar programas."
     },
     "requests": {
-      "title": "Programas sendo adicionados",
-      "notice_one": "Adicionando {{count}} programa",
-      "notice_other": "Adicionando {{count}} programas",
+      "title": "Programas a ser adicionados",
+      "notice_one": "A adicionar {{count}} programa",
+      "notice_other": "A adicionar {{count}} programas",
       "state": {
-        "waiting": "Esperando a vez",
-        "adding": "Adicionando",
+        "waiting": "À espera da vez",
+        "adding": "A adicionar",
         "done": "Adicionado",
         "failed": "Não foi adicionado",
         "cancelled": "Cancelado"
@@ -3199,13 +3200,13 @@
         "notAFeed": "Esse endereço não é um feed de podcast.",
         "gone": "O feed não existe mais.",
         "followAgain": "Siga o feed de novo para terminar de adicioná-lo.",
-        "other": "Algo deu errado ao adicioná-lo.",
+        "other": "Algo correu mal ao adicioná-lo.",
         "notFound": "Nada foi encontrado nesse endereço.",
-        "denied": "O feed recusou o pedido. Talvez ele exija login.",
-        "localAddress": "Esse endereço está em uma rede local. Quem administra seu servidor pode permiti-lo.",
-        "tooLarge": "Esse feed é grande demais.",
+        "denied": "O feed recusou o pedido. Talvez exija início de sessão.",
+        "localAddress": "Esse endereço está numa rede local. Quem administra o seu servidor pode permiti-lo.",
+        "tooLarge": "Esse feed é demasiado grande.",
         "feedError": "O servidor do feed respondeu com um erro. Tente mais tarde.",
-        "redirectLoop": "O endereço do feed redireciona vezes demais.",
+        "redirectLoop": "O endereço do feed redireciona demasiadas vezes.",
         "interrupted": "A adição foi interrompida. Siga o feed de novo para tentar outra vez."
       },
       "dismissLabel": "Dispensar {{title}}",
@@ -3217,42 +3218,42 @@
       "chooseAnother": "Escolher outro ficheiro",
       "tooLarge": "Esse ficheiro tem mais de 1 MB. Exporta uma lista mais pequena.",
       "unreadable": "Não foi possível ler esse ficheiro.",
-      "summary": "{{settled}} de {{total}} programas seguidos ou sendo adicionados",
+      "summary": "{{settled}} de {{total}} programas seguidos ou a ser adicionados",
       "rowsLabel": "Programas da lista",
       "entry": "Item {{index}}",
       "stop": "Parar",
       "tryAgain": "Tentar de novo",
       "status": {
-        "uploading": "Enviando a lista...",
-        "waitingRequests": "Esperando os programas sendo adicionados antes do próximo grupo.",
+        "uploading": "A enviar a lista...",
+        "waitingRequests": "À espera dos programas que estão a ser adicionados antes do próximo grupo.",
         "waitingTime": "Próximo grupo em {{seconds}} s.",
-        "busy": "Seu servidor está ocupado. Nova tentativa em {{seconds}} s.",
+        "busy": "O seu servidor está ocupado. Nova tentativa daqui a {{seconds}} s.",
         "done": "Tudo pronto.",
-        "finishing": "Os últimos programas ainda estão sendo adicionados.",
+        "finishing": "Os últimos programas ainda estão a ser adicionados.",
         "unavailable_one": "{{count}} programa não pode ser adicionado agora. Tente mais tarde ou pergunte a quem administra seu servidor.",
         "unavailable_other": "{{count}} programas não podem ser adicionados agora. Tente mais tarde ou pergunte a quem administra seu servidor.",
         "stalled": "O próximo grupo não conseguiu começar. Tente mais tarde.",
         "stoppedUser": "Parado. Os programas já adicionados ficam.",
-        "stoppedBusy": "Seu servidor continuou ocupado. Tente mais tarde.",
-        "stoppedCantAct": "Parado, porque agora outra pessoa está ouvindo neste dispositivo.",
+        "stoppedBusy": "O seu servidor continuou ocupado. Tente mais tarde.",
+        "stoppedCantAct": "Parado, porque agora está outra pessoa a ouvir neste dispositivo.",
         "rateLimited": "É possível importar mais ou menos uma vez a cada 30 segundos. Nova tentativa em {{seconds}} s.",
         "doneFailed_one": "Importação terminada. {{count}} programa não foi adicionado. Consulta o estado abaixo.",
         "doneFailed_other": "Importação terminada. {{count}} programas não foram adicionados. Consulta os estados abaixo."
       },
       "fail": {
         "notOpml": "Esse ficheiro não é uma lista OPML.",
-        "tooLarge": "Essa lista é grande demais para importar.",
+        "tooLarge": "Essa lista é demasiado grande para importar.",
         "other": "Não foi possível importar a lista. Tente de novo.",
-        "noAnswer": "O teu servidor não respondeu a tempo, mas pode ainda estar a adicionar os programas da lista. Vê em Programas daqui a uns minutos, ou tenta novamente: os programas já adicionados são ignorados.",
-        "serverTimeout": "O teu servidor parou antes do fim da lista. Os programas já adicionados ficam. Tenta novamente para adicionar o resto."
+        "noAnswer": "O seu servidor não respondeu a tempo, mas pode ainda estar a adicionar os programas da lista. Veja em Programas daqui a uns minutos, ou tente novamente: os programas já adicionados são ignorados.",
+        "serverTimeout": "O seu servidor parou antes do fim da lista. Os programas já adicionados ficam. Tente novamente para adicionar o resto."
       },
       "row": {
-        "followed": "Seguindo",
+        "followed": "A seguir",
         "alreadyFollowing": "Já segue",
-        "queued": "Sendo adicionado",
+        "queued": "A ser adicionado",
         "duplicate": "Duas vezes na lista",
         "invalid": "Sem endereço de feed utilizável",
-        "limited": "Esperando o próximo grupo",
+        "limited": "À espera do próximo grupo",
         "unavailable": "Não pode ser adicionado agora",
         "error": "Não foi adicionado",
         "cancelled": "Cancelado"
@@ -3264,10 +3265,10 @@
     },
     "export": {
       "action": "Exportar meus programas",
-      "dialogTitle": "Seus programas",
+      "dialogTitle": "Os seus programas",
       "done_one": "{{count}} programa exportado",
       "done_other": "{{count}} programas exportados",
-      "doneUnknown": "Seus programas foram exportados",
+      "doneUnknown": "Os seus programas foram exportados",
       "privateLeftOut_one": "{{count}} programa privado ficou de fora. Feeds privados nunca são exportados.",
       "privateLeftOut_other": "{{count}} programas privados ficaram de fora. Feeds privados nunca são exportados.",
       "privateNever": "Feeds privados nunca são exportados.",
@@ -3275,7 +3276,7 @@
       "unavailableLeftOut_other": "{{count}} programas sem endereço público ficaram de fora.",
       "error": {
         "tooMany": "Programas a mais para exportar num ficheiro.",
-        "busy": "Você exportou muito agora há pouco. Tente de novo em um minuto.",
+        "busy": "Exportou muitas vezes há pouco. Tente novamente daqui a um minuto.",
         "other": "Não foi possível exportar seus programas. Tente de novo."
       }
     },
@@ -3283,7 +3284,7 @@
       "action": "Procurar episódios novos",
       "asked": "Pedimos ao servidor para verificar",
       "recently": "Verificado há menos de um minuto. Tente de novo daqui a pouco.",
-      "cantNow": "Seu servidor não pode verificar feeds agora. Tente mais tarde.",
+      "cantNow": "O seu servidor não pode verificar feeds agora. Tente mais tarde.",
       "failed": "Não foi possível verificar este programa. Tente de novo.",
       "noNew": "Sem episódios novos",
       "found_one": "{{count}} episódio novo",
@@ -3415,27 +3416,27 @@
     },
     "calendar": {
       "title": "Adicionar ao calendário",
-      "body": "Assine na sua app de calendário os próximos lançamentos das suas séries. Cada um aparece como um evento de dia inteiro na data de lançamento.",
-      "get": "Obter link do calendário",
-      "subscribe": "Assinar",
-      "copy": "Copiar link",
-      "reset": "Redefinir link",
+      "body": "Subscreva na sua app de calendário os próximos lançamentos das suas séries. Cada um aparece como um evento de dia inteiro na data de lançamento.",
+      "get": "Obter a ligação do calendário",
+      "subscribe": "Subscrever",
+      "copy": "Copiar a ligação",
+      "reset": "Repor a ligação",
       "turnOff": "Desativar",
-      "private": "Mantenha este link privado: quem o tiver pode ver os seus próximos lançamentos.",
-      "publicNote": "Serviços de calendário que buscam a partir da nuvem, como o Google Agenda, precisam do endereço HTTPS público do seu servidor.",
+      "private": "Mantenha esta ligação privada: quem a tiver pode ver os seus próximos lançamentos.",
+      "publicNote": "Os serviços de calendário que obtêm o calendário a partir da nuvem, como o Google Calendar, precisam do endereço HTTPS público do seu servidor.",
       "elsewhere": "Existe uma ligação de calendário ativa. Só é apresentada no dispositivo que a criou. Repor substitui a ligação e as subscrições existentes deixam de atualizar até subscreveres a nova ligação.",
-      "demo": "Contas de demonstração não podem assinar um calendário.",
-      "kid": "Contas infantis não podem assinar um calendário.",
-      "loadError": "Não foi possível verificar o seu link do calendário em {{server}}. Nada mudou.",
-      "refused": "{{server}} recusou. O seu link do calendário continua como estava.",
+      "demo": "As contas de demonstração não podem subscrever um calendário.",
+      "kid": "As contas infantis não podem subscrever um calendário.",
+      "loadError": "Não foi possível verificar a ligação do seu calendário em {{server}}. Nada mudou.",
+      "refused": "{{server}} recusou. A ligação do seu calendário continua como estava.",
       "failed": "Não foi possível contactar {{server}}, por isso a alteração pode não ter sido aplicada. Tente novamente daqui a pouco.",
       "resetConfirm": {
-        "title": "Redefinir o link do calendário?",
-        "message": "O link antigo deixa de funcionar: um calendário assinado com ele deixa de se atualizar até assinar o novo."
+        "title": "Repor a ligação do calendário?",
+        "message": "A ligação antiga deixa de funcionar: um calendário subscrito com ela deixa de se atualizar até subscrever a nova."
       },
       "offConfirm": {
-        "title": "Desativar o link do calendário?",
-        "message": "O link deixa de funcionar: um calendário assinado com ele deixa de se atualizar."
+        "title": "Desativar a ligação do calendário?",
+        "message": "A ligação deixa de funcionar: um calendário subscrito com ela deixa de se atualizar."
       }
     }
   },

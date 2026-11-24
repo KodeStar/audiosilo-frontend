@@ -176,8 +176,10 @@ const mockMarkEpisodeOnServer = jest.fn();
 jest.mock('@/api/podcast-cache', () => ({
   markEpisodeOnServer: (...a: unknown[]) => mockMarkEpisodeOnServer(...a),
 }));
+const mockFetchServerProgress = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
+  fetchServerProgress: (...a: unknown[]) => mockFetchServerProgress(...a),
   cachedCapability: (cid: string, flag: string) => {
     const info = mockGetQueryData(['server', cid]) as
       { capabilities: Record<string, boolean> } | undefined;
@@ -1083,26 +1085,15 @@ describe('a download behind an auth proxy (fe#167)', () => {
   });
 });
 
-// v2.5.1 PLAYER-01: the place a download opens at offline is its server's.
+// v2.5.1 PLAYER-01: the place a download opens at offline is its server's. The book's own
+// progress read keeps it in the mirror (`fetchServerProgress`, hooks.test.ts covers the
+// keep-newest write); the download asks it once its entry is there, so the read keeps it.
 describe("a download keeps its server's place", () => {
-  const place = {
-    library_id: 2,
-    path: 'A/Book',
-    position: 3570,
-    duration: 5100,
-    finished: false,
-    playback_speed: 1,
-    version: 3,
-    device_id: 'phone',
-    updated_at: '2026-10-28T20:00:00Z',
-  };
-
-  function clientWith(getProgress: () => Promise<unknown>) {
+  function client() {
     const api = {
       coverUrl: () => 'cover',
       proxyHeadersFor: () => undefined,
       streamUrl: (_lib: number, p: string) => `stream:${p}`,
-      getProgress: jest.fn(getProgress),
     };
     mockResolveClient.mockReturnValue(api as unknown as ApiClient);
     mockEngine.downloadFile.mockImplementation(async (_c, _l, _p, name: string) => `live:${name}`);
@@ -1114,57 +1105,64 @@ describe("a download keeps its server's place", () => {
     await new Promise((r) => setTimeout(r, 0));
   }
 
-  it("mirrors the server's progress as the download starts", async () => {
-    const api = clientWith(async () => place);
-    await downloadIt();
-    expect(api.getProgress).toHaveBeenCalledWith(2, 'A/Book', expect.any(AbortSignal));
-    expect(await readMirror('c1', 2, 'A/Book')).toMatchObject({
-      position: 3570,
-      device_id: 'phone',
-      updated_at: '2026-10-28T20:00:00Z',
+  it("reads the book's progress as the download starts, with the book kept", async () => {
+    let keptAtRead: boolean | undefined;
+    mockFetchServerProgress.mockImplementationOnce(async (...a: unknown[]) => {
+      const [, cid, lib, path] = a as [unknown, string, number, string];
+      keptAtRead = isKeptOffline(cid, lib, path);
+      return null;
     });
+    const api = client();
+    await downloadIt();
+    expect(mockFetchServerProgress).toHaveBeenCalledWith(
+      api,
+      'c1',
+      2,
+      'A/Book',
+      expect.any(AbortSignal),
+    );
+    expect(keptAtRead).toBe(true);
   });
 
-  it('takes the cached progress when the server cannot be asked', async () => {
-    clientWith(async () => {
-      throw new TypeError('Failed to fetch');
-    });
-    mockGetQueryData.mockImplementation((key: unknown) =>
-      Array.isArray(key) && key[0] === 'progress' ? place : undefined,
+  it('downloads the book when the progress read fails', async () => {
+    mockFetchServerProgress.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    client();
+    await downloadIt();
+    expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]?.status).toBe(
+      'downloaded',
     );
+  });
+
+  // The progress route failing while the files download (a 5xx, a timeout): the place the
+  // book page read is kept, its server's own row, so the book still opens there offline.
+  it("keeps the cached answer's server row when the progress read fails", async () => {
+    const server = {
+      library_id: 2,
+      path: 'A/Book',
+      position: 3570,
+      duration: 5100,
+      finished: false,
+      playback_speed: 1,
+      version: 3,
+      device_id: 'phone',
+      updated_at: '2026-10-28T20:00:00Z',
+    };
+    // The page showed this device's own newer place, with the server's row beside it.
+    const shown = { ...server, position: 3600, version: 0, device_id: 'me', server };
+    mockFetchServerProgress.mockRejectedValueOnce(new Error('HTTP 503'));
+    mockGetQueryData.mockImplementation((key: unknown) =>
+      Array.isArray(key) && key[0] === 'progress' ? shown : undefined,
+    );
+    client();
     try {
       await downloadIt();
     } finally {
       mockGetQueryData.mockImplementation(() => undefined);
     }
-    expect((await readMirror('c1', 2, 'A/Book'))?.position).toBe(3570);
-  });
-
-  it('keeps nothing when the server has no record', async () => {
-    clientWith(async () => null);
-    await downloadIt();
-    expect(await readMirror('c1', 2, 'A/Book')).toBeNull();
-  });
-
-  it("never regresses a newer place of this device's own", async () => {
-    const mine = {
-      connectionId: 'c1',
-      libraryId: 2,
-      path: 'A/Book',
-      position: 3700,
-      duration: 5100,
-      finished: false,
-      playback_speed: 1,
-      device_id: 'me',
-      updated_at: '2026-10-29T08:00:00Z',
-    };
-    await AsyncStorage.setItem(
-      'audiosilo.progressMirror',
-      JSON.stringify({ [downloadKey('c1', 2, 'A/Book')]: mine }),
-    );
-    clientWith(async () => place);
-    await downloadIt();
-    expect((await readMirror('c1', 2, 'A/Book'))?.position).toBe(3700);
+    expect(await readMirror('c1', 2, 'A/Book')).toMatchObject({
+      position: 3570,
+      device_id: 'phone',
+    });
   });
 
   it('tells the progress read which books are kept', async () => {
@@ -3935,6 +3933,39 @@ describe('failures, retry and the session decline mark', () => {
       ['A/Book/02.mp3', 'file:///dl/2.mp3'],
     ]);
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '4.mp3']);
+  });
+
+  it('a retry deletes a kept file the book no longer lists, and no listed one (fe#354)', async () => {
+    // A failed attempt kept all three files; the server's list since lost 01.
+    const entry = downloadedEntry({ status: 'error', failure: { kind: 'network', kept: 1 } });
+    entry.manifest.book = book;
+    entry.manifest.files = [0, 1, 2].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: `file:///dl/${i}.mp3`,
+    }));
+    useDownloads.setState({ entries: { [key]: entry } });
+    const shrunk = makeBook({
+      files: (book.files ?? [])
+        .filter((f) => f.rel_path !== 'A/Book/01.mp3')
+        .map((f, i) => ({ ...f, seq: i })),
+    });
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+
+    useDownloads.getState().download('c1', 2, shrunk);
+    await settle();
+
+    const done = useDownloads.getState().entries[key];
+    expect(done?.status).toBe('downloaded');
+    expect(done?.manifest.files.map((f) => [f.relPath, f.localUri])).toEqual([
+      ['A/Book/00.mp3', 'file:///dl/0.mp3'],
+      ['A/Book/02.mp3', 'file:///dl/2.mp3'],
+    ]);
+    // 01's file goes with it; the kept ones stay where they are.
+    expect(mockEngine.removeFile.mock.calls.map((c) => c[3])).toEqual(['1.mp3']);
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg']);
   });
 
   it('a retry that fails on a new file keeps the kept files of the paths it never reached', async () => {

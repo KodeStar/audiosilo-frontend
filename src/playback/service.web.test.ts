@@ -1,4 +1,5 @@
 import {
+  ARTWORK_FETCH_MS,
   createPlaybackService,
   freshUrl,
   isSwapReady,
@@ -1253,7 +1254,11 @@ describe('WebPlaybackService Media Session artwork', () => {
     await svc.load(withCover(COVER), 0, 0);
     expect(artwork()).toEqual([]); // not the plain URL while it loads
     await settle();
-    expect(fetchMock).toHaveBeenCalledWith(COVER, { mode: 'cors', credentials: 'omit' });
+    expect(fetchMock).toHaveBeenCalledWith(COVER, {
+      mode: 'cors',
+      credentials: 'omit',
+      signal: expect.any(AbortSignal),
+    });
     expect(artwork()).toEqual(['blob:p/1']);
     // The next file keeps the same cover: no second fetch.
     await svc.skipToTrack(1);
@@ -1286,6 +1291,33 @@ describe('WebPlaybackService Media Session artwork', () => {
     expect(artwork()).toEqual(['blob:p/1']); // the second book's, created first
     expect(created).toEqual(['blob:p/1', 'blob:p/2']);
     expect(revoked).toEqual(['blob:p/2']); // the late first cover, never shown
+  });
+
+  // fe#358: a cover that hangs falls back to its plain URL, and one another cover replaced
+  // is no longer fetched.
+  it('gives up on a cover that hangs, and stops the one another cover replaced', async () => {
+    jest.useFakeTimers();
+    try {
+      const signals: AbortSignal[] = [];
+      fetchMock.mockImplementation(
+        (_src: string, init: { signal: AbortSignal }) =>
+          new Promise((_, reject) => {
+            signals.push(init.signal);
+            init.signal.addEventListener('abort', () => reject(new Error('aborted')));
+          }),
+      );
+      const svc = createPlaybackService();
+      await svc.load(withCover(COVER), 0, 0);
+      await svc.load(withCover(`${COVER}2`), 0, 0);
+      expect(signals[0].aborted).toBe(true);
+      expect(signals[1].aborted).toBe(false);
+      jest.advanceTimersByTime(ARTWORK_FETCH_MS);
+      await settle();
+      expect(signals[1].aborted).toBe(true);
+      expect(artwork()).toEqual([`${COVER}2`]);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it("keeps the page's own cover as its URL, and falls back to it when a fetch fails", async () => {

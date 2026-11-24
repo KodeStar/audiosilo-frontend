@@ -103,6 +103,10 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
   return node;
 }
 
+/** How long the Media Session's cover from another origin may take to load before the
+ * lock screen takes its plain URL instead (`artworkFor`). */
+export const ARTWORK_FETCH_MS = 10_000;
+
 /**
  * The `crossOrigin` an element takes for `url`: `'anonymous'` for another origin's http(s)
  * stream (the server a player served elsewhere plays from, a second signed-in server), so
@@ -260,8 +264,10 @@ class WebPlaybackService implements PlaybackService {
   private positionStateSet = false;
   /** The Media Session's cover from another origin, loaded in CORS mode as `CoverImage`
    * loads covers and handed over as an object URL (`url`, null while it loads or after it
-   * failed), kept while the same cover plays on and revoked when it changes. */
-  private artwork: { src: string; url: string | null } | null = null;
+   * failed), kept while the same cover plays on and revoked when it changes. Its fetch
+   * (`stop`) is aborted when the cover changes first, and gives up after
+   * `ARTWORK_FETCH_MS`. */
+  private artwork: { src: string; url: string | null; stop: AbortController } | null = null;
   private remotePlay: (() => void) | null = null;
   private pauseAsked: (() => void) | null = null;
   /** The store's seek, for the OS media controls (see `onRemoteSeek`). */
@@ -985,7 +991,7 @@ class WebPlaybackService implements PlaybackService {
     }
     if (this.artwork?.src === src) return this.artwork.url ? [{ src: this.artwork.url }] : [];
     this.releaseArtwork();
-    const entry: { src: string; url: string | null } = { src, url: null };
+    const entry = { src, url: null as string | null, stop: new AbortController() };
     this.artwork = entry;
     const landed = (url: string) => {
       if (this.artwork !== entry) return false; // another cover (or none) since
@@ -1000,17 +1006,21 @@ class WebPlaybackService implements PlaybackService {
       }
       return true;
     };
-    void fetch(src, { mode: 'cors', credentials: 'omit' })
+    // A cover that hangs falls back to its plain URL, as a failed one does.
+    const timer = setTimeout(() => entry.stop.abort(), ARTWORK_FETCH_MS);
+    void fetch(src, { mode: 'cors', credentials: 'omit', signal: entry.stop.signal })
       .then((res) => (res.ok ? res.blob() : Promise.reject(new Error(String(res.status)))))
       .then((blob) => {
         const url = URL.createObjectURL(blob);
         if (!landed(url)) URL.revokeObjectURL(url);
       })
-      .catch(() => landed(src));
+      .catch(() => landed(src))
+      .finally(() => clearTimeout(timer));
     return [];
   }
 
   private releaseArtwork() {
+    this.artwork?.stop.abort();
     if (this.artwork?.url?.startsWith('blob:')) URL.revokeObjectURL(this.artwork.url);
     this.artwork = null;
   }

@@ -29,6 +29,7 @@ import { CheckEpisodesButton } from './check-episodes-button';
 import { EpisodeRow } from './episode-row';
 import { FollowButton } from './follow-button';
 import { defaultEpisodeOrder, visibleEpisodes } from './podcast-model';
+import { useAddShowsAccess } from './shows-actions';
 
 /**
  * A podcast show's page (Bridge Phase 2d-1):
@@ -186,9 +187,9 @@ function ShowPage({
 }
 
 /** The show's head: cover, title, author, the episode count, Private feed, Follow and
- * Check for new episodes, a failed last check (or, in its place, a private feed's missing
- * address: `status.secret_missing`), the description (collapsed past a few lines) and the
- * order. */
+ * Check for new episodes, a failed last check (or, in its place for a follower who may follow
+ * it again, a private feed's missing address: `status.secret_missing`), the description
+ * (collapsed past a few lines) and the order. */
 function ShowHero({
   connectionId,
   show,
@@ -204,6 +205,10 @@ function ShowHero({
   const phone = useLayout() === 'phone';
   const [expanded, setExpanded] = useState(false);
   const [clamped, setClamped] = useState(false);
+  // "Follow it again" is for the one who can: a listener following the show who may follow
+  // (not a kid, not the demo, fe#358). Anyone else reads the failed check.
+  const mayFollow = useAddShowsAccess(connectionId) === 'allowed';
+  const secretMissing = !!show.status.secret_missing && show.following && mayFollow;
   return (
     <View testID="podcast-show-hero" className="gap-4 pb-2 pt-5">
       <View className={phone ? 'items-center gap-4' : 'flex-row items-end gap-6'}>
@@ -232,7 +237,7 @@ function ShowHero({
               </Badge>
             ) : null}
           </View>
-          {show.status.secret_missing ? (
+          {secretMissing ? (
             <Text variant="caption" testID="podcast-secret-missing">
               {t('podcasts.show.secretMissing')}
             </Text>

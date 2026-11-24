@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
+import { isFavouriteOf } from '@/api/favourite-match';
 import { useCapability, useFavourites, useQueue } from '@/api/hooks';
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
 import {
@@ -263,7 +264,7 @@ function FavouriteButton({
   const { t } = useTranslation();
   const { data: favourites } = useFavourites();
   const toggle = useFavouriteAction(connectionId);
-  const on = !!favourites?.some((f) => f.library_id === libraryId && f.path === path);
+  const on = !!favourites?.some((f) => isFavouriteOf(f, libraryId, path));
   return (
     <Button
       variant="outline"

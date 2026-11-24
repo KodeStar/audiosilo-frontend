@@ -75,6 +75,16 @@ describe('ConnectionsSection', () => {
     expect(useSession.getState().pendingServerUrl).toBe('https://books.example');
   });
 
+  // fe#358: a server rebuilt from scratch did not sign anyone out.
+  it('says a reset server was reset', async () => {
+    const first = useSession.getState().connections[0];
+    useSession.setState({ connections: [{ ...first, needsReconnect: 'server-reset' }] });
+    await render(<ConnectionsSection onRemove={jest.fn()} />);
+    expect(screen.getByText('Server reset')).toBeTruthy();
+    expect(screen.queryByText('Signed out')).toBeNull();
+    expect(screen.getByLabelText('Manage Hearthside, Server reset')).toBeTruthy();
+  });
+
   it('marks nothing on a server that is signed in', async () => {
     await render(<ConnectionsSection onRemove={jest.fn()} />);
     expect(screen.queryByText('Signed out')).toBeNull();

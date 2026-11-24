@@ -19,6 +19,7 @@ import { useLatest } from '@/lib/use-latest';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectBookPosition, selectCurrentChapter, usePlayer } from '@/playback/store';
+import { wholeSecondsLeft } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
@@ -201,14 +202,15 @@ export function ChaptersPanel({
         i < current ? { state: 'past' } : i === current ? { state: 'current', left: 0 } : null,
       )
     : chapterRows(queue.chapters, position, current, rate);
-  const sideOf = (row: ChapterRow | null): string =>
-    !row || row.state === 'past'
-      ? ''
-      : row.state === 'current'
-        ? row.left > 0
-          ? `-${formatClock(row.left)}`
-          : ''
-        : t('player.companion.chapterIn', { time: formatDurationOrZero(row.until) });
+  const sideOf = (row: ChapterRow | null): string => {
+    if (!row || row.state === 'past') return '';
+    if (row.state === 'ahead') {
+      return t('player.companion.chapterIn', { time: formatDurationOrZero(row.until) });
+    }
+    // Rounded as the seek row's countdown and its words are (`wholeSecondsLeft`, fe#197).
+    const left = wholeSecondsLeft(row.left);
+    return left > 0 ? `-${formatClock(left)}` : '';
+  };
 
   const render = (i: number) => (
     <Row

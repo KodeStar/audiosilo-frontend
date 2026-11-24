@@ -252,8 +252,13 @@ describe('episode downloads', () => {
 });
 
 describe('growingBytes', () => {
-  const entry = (connectionId: string, status: DownloadEntry['status'], bytes: number) =>
-    ({ connectionId, status, bytes }) as DownloadEntry;
+  const entry = (connectionId: string, status: DownloadEntry['status'], bytes: number, kept = 0) =>
+    ({
+      connectionId,
+      status,
+      bytes,
+      manifest: { files: kept ? [{ relPath: 'a.mp3', localUri: 'file:///a', bytes: kept }] : [] },
+    }) as unknown as DownloadEntry;
 
   it("sums the listener's running downloads, in whole megabytes", () => {
     const entries = {
@@ -265,6 +270,18 @@ describe('growingBytes', () => {
     };
     expect(growingBytes(entries, ['c1'])).toBe(3 * MB);
     expect(growingBytes(entries, [])).toBe(0);
+  });
+
+  // fe#358: a failed download keeps the files it finished; they stay in the figure (the part
+  // it was writing when it failed does not).
+  it('keeps the files a failed or waiting download finished', () => {
+    const entries = {
+      a: entry('c1', 'error', 7 * MB, 5 * MB),
+      b: entry('c1', 'queued', 0, 2 * MB),
+      // A retry under way: its own count, or the kept files while it is below them.
+      c: entry('c1', 'downloading', MB, 4 * MB),
+    };
+    expect(growingBytes(entries, ['c1'])).toBe(11 * MB);
   });
 });
 

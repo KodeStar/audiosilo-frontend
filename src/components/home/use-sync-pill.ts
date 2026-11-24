@@ -1,9 +1,9 @@
-import { hashKey, useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from 'expo-router';
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState } from 'react';
 
 import { qk } from '@/api/hooks';
 import { anyOffline, useReachability } from '@/api/reachability';
+import { useCachedQueryState } from '@/api/use-cached-query-data';
 import { onOutboxChange } from '@/playback/listening-outbox';
 import { onQueueChange, pendingSaves } from '@/playback/progress-sync';
 import { useLastSyncAt } from '@/playback/use-listening-sync';
@@ -78,16 +78,9 @@ export function usePendingSaves(
  * `dataUpdatedAt`, epoch ms; 0 before the first read). Read from the query cache without
  * an observer of its own, so it never fetches nor changes how the list is fetched. */
 function useProgressFetchedAt(cid: string | undefined): number {
-  const qc = useQueryClient();
-  const cache = qc.getQueryCache();
-  const hash = cid ? hashKey(qk.allProgress(cid)) : undefined;
-  return useSyncExternalStore(
-    // Only this list's events: Home's other queries never move it.
-    (onChange) =>
-      cache.subscribe((e) => {
-        if (e.query.queryHash === hash) onChange();
-      }),
-    () => (cid ? (qc.getQueryState(qk.allProgress(cid))?.dataUpdatedAt ?? 0) : 0),
+  return useCachedQueryState(
+    cid ? qk.allProgress(cid) : undefined,
+    (state) => state?.dataUpdatedAt ?? 0,
   );
 }
 

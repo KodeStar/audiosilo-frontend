@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { FormError } from '@/components/ui/form-error';
 import { Text } from '@/components/ui/text';
+import { useLocale } from '@/i18n/locale';
 import { formatRelative } from '@/lib/format';
 import { openDownloads } from '@/lib/open';
 import { serverDisplayName } from '@/lib/server-display-name';
@@ -152,7 +153,8 @@ export function WatchCard({ connectionId }: { connectionId: string }) {
 
 /** What the watch still has to send, and when it last synced. */
 function WatchSyncLines({ state, now }: { state: WatchState; now: number }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useLocale();
   return (
     <>
       {state.unsent_events > 0 ? (
@@ -168,7 +170,7 @@ function WatchSyncLines({ state, now }: { state: WatchState; now: number }) {
       <Text variant="caption">
         {state.last_sync_at
           ? t('account.watch.lastSynced', {
-              when: formatRelative(state.last_sync_at, i18n.language || 'en', now),
+              when: formatRelative(state.last_sync_at, locale, now),
             })
           : t('account.watch.neverSynced')}
       </Text>

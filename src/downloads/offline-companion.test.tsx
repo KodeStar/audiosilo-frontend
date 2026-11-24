@@ -72,7 +72,7 @@ jest.mock('@/api/reachability', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useBook, useBookMeta, useMetaWork, useServerInfo } from '@/api/hooks';
+import { qk, useBook, useBookMeta, useMetaWork, useServerInfo } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import { resetServerSnapshotsForTests, restoreServerSnapshots } from '@/api/server-snapshots';
 import { BookAbout } from '@/components/book/book-about';
@@ -224,11 +224,10 @@ async function launchSteps() {
   await useDownloads.getState().hydrate();
 }
 
-/** ... and the kept payload, read and seeded once the launch is idle, after the registry. */
+/** ... and the kept payload, read and seeded once the launch is idle, after the registry:
+ * waited for, not a fixed tick (a loaded full run can take longer than one, fe#358). */
 const restored = () =>
-  act(async () => {
-    await new Promise((r) => setTimeout(r, 10));
-  });
+  waitFor(() => expect(qc.getQueryData(qk.bookMeta('c1', 2, PATH))).toBeDefined());
 
 async function launchOffline(kept: BookMeta = meta, entry: DownloadEntry = downloaded()) {
   await keptOnDevice(kept, entry);
@@ -236,11 +235,8 @@ async function launchOffline(kept: BookMeta = meta, entry: DownloadEntry = downl
   await restored();
 }
 
-/** Let the screens' (failing) refetches land. */
-const settle = () =>
-  act(async () => {
-    await new Promise((r) => setTimeout(r, 10));
-  });
+/** Let the screens' (failing) refetches land: until none is out. */
+const settle = () => waitFor(() => expect(qc.isFetching()).toBe(0));
 
 const wrapper = ({ children }: { children: ReactNode }) => (
   <QueryClientProvider client={qc}>{children}</QueryClientProvider>

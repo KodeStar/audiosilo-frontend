@@ -13,7 +13,7 @@ import { useBookDragSource } from '@/components/upnext/drag-source';
 import { useIsDownloaded } from '@/downloads/store';
 import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
-import { percentOf, progressFractionRemaining } from '@/lib/progress-view';
+import { listenedWords, savedProgressView } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -65,10 +65,8 @@ function tileStateLabels(opts: {
 }): string[] {
   const { t } = opts;
   const out: string[] = [];
-  if (opts.finished) out.push(t('covers.finished'));
-  else if (opts.progress !== undefined && opts.progress > 0) {
-    out.push(t('covers.listened', { percent: percentOf(opts.progress) }));
-  }
+  const listened = listenedWords(t, { fraction: opts.progress, finished: opts.finished });
+  if (listened) out.push(listened);
   if (opts.downloaded) out.push(t('covers.downloaded'));
   if (opts.server) out.push(t('covers.onServer', { server: opts.server }));
   return out;
@@ -152,9 +150,7 @@ export function CoverTile({
   const saved = useSavedProgress(libraryId, path, connectionId, own);
   const finished = own ? saved?.finished : givenFinished;
   const progress =
-    own && saved
-      ? progressFractionRemaining(saved.position, saved.duration || book?.duration || 0).fraction
-      : givenProgress;
+    own && saved ? savedProgressView(saved, book?.duration ?? 0).fraction : givenProgress;
   // Web desktop: the cover drags onto Up next's drop zone.
   const coverRef = useRef<ViewInstance>(null);
   useBookDragSource(coverRef, { connectionId, libraryId, path, title });

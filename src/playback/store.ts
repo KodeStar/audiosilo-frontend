@@ -61,7 +61,7 @@ import {
   type LocalFiles,
 } from './book-source';
 import { connectionGeneration } from './connection-generation';
-import { engineTick, engineTicker } from './engine-ticks';
+import { engineTick, engineTicker, engineTimeout, engineTimeoutsTick } from './engine-ticks';
 import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
   afterInTurn,
@@ -204,9 +204,8 @@ let playIntent: 'page' | 'remote' | null = null;
  * until a play is asked for again, a start still loading does not play once it has loaded
  * (`startEngine`). */
 let yieldedAttempt = -1;
-/** Pending stall→error timer and its deadline (see armStallWatchdog). */
-let stallTimer: ReturnType<typeof setTimeout> | null = null;
-let stallDeadline: number | null = null;
+/** The pending stall→error `engineTimeout` (see armStallWatchdog). */
+let stallTimer: { cancel(): void } | null = null;
 /** Until when a `playing` report may be older than a pause the store fenced: the stall
  * watchdog's (`fireStallWatchdog`), or a tab's give-way pause of a Cast receiver still
  * buffering (`giveWayTo`). Sent before the pause reached the engine, and the pause wins. A
@@ -3598,19 +3597,12 @@ export function showOtherTabsPlace(): void {
  * event ordering can prevent it from firing. Idempotent: one fixed window per attempt;
  * only reaching `playing` (or a user pause/stop) cancels it. The fire test is simply
  * "not playing", so it doesn't matter what transient state the bridge left us in. Lives
- * in shared JS so iOS, Android and web behave identically. The timer is not enough on its
- * own: Android pauses JS timers while the activity is paused (see `engineTicker`), so the
- * deadline is also checked on every engine event (`checkStallDeadline`, fe#158). */
+ * in shared JS so iOS, Android and web behave identically. A timer is not enough on its
+ * own: Android pauses JS timers while the activity is paused, so it is an `engineTimeout`,
+ * which every engine event checks too (fe#158). */
 function armStallWatchdog() {
   if (stallTimer) return;
-  stallDeadline = Date.now() + STALL_GRACE_MS;
-  stallTimer = setTimeout(fireStallWatchdog, STALL_GRACE_MS);
-}
-
-/** An engine event arrived: fire the watchdog if its deadline passed while the JS timer
- * could not (Android with the screen off). */
-function checkStallDeadline() {
-  if (stallDeadline !== null && Date.now() >= stallDeadline) fireStallWatchdog();
+  stallTimer = engineTimeout(fireStallWatchdog, STALL_GRACE_MS);
 }
 
 function fireStallWatchdog() {
@@ -3819,11 +3811,8 @@ function beginPlaybackAttempt(askedAt = Date.now(), intent: typeof playIntent = 
 }
 
 function cancelStallWatchdog() {
-  if (stallTimer) {
-    clearTimeout(stallTimer);
-    stallTimer = null;
-  }
-  stallDeadline = null;
+  stallTimer?.cancel();
+  stallTimer = null;
 }
 
 /** Abandon the playback attempt/intent - the inverse of `beginPlaybackAttempt`. Shared
@@ -4089,12 +4078,6 @@ async function createService(): Promise<PlaybackService> {
   // move or speed. Read inside the service's listeners only: `reportedBook` is the book of
   // the report being handled.
   const heldForAnother = engineHoldsOtherBook;
-  // A report held for another book: the watchdog still runs (re-armed while an adoption is
-  // under way), and the adoption reads the engine itself when it lands.
-  const holdReport = () => {
-    checkStallDeadline();
-    engineTick();
-  };
   // Binaries whose items never name a book can still identify the queue through the
   // car sync. A file change or remote seek can be its first report of a car start.
   const canCheckUnnamed = () =>
@@ -4189,7 +4172,9 @@ async function createService(): Promise<PlaybackService> {
       unnamedPlays = false;
       otherBookReported(other, raw);
       noteOtherBookPlays();
-      holdReport();
+      // Held for another book: the watchdog still runs (re-armed while an adoption is under
+      // way), and the adoption reads the engine itself when it lands.
+      engineTick();
       return;
     }
     otherReport = null;
@@ -4209,7 +4194,7 @@ async function createService(): Promise<PlaybackService> {
     // older binary names none). Before the fault's stop below, as a named one's: a faulted
     // store's book never pauses that book's play, nor reloads over it.
     if (unnamedHeld || engineIsAnothers()) {
-      holdReport();
+      engineTick();
       return;
     }
     // Collapse the native bridge's noisy resume/retry event stream to a spinner. While
@@ -4326,7 +4311,6 @@ async function createService(): Promise<PlaybackService> {
       const fault = engineFault(np, snapshot, prev, raw.state === 'ended' && !partialEnd);
       if (fault === 'hold') {
         holdFault(raw);
-        checkStallDeadline();
         engineTick();
         return;
       }
@@ -4478,11 +4462,13 @@ async function createService(): Promise<PlaybackService> {
     }
     // The engine's events drive the periodic work (the save, the sleep timer, the stall
     // watchdog) where Android has paused the JS timers: see `engineTicker`.
-    checkStallDeadline();
     // This report could be ordinary playback reaching a timed-out seek's target. Give
-    // the seek call that emitted it this turn to confirm it before a due save cuts.
-    if (lateLanding === 'unconfirmed') setTimeout(engineTick, 0);
-    else engineTick();
+    // the seek call that emitted it this turn to confirm it before a due save cuts; the
+    // stall watchdog runs now, as on any report.
+    if (lateLanding === 'unconfirmed') {
+      engineTimeoutsTick();
+      setTimeout(engineTick, 0);
+    } else engineTick();
   };
   // A run into a later file waits for the listener's own move (`EngineAsk.held`): `raw`, the
   // latest report, decides it once the wait is over and no other report came.

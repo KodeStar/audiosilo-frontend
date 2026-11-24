@@ -12,9 +12,12 @@ jest.mock('@/api/provider', () =>
 const mockQueueRead = jest.fn();
 let mockClient: object | null;
 jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ isDeviceOnline: () => mockDeviceOnline }));
 
 /* eslint-disable import/first */
 import { QueryObserver } from '@tanstack/react-query';
+import { Platform } from 'react-native';
 
 import { CapabilityError, qk } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
@@ -34,6 +37,7 @@ beforeEach(() => {
   mockClient = { queue: () => mockQueueRead() };
   mockQueueRead.mockReset().mockResolvedValue([entry('Series/Book 1')]);
   mockRemove.mockReset().mockResolvedValue(undefined);
+  mockDeviceOnline = true;
 });
 
 /** Until the first remove is on its way (the queue read before it settles first). */
@@ -119,6 +123,16 @@ describe('dropFromQueue', () => {
     });
   });
 
+  // fe#358: a fresh read answers with no network, and the app's client would refuse the
+  // removes unsent.
+  it('sends nothing in the app while offline, even with a fresh read', async () => {
+    mockDeviceOnline = false;
+    queryClient.setQueryData(qk.queue('c1'), [entry('Series')]);
+    await dropFromQueue('c1', [finished]);
+    expect(mockQueueRead).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
+  });
+
   // fe#155: a failed re-read must still drop the book.
   describe('when the queue read fails', () => {
     beforeEach(() => mockQueueRead.mockReset().mockRejectedValue(new Error('offline')));
@@ -130,6 +144,33 @@ describe('dropFromQueue', () => {
       await dropFromQueue('c1', [finished]);
       expect(mockQueueRead).toHaveBeenCalledTimes(1);
       expect(mockRemove.mock.calls).toEqual([['c1', { libraryId: 1, path: 'Series' }]]);
+    });
+
+    // fe#358: in the app with no network, the client would refuse every remove unsent.
+    it('sends nothing in the app while the device is offline', async () => {
+      mockDeviceOnline = false;
+      queryClient.setQueryData(qk.queue('c1'), [entry('Series')], {
+        updatedAt: Date.now() - QUEUE_DROP_FRESH_MS - 1_000,
+      });
+      await dropFromQueue('c1', [finished, queued]);
+      expect(mockQueueRead).toHaveBeenCalledTimes(1);
+      expect(mockRemove).not.toHaveBeenCalled();
+    });
+
+    // The web's removes wait for the network (TanStack's default) and are sent once it is
+    // back: kept from them, the book would stay queued on every device (fe#155).
+    it('still asks the removes on the web while the browser is offline', async () => {
+      mockDeviceOnline = false;
+      const os = jest.replaceProperty(Platform, 'OS', 'web');
+      try {
+        queryClient.setQueryData(qk.queue('c1'), [entry('Series')], {
+          updatedAt: Date.now() - QUEUE_DROP_FRESH_MS - 1_000,
+        });
+        await dropFromQueue('c1', [finished]);
+        expect(mockRemove.mock.calls).toEqual([['c1', { libraryId: 1, path: 'Series' }]]);
+      } finally {
+        os.restore();
+      }
     });
 
     it('sends exact removes for the books themselves with no cached queue', async () => {

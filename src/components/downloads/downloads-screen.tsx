@@ -150,9 +150,9 @@ export function DownloadsScreen() {
     .filter((s) => !entries[downloadKey(s.book.connectionId, s.book.libraryId, s.book.path)]);
 
   const scope = storage.estimate?.scope ?? (Platform.OS === 'web' ? 'browser' : 'device');
-  // What the downloads under way have written, so the figure grows with them (PLAYER-05):
-  // this person's beside their books, and every one's since the engine's measure (which
-  // counts the whole device's).
+  // What the unfinished downloads hold, so the figure grows with them (PLAYER-05) and keeps
+  // what a failed one finished: this person's beside their books, and every one's since the
+  // engine's measure (which counts the whole device's).
   const growing = useDownloads((s) => growingBytes(s.entries, serverIds));
   const grown = useDownloads((s) => grownSince(s.entries, storage.heldAtMeasure));
   const bar = storageBar(allGroups, storage.estimate, storage.measured, growing, grown);

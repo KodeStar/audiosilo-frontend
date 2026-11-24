@@ -31,6 +31,10 @@ let route: string | null = null;
 let rootRouter: ReturnType<typeof useRouter> | null = null;
 /** Calls waiting for a route (`whenRouted`). */
 const routeWaiters = new Set<() => void>();
+/** The book whose end credits wait for the app to come back (or a root layout to mount):
+ * the last book to end while away, so several ends (a car session playing one book after
+ * another) open one credits screen, the latest, not one stacked over another (fe#354). */
+let waitingCredits: FinishedBook | null = null;
 
 /** `fn` once a root layout reports its route: at once when one is mounted. The credits can
  * only open over a navigator that is there. */
@@ -149,11 +153,16 @@ function handleBookEnded(info: FinishedBook, sleptThrough: boolean): void {
     // on return, or iOS ends the suspended app overnight), and the book is finished
     // whether or not the next one starts.
     void dropFromQueue(info.connectionId, [finished]);
+    // A later end takes the earlier one's place, even one that plays on in place: its
+    // credits are as stale as the book itself.
+    waitingCredits = info;
     void (async () => {
       if (!sleptThrough && useSettings.getState().autoPlayNext && (await playNextInPlace(info)))
         return;
       whenActive(() =>
         whenRouted(() => {
+          if (waitingCredits !== info) return;
+          waitingCredits = null;
           // Something else started meanwhile (the lock screen, a widget, the car): the
           // credits would talk over it.
           if (usePlayer.getState().nowPlaying) return;

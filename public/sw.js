@@ -131,12 +131,7 @@ self.addEventListener('fetch', (event) => {
     // would be written into Cache Storage, and every entry turns into unreachable
     // garbage the moment the token rotates. Let the browser fetch these directly.
     if (url.searchParams.has(TOKEN_PARAM)) return;
-    // The build's own files are content-hashed, so a cached one is never stale: served from
-    // the cache and never written again (a rewrite would drop the compiled code Chrome
-    // keeps for a script cached at install).
-    event.respondWith(
-      url.pathname.includes(BUILD_ASSETS) ? cacheFirst(request) : staleWhileRevalidate(request),
-    );
+    event.respondWith(serveAsset(request, url));
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)
 });
@@ -183,16 +178,21 @@ function cacheable(res) {
   return res.ok && (res.type === 'basic' || res.type === 'default');
 }
 
-async function cacheFirst(request) {
-  const cache = await caches.open(SHELL_CACHE);
-  const cached = await cache.match(request);
-  if (cached) return cached;
-  const res = await fetch(request);
-  if (cacheable(res)) cache.put(request, res.clone());
-  return res;
+/**
+ * A cacheable file's answer. The build's own files and its fonts are named by their content
+ * (the export hashes every asset's name), so a cached one is never stale: served from the
+ * cache and never fetched or written again (a rewrite would drop the compiled code Chrome
+ * keeps for a script cached at install, and a font read again behind every load cost two
+ * requests a font, its preload and its `@font-face`: fe#358). Anything else is served from
+ * the cache and read again behind it.
+ */
+function serveAsset(request, url) {
+  return url.pathname.includes(BUILD_ASSETS) || request.destination === 'font'
+    ? cacheFirst(request)
+    : staleWhileRevalidate(request);
 }
 
-async function staleWhileRevalidate(request) {
+async function cacheFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
   // A font is precached under the worker's own request, which has no Origin, and the server
   // answers fonts with `Vary: Origin`; the page's font request is CORS mode, so it carries
@@ -201,6 +201,15 @@ async function staleWhileRevalidate(request) {
   // page's; everything else keeps to Vary, which costs nothing and serves no varied answer
   // to a request it was not given for.
   const cached = await cache.match(request, { ignoreVary: request.destination === 'font' });
+  if (cached) return cached;
+  const res = await fetch(request);
+  if (cacheable(res)) cache.put(request, res.clone());
+  return res;
+}
+
+async function staleWhileRevalidate(request) {
+  const cache = await caches.open(SHELL_CACHE);
+  const cached = await cache.match(request);
   const network = fetch(request)
     .then((res) => {
       if (res && cacheable(res)) cache.put(request, res.clone());
@@ -356,7 +365,7 @@ async function readRecord(cache, marker) {
  * which stops the precache.
  */
 async function precacheAsset(cache, url, fresh) {
-  // Any copy will do, Vary aside: a font the page fetched (`staleWhileRevalidate`) is stored
+  // Any copy will do, Vary aside: a font the page fetched (`cacheFirst`) is stored
   // under the page's request, Origin and all, and a build file is the same bytes whoever asked.
   let asset = fresh ? undefined : await cache.match(url, { ignoreVary: true });
   if (!asset) {

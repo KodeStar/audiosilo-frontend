@@ -9,6 +9,7 @@ import {
   cachedShowTitle,
   chaptersQuery,
   fetchFailFast,
+  fetchServerProgress,
   itemQuery,
   qk,
 } from '@/api/hooks';
@@ -19,8 +20,7 @@ import {
   seedServerSnapshot,
   type ServerSnapshot,
 } from '@/api/server-snapshots';
-import type { ApiClient } from '@/api/client';
-import type { Book, BookMeta, ChaptersResponse, Progress } from '@/api/types';
+import type { Book, BookMeta, ChaptersResponse } from '@/api/types';
 import { withMatchFields } from '@/components/library/meta-gating';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
@@ -34,7 +34,12 @@ import { onStoredChange, tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock, webLocalStorage } from '@/lib/tab-lock';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
-import { progressToSave, writeMirror } from '@/playback/progress-sync';
+import {
+  type PlacedProgress,
+  progressToSave,
+  serverRowOf,
+  writeMirror,
+} from '@/playback/progress-sync';
 import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
@@ -340,7 +345,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 }));
 
 // A book downloaded here, or on its way, keeps its server's place in the progress mirror
-// as the book's progress is read (`fetchBookProgress`, which can't import this store).
+// as the book's progress is read (`fetchServerProgress`, which can't import this store).
 setKeptOfflineCheck((connectionId, libraryId, path) => {
   const entry = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
   return !!entry && entry.status !== 'error';
@@ -2273,9 +2278,10 @@ function savedIndex(f: DownloadedFile, k: number): number {
  * by, so a server list that gained, lost or reordered a file fetches only the files that are
  * new. Each file the retry still has to fetch gets a name no kept file holds: its index when
  * that is free, else the next free number past the list (`storedIndex` reads either). `kept`
- * is the earlier file for a path, `nameFor` the name to fetch a path into, and `notReached`
+ * is the earlier file for a path, `nameFor` the name to fetch a path into, `notReached`
  * the kept files of the paths not handled yet (listed while the retry runs, and kept by a
- * failure).
+ * failure), and `unlisted` the earlier files of paths the book no longer lists, which the
+ * retry deletes (fe#354): no manifest names them again, so nothing else would.
  */
 function retryPlan(
   earlier: readonly DownloadedFile[],
@@ -2284,6 +2290,7 @@ function retryPlan(
   kept: (path: string) => DownloadedFile | undefined;
   nameFor: (index: number, path: string) => string;
   notReached: (handled: ReadonlySet<string>) => DownloadedFile[];
+  unlisted: DownloadedFile[];
 } {
   const listed = new Set(paths);
   const byPath = new Map<string, DownloadedFile>();
@@ -2295,6 +2302,7 @@ function retryPlan(
     held.set(savedIndex(f, k), f.relPath);
   });
   let spare = Math.max(paths.length, ...[...held.keys()].map((i) => i + 1));
+  const keptNames = new Set([...byPath.values()].map((f) => nameOf(f.localUri)));
   return {
     kept: (path) => byPath.get(path),
     nameFor: (index, path) => {
@@ -2307,6 +2315,8 @@ function retryPlan(
       return name;
     },
     notReached: (handled) => [...byPath.values()].filter((f) => !handled.has(f.relPath)),
+    // Never a name a kept file is under.
+    unlisted: earlier.filter((f) => !listed.has(f.relPath) && !keptNames.has(nameOf(f.localUri))),
   };
 }
 
@@ -2327,32 +2337,22 @@ async function runQueue() {
 }
 
 /**
- * Keep the server's place for a book whose download starts in the progress mirror, so the
- * book opens there offline (and its first offline save starts there, instead of at 0 over
- * the server's place: v2.5.1 PLAYER-01). The server's answer, else the one the app has
- * cached (the book page read it); a server with no record leaves the mirror as it is.
- * Keep-newest (`writeMirror`), so a newer save of this device's own stays. Best effort.
+ * A starting download's server place when its server's progress can't be read
+ * (`runOne`): the answer the app has cached (the book page read it), its server's own row
+ * (`serverRowOf`), into the progress mirror (keep-newest, so a newer save of this device's
+ * own stays). Nothing cached leaves the mirror as it is. Best effort.
  */
-async function keepServerPlace(
-  api: ApiClient,
+async function keepCachedServerPlace(
   connectionId: string,
   libraryId: number,
   path: string,
-  signal: AbortSignal,
 ): Promise<void> {
-  let progress: Progress | null | undefined;
-  try {
-    progress = await api.getProgress(libraryId, path, signal);
-  } catch {
-    if (signal.aborted) return;
-    progress = queryClient.getQueryData<Progress | null>(
-      qk.progress(connectionId, libraryId, path),
-    );
-  }
-  // Nothing kept on a failed write: a later read of the book's progress
-  // (`fetchBookProgress`) keeps it.
-  if (progress)
-    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
+  const cached = queryClient.getQueryData<PlacedProgress | null>(
+    qk.progress(connectionId, libraryId, path),
+  );
+  if (!cached) return;
+  const row = serverRowOf(cached);
+  await writeMirror(progressToSave(connectionId, libraryId, path, row)).catch(() => {});
 }
 
 async function runOne(key: string) {
@@ -2384,8 +2384,15 @@ async function runOne(key: string) {
   const dropFiles = () => engine.removeBook(connectionId, libraryId, path).catch(() => {});
   patch({ status: 'downloading', progress: 0, bytes: 0 });
   void persist();
-  // Beside the transfer: the place the download opens at offline.
-  void keepServerPlace(api, connectionId, libraryId, path, ctrl.signal);
+  // Beside the transfer, the place the download opens at offline (v2.5.1 PLAYER-01): the
+  // book has a downloads entry now, so the server's answer goes into the progress mirror, and
+  // the book's first offline save starts there instead of at 0 over the server's place. A
+  // server with no record leaves the mirror as it is. A read that fails (the progress route
+  // erring or timing out while the files still download) keeps the answer the app has
+  // cached instead (`keepCachedServerPlace`).
+  void fetchServerProgress(api, connectionId, libraryId, path, ctrl.signal).catch(() =>
+    ctrl.signal.aborted ? undefined : keepCachedServerPlace(connectionId, libraryId, path),
+  );
 
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];
@@ -2402,6 +2409,11 @@ async function runOne(key: string) {
       earlier,
       specs.map((s) => s.path),
     );
+    for (const gone of plan.unlisted) {
+      await engine
+        .removeFile?.(connectionId, libraryId, path, nameOf(gone.localUri))
+        .catch(() => {});
+    }
     // The ebook (Bridge Phase 3b-2) is one more step after the audio, and its size counts in
     // the total: 100% is the whole download, and the bytes kept include it. So is the
     // read-along map the book will likely take (its size counts once it is in, fe#193).
