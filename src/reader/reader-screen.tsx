@@ -42,6 +42,7 @@ import { Text } from '@/components/ui/text';
 import { useDownloadedEbook } from '@/downloads/store';
 import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
+import { useHeldTopInset } from '@/lib/held-top-inset';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
 import { useScreenReader } from '@/lib/screen-reader';
@@ -246,19 +247,13 @@ export function ReaderScreen({
   // The bar lies over the page while it can hide, so showing and hiding it never lays the
   // book out again; else it sits above the page, as it always did. The book waits for the
   // choice (`ready`), so it is never laid out twice for it.
-  const immersive = autoHide === true && !screenReader;
+  const autoHideOn = autoHide === true;
+  const immersive = autoHideOn && !screenReader;
   // The status bar hides with the top bar in the apps. In immersive mode the room above the
   // page keeps the most it was for this window size, so the status bar going never lays the
-  // book out again either (an Android window's top inset drops to nothing with it); a
-  // rotation measures it afresh.
-  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
-  const [heldTop, setHeldTop] = useState({ windowWidth, windowHeight, top: insets.top });
-  if (heldTop.windowWidth !== windowWidth || heldTop.windowHeight !== windowHeight) {
-    setHeldTop({ windowWidth, windowHeight, top: insets.top });
-  } else if (insets.top > heldTop.top) {
-    setHeldTop({ ...heldTop, top: insets.top });
-  }
-  const topInset = immersive ? heldTop.top : insets.top;
+  // book out again either.
+  const heldTop = useHeldTopInset(insets.top, useWindowDimensions());
+  const topInset = immersive ? heldTop : insets.top;
   const reduced = useReducedMotion();
 
   const [opened, setOpened] = useState<{ title: string; toc: TocEntry[]; rtl: boolean } | null>(
@@ -410,7 +405,7 @@ export function ReaderScreen({
   const [menuOpen, setMenuOpen] = useState(false);
   const [focusIn, setFocusIn] = useState(false);
   const chrome = useReaderChrome({
-    autoHide: autoHide === true,
+    autoHide: autoHideOn,
     screenReader,
     reading: show,
     menuOpen: tocOpen || menuOpen || focusIn,
@@ -568,6 +563,11 @@ export function ReaderScreen({
   const percent = current ? Math.round(current.fraction * 100) : null;
   const behind = useBehindModalProps();
 
+  // A press on one of the bar's own controls: it stays, its wait to hide starting again.
+  const touching = (act: () => void) => () => {
+    chrome.touched();
+    act();
+  };
   // The top bar: close, the title and where the reader is, then the narration, the contents,
   // the text size and the page colours.
   const bar = (
@@ -578,7 +578,10 @@ export function ReaderScreen({
       {...(Platform.OS === 'web'
         ? {
             onFocus: (e: { nativeEvent: unknown }) => setFocusIn(keyboardFocus(e.nativeEvent)),
-            onBlur: () => setFocusIn(false),
+            // Only once the focus leaves the bar, not as it moves between its buttons.
+            onBlur: (e: { currentTarget: unknown; nativeEvent: unknown }) => {
+              if (!focusStaysIn(e)) setFocusIn(false);
+            },
           }
         : {})}
     >
@@ -611,10 +614,7 @@ export function ReaderScreen({
               accessibilityLabel={t(
                 narration.playing ? 'player.controls.pause' : 'player.controls.play',
               )}
-              onPress={() => {
-                chrome.touched();
-                narration.toggle();
-              }}
+              onPress={touching(narration.toggle)}
             />
           ) : null}
           <Button
@@ -631,10 +631,7 @@ export function ReaderScreen({
             icon="minus"
             accessibilityLabel={t('reader.smaller')}
             disabled={fontScale === FONT_SCALES[0]}
-            onPress={() => {
-              chrome.touched();
-              changeFontScale(-1);
-            }}
+            onPress={touching(() => changeFontScale(-1))}
           />
           <Button
             variant="ghost"
@@ -642,16 +639,13 @@ export function ReaderScreen({
             icon="plus"
             accessibilityLabel={t('reader.larger')}
             disabled={fontScale === FONT_SCALES.at(-1)}
-            onPress={() => {
-              chrome.touched();
-              changeFontScale(1);
-            }}
+            onPress={touching(() => changeFontScale(1))}
           />
           <ReaderMenu
             value={themeChoice}
             dark={theme.scheme === 'dark'}
             onChange={chooseTheme}
-            autoHide={autoHide === true}
+            autoHide={autoHideOn}
             onAutoHide={chooseAutoHide}
             onOpenChange={setMenuOpen}
           />
@@ -671,7 +665,6 @@ export function ReaderScreen({
       ) : null}
       <View
         className="flex-1 bg-card"
-        style={immersive ? undefined : { paddingTop: topInset, paddingBottom: insets.bottom }}
         // Web: a modal layer, so the player's keys (arrows skip, Space plays) stand back
         // while reading; the reader's own keys name it as theirs.
         {...(Platform.OS === 'web'
@@ -681,21 +674,17 @@ export function ReaderScreen({
         {...behind}
         accessibilityLabel={title}
       >
-        {immersive ? null : bar}
         {/* Immersive: the room above the page is the page's colour while the book shows,
             so with the bar hidden only the book is on screen. */}
         <View
           className="flex-1"
-          style={
-            immersive
-              ? {
-                  paddingTop: topInset,
-                  paddingBottom: insets.bottom,
-                  backgroundColor: show ? theme.background : undefined,
-                }
-              : undefined
-          }
+          style={{
+            paddingTop: topInset,
+            paddingBottom: insets.bottom,
+            backgroundColor: immersive && show ? theme.background : undefined,
+          }}
         >
+          {immersive ? null : bar}
           <View className="relative flex-1" onLayout={edges.onLayout}>
             {ready && !shown ? (
               // The page ends above the follow pill while it shows (fe#192).
@@ -802,6 +791,13 @@ function keyboardFocus(event: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/** Whether a blur (the web's) moves the focus to another element inside the one it left. */
+function focusStaysIn(e: { currentTarget: unknown; nativeEvent: unknown }): boolean {
+  const next = (e.nativeEvent as { relatedTarget?: unknown }).relatedTarget;
+  const box = e.currentTarget as { contains?: (node: unknown) => boolean };
+  return next != null && box.contains?.(next) === true;
 }
 
 /** The reader's layer name (`data-layer`), for its own keyboard shortcuts. */

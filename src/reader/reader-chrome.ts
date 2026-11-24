@@ -100,7 +100,8 @@ export function useReaderChrome(hold: ChromeHold): {
     // The wait starts again at each show or touch (`epoch`).
   }, [runs, epoch]);
   return {
-    shown: !state.hidden || !canHide,
+    // A hold that came while hidden was settled above, before this render commits.
+    shown: !state.hidden,
     pageTurned: () => dispatch({ event: 'pageTurn', canHide }),
     centreTapped: () => dispatch({ event: 'centreTap', canHide }),
     touched: () => dispatch({ event: 'touch', canHide }),
