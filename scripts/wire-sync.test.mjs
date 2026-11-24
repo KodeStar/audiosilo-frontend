@@ -86,6 +86,21 @@ test('sync fetches before resolving origin/main and respects an explicit local r
   assert.equal(pinnedRef(out), first);
 });
 
+test('sync works offline: an unreachable origin is a warning, the local ref is copied', (t) => {
+  const { dir } = serverRepo();
+  const out = mkdtempSync(path.join(tmpdir(), 'wire-out-'));
+  t.after(() => {
+    rmSync(dir, { recursive: true, force: true });
+    rmSync(out, { recursive: true, force: true });
+  });
+  const clone = checkout(t, dir);
+  gitIn(clone, 'remote', 'set-url', 'origin', path.join(dir, 'gone'));
+  const warn = t.mock.method(console, 'warn', () => {});
+  const head = gitIn(clone, 'rev-parse', 'HEAD').trim();
+  assert.deepEqual(sync(clone, 'HEAD', out), { sha: head, count: 2 });
+  assert.equal(warn.mock.callCount(), 1);
+});
+
 test('the check reports a hand edit to the copy', (t) => {
   const { dir } = serverRepo();
   const out = mkdtempSync(path.join(tmpdir(), 'wire-out-'));
@@ -116,6 +131,16 @@ test('freshness warns at 50 main commits beyond the pin, using the GitHub compar
   assert.equal(await freshnessWarning(ref), undefined);
   ahead++;
   assert.match(await freshnessWarning(ref), /50 commits behind server main/);
+});
+
+test('a freshness count it cannot get is a warning, not a failure', async (t) => {
+  const { dir } = serverRepo();
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  // A checkout with no origin/main.
+  const head = gitIn(dir, 'rev-parse', 'HEAD').trim();
+  assert.match(await freshnessWarning(head, dir), /^Could not tell how far/);
+  t.mock.method(globalThis, 'fetch', async () => new Response('{}', { status: 502 }));
+  assert.match(await freshnessWarning(head), /^Could not tell how far.*HTTP 502/);
 });
 
 test('git runs in the directory given, not the repository a hook names', (t) => {

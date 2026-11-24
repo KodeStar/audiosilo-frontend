@@ -28,10 +28,12 @@ The test also reports unused entries and goldens without an `ENVELOPES` entry.
 
 The parity test reads the committed copy offline. After a server wire change, run
 `npm run wire:sync` and update `types.ts`. Sync fetches the server's main branch before
-copying from `origin/main` (use `-- --server <dir> --ref <rev>` for another checkout or revision).
+copying from `origin/main` (use `-- --server <dir> --ref <rev>` for another checkout or revision;
+offline it warns and copies the last fetched one).
 CI runs `npm run wire:check` to compare git blob ids at the pin and report any difference.
-It also warns when server main has at least 50 commits beyond the pin. Use
-`-- --server <dir>` to check locally against that checkout's last fetched `origin/main`.
+It also warns (never fails) when server main has at least 50 commits beyond the pin, or when it
+can't tell. `-- --server <dir>` reads the pinned commit from a checkout instead of GitHub, and
+counts from that checkout's last fetched `origin/main`.
 
 **Path is identity, scoped by connection.** All content is addressed by
 `(library_id, rel_path)`, never a DB id, and every content call passes

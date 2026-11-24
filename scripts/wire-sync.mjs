@@ -6,12 +6,15 @@
 // machine; src/api/__wire__/source.json pins the server commit it came from.
 //
 //   node scripts/wire-sync.mjs [--server <dir>] [--ref <rev>]
-//       fetch origin in the server checkout <dir> (default ../audiosilo-server),
-//       then copy and pin the goldens at <rev> (default origin/main)
+//       fetch origin's main in the server checkout <dir> (default
+//       ../audiosilo-server; offline, warn and use the last fetched one), then
+//       copy and pin the goldens at <rev> (default origin/main)
 //   node scripts/wire-sync.mjs --check [--server <dir>]
 //       fail when the copy differs from the pinned commit's goldens (compared
 //       by git blob id), read from the checkout when --server is given, else
-//       from GitHub (CI). Warn when main has at least 50 commits beyond the pin.
+//       from GitHub (CI). Warn when main has at least 50 commits beyond the pin
+//       (the checkout's last fetched origin/main with --server), or when that
+//       count can't be had.
 //
 // npm run wire:sync / npm run wire:check run them.
 
@@ -133,21 +136,37 @@ export function pinnedRef(out) {
   return JSON.parse(readFileSync(path.join(out, 'source.json'), 'utf8')).ref;
 }
 
-/** Number of commits on main absent from the pin, including when the pin is on a review branch. */
+/**
+ * The warning when server main has WARN_BEHIND or more commits the pin lacks (counted the
+ * same when the pin is on a review branch), else undefined. A count it can't get (offline,
+ * a GitHub refusal, a checkout with no origin/main) is a warning too, never a failure:
+ * the copy's own check does not depend on it.
+ */
 export async function freshnessWarning(ref, server) {
-  const behind = server
-    ? Number(git(server, 'rev-list', '--count', `${ref}..origin/main`).trim())
-    : // Page 2 still carries the totals but not page 1's up to 300 file patches.
-      (await github(`compare/${ref}...main?per_page=1&page=2`, `comparing ${ref} to main`))
-        .ahead_by;
-  if (!Number.isSafeInteger(behind) || behind < 0) throw new Error('invalid server commit count');
+  let behind;
+  try {
+    behind = server
+      ? Number(git(server, 'rev-list', '--count', `${ref}..origin/main`).trim())
+      : // Page 2 still carries the totals but not page 1's up to 300 file patches.
+        (await github(`compare/${ref}...main?per_page=1&page=2`, `comparing ${ref} to main`))
+          .ahead_by;
+    if (!Number.isSafeInteger(behind) || behind < 0) throw new Error('invalid commit count');
+  } catch (e) {
+    return `Could not tell how far wire pin ${ref} trails server main: ${e.message.split('\n')[0]}`;
+  }
   if (behind >= WARN_BEHIND)
     return `Wire pin ${ref} is ${behind} commits behind server main. Run npm run wire:sync and review the goldens.`;
 }
 
 /** Copies the goldens at rev of the server checkout into out and pins the commit. */
 export function sync(server, rev, out) {
-  git(server, 'fetch', 'origin', '+refs/heads/main:refs/remotes/origin/main');
+  // Best effort, so a sync still works offline (and from an explicit local --ref).
+  try {
+    git(server, 'fetch', 'origin', '+refs/heads/main:refs/remotes/origin/main');
+  } catch {
+    // git has printed why.
+    console.warn(`Warning: could not fetch origin in ${server}: copying ${rev} as last fetched.`);
+  }
   const sha = git(server, 'rev-parse', `${rev}^{commit}`).trim();
   const goldens = fromCheckout(server, sha);
   mkdirSync(out, { recursive: true });
