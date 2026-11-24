@@ -1,4 +1,4 @@
-import { ApiError } from '@/api/client';
+import { ApiError, TimeoutError } from '@/api/client';
 import type { OpmlImportResult, OpmlImportRow, PodcastRequest } from '@/api/types';
 import { golden2c3 } from '@/testing/podcast-fixtures-2c3';
 
@@ -65,14 +65,16 @@ function setup(uploads: (OpmlImportResult | Error)[], requests: () => PodcastReq
   });
   const listRequests = jest.fn(async () => requests());
   const mayAct = jest.fn(() => true);
+  const noAnswer = jest.fn();
   const waves = new OpmlWaves({
     upload,
     listRequests,
     mayAct,
     onChange: (s) => states.push(s),
+    onNoAnswer: noAnswer,
   });
   const last = () => states[states.length - 1];
-  return { waves, upload, listRequests, mayAct, states, last };
+  return { waves, upload, listRequests, mayAct, states, last, noAnswer };
 }
 
 beforeEach(() => {
@@ -284,20 +286,27 @@ describe('OpmlWaves', () => {
     expect(t.last().status).toEqual({ kind: 'stopped', why: 'busy' });
   });
 
-  it('fails on a refusal with its code, and on no answer with none', async () => {
+  it('fails on a refusal with its code, and says when the import may still be running', async () => {
     for (const [e, code] of [
       [new ApiError(400, 'x', 'invalid_opml'), 'invalid_opml'],
       [new ApiError(413, 'x', 'opml_limit'), 'opml_limit'],
       [new ApiError(415, 'x', 'unsupported_opml_type'), 'unsupported_opml_type'],
       [new ApiError(404, 'x', 'module_off'), 'module_off'],
       [new ApiError(403, 'x', 'no_library_access'), 'no_library_access'],
-      [new ApiError(503, 'request timed out'), null],
-      [new TypeError('Network request failed'), null],
+      // The server's own bound ended the import: the rows it reached are done.
+      [new ApiError(503, 'request timed out', undefined, undefined, false, true), 'server_timeout'],
+      // A proxy's page says nothing of the import.
+      [new ApiError(503, 'Service Unavailable'), null],
+      // No answer: the server carries the import on (server#553).
+      [new TypeError('Network request failed'), 'no_answer'],
+      [new TimeoutError(330_000), 'no_answer'],
+      [new ApiError(504, 'Gateway Timeout'), 'no_answer'],
     ] as const) {
       const t = setup([e]);
       t.waves.start();
       await flush();
       expect(t.last().status).toEqual({ kind: 'failed', code });
+      expect(t.noAnswer).toHaveBeenCalledTimes(code === 'no_answer' ? 1 : 0);
       await jest.advanceTimersByTimeAsync(60_000);
       expect(t.upload).toHaveBeenCalledTimes(1);
     }

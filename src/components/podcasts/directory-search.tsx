@@ -143,7 +143,7 @@ export function DirectorySearch({
 
   const followResult = (r: PodcastDiscoveryResult) => {
     setOutcome(r.feed_url, { kind: 'busy' });
-    follow.mutateAsync({ libraryId, feedUrl: r.feed_url }).then(
+    follow.mutateAsync({ libraryId, feedUrl: r.feed_url, title: r.title }).then(
       (answer) =>
         setOutcome(
           r.feed_url,

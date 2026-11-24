@@ -123,6 +123,35 @@ describe('useOpmlImport', () => {
     expect(result.current.state?.status).toEqual({ kind: 'done' });
   });
 
+  it('keeps the requests seen ended once the list drops them, until another list (fe#126)', async () => {
+    mockClient.importOpml.mockResolvedValue(answer([row(0, 'queued')]));
+    const { result } = await mount();
+    await act(async () => result.current.start(file()));
+    const failed = {
+      id: 100,
+      library_id: 7,
+      state: 'failed',
+      feed: 'https://example.com/0.xml',
+      private: false,
+      show_path: null,
+      error: { code: 'not_a_feed', message: '' },
+      created_at: '2026-11-24T10:00:00Z',
+      updated_at: '2026-11-24T10:00:00Z',
+    };
+    const open = { ...failed, id: 101, state: 'running', error: null };
+    await act(async () =>
+      qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), { shows: [], requests: [failed, open] }),
+    );
+    expect([...result.current.ended.keys()]).toEqual([100]);
+    // Dismissed in another section: the list no longer holds it, the import still knows.
+    await act(async () =>
+      qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), { shows: [], requests: [open] }),
+    );
+    expect(result.current.ended.get(100)).toMatchObject({ state: 'failed' });
+    await act(async () => result.current.start(file()));
+    expect(result.current.ended.size).toBe(0);
+  });
+
   it('holds its timers in the background and looks again on return', async () => {
     mockClient.importOpml
       .mockResolvedValueOnce(answer([row(0, 'limited'), row(1, 'queued')]))
@@ -204,6 +233,24 @@ describe('useOpmlImport', () => {
       expect(result.current.retries[1]).toEqual({
         kind: 'answered',
         row: { ...one, status: 'queued', request_id: 55, error: null },
+      });
+    });
+
+    it("labels the new request with the list's name for the show, on a server that takes one", async () => {
+      mockClient.serverInfo.mockResolvedValueOnce({
+        capabilities: { podcasts: true, podcast_request_dismiss: true },
+      } as never);
+      const one = failed(1, 'https://example.com/...');
+      const { result } = await started([one]);
+      mockClient.followPodcastByUrl.mockResolvedValue({
+        state: 'subscribing',
+        request: { id: 55, state: 'queued', library_id: 7 },
+      });
+      await act(async () => result.current.retryRow(one));
+      await act(async () => jest.advanceTimersByTimeAsync(0));
+      expect(mockClient.followPodcastByUrl).toHaveBeenCalledWith(7, 'https://example.com/one.xml', {
+        private: undefined,
+        title: 'One',
       });
     });
 

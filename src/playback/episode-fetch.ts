@@ -406,6 +406,9 @@ function refused(r: Run, e: unknown) {
     case 'bridge_unavailable':
     case 'library_not_writable':
     case 'demo_account':
+    // The server can't read the show's folder (409 on GET and POST .../podcasts/fetch): a
+    // download would sit behind the same refusal, so it needs a person, never Try again.
+    case 'show_unreadable':
       patch(r, { phase: 'unavailable', code });
       return;
     case 'identity_changed': {

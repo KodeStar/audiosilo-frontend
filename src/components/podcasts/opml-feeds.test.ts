@@ -1,4 +1,4 @@
-import { opmlText, outlineFeeds, rowFeedUrl } from './opml-feeds';
+import { importRowLabel, opmlText, outlineFeeds, outlineTitles, rowFeedUrl } from './opml-feeds';
 
 const opml = (body: string) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0"><head><title>t</title></head><body>${body}</body></opml>`;
@@ -107,5 +107,82 @@ describe('opmlText', () => {
     const text = opml('<outline text="Café" xmlUrl="https://a.example/"/>');
     await expect(opmlText(new TextEncoder().encode(text))).resolves.toBe(text);
     await expect(opmlText({ text: async () => text } as Blob)).resolves.toBe(text);
+  });
+});
+
+describe('outlineTitles', () => {
+  it("reads each counted outline's title, else its text, on one line (fe#126)", () => {
+    const titles = outlineTitles(
+      opml(`
+        <outline text="News">
+          <outline title="A &amp; B" text="ignored" xmlUrl="https://a.example/feed"/>
+          <outline text="  Line\n\tbreak  " xmlUrl="https://b.example/feed"/>
+          <outline title="" text="" xmlUrl="https://c.example/feed"/>
+        </outline>
+        <outline TITLE="wrong case" xmlUrl="https://d.example/feed"/>`),
+    );
+    expect([...titles]).toEqual([
+      [1, 'News'],
+      [2, 'A & B'],
+      [3, 'Line break'],
+    ]);
+  });
+
+  it('bounds a long title, and gives none for markup it cannot read', () => {
+    const long = 'x'.repeat(600);
+    expect(outlineTitles(opml(`<outline title="${long}"/>`)).get(1)).toHaveLength(500);
+    // Counted in characters: an emoji at the bound is kept whole, never half a pair.
+    const emoji = outlineTitles(opml(`<outline title="${'x'.repeat(499)}\u{1F3A7}tail"/>`)).get(1);
+    expect(emoji).toBe(`${'x'.repeat(499)}\u{1F3A7}`);
+    expect([...outlineTitles('<opml><body><outline title="A" <broken></body></opml>')]).toEqual([]);
+  });
+});
+
+describe('importRowLabel', () => {
+  const row = { path: null, feed: 'https://feeds.example.com/...' };
+  // A row's name as the panel gets it: read from the list (`outlineTitles`).
+  const named = (title: string) =>
+    outlineTitles(opml(`<outline title="${title}" xmlUrl="https://x.example/feed"/>`)).get(1) ??
+    null;
+
+  it('keeps a plain name as the list gave it', () => {
+    expect(importRowLabel({ ...row, path: 'Morning' }, named('Morning Brief'))).toBe(
+      'Morning Brief',
+    );
+  });
+
+  it("shows the folder, else the server's label, for a name that is only an address", () => {
+    const title = named('https://feeds.example.com/rss.xml');
+    expect(importRowLabel({ ...row, path: 'Daily News' }, title)).toBe('Daily News');
+    expect(importRowLabel(row, title)).toBe('https://feeds.example.com/...');
+    expect(importRowLabel({ path: null, feed: null }, title)).toBe('https://feeds.example.com/...');
+    // An address no host can be read from gives way too.
+    expect(importRowLabel({ ...row, path: 'Daily News' }, named('http:///x?key=1'))).toBe(
+      'Daily News',
+    );
+  });
+
+  it("never shows a private feed's token", () => {
+    const address = 'https://feeds.example.com/p/abc123?key=s3cr3t-token';
+    for (const title of [
+      address,
+      `Bonus (${address})`,
+      // A no-break space is part of an address to the server (Go's \S): never cut there.
+      'https://feeds.example.com/p/abc\u00a0def?key=s3cr3t-token',
+      'https://feeds.example.com/p/abc&#160;def?key=s3cr3t-token',
+    ]) {
+      for (const r of [row, { path: null, feed: null }]) {
+        expect(importRowLabel(r, named(title))).not.toMatch(/s3cr3t|abc|key=/);
+      }
+    }
+    expect(importRowLabel(row, named(`Bonus (${address})`))).toBe(
+      'Bonus (https://feeds.example.com/...',
+    );
+  });
+
+  it('falls back to the folder, then the label, with no name', () => {
+    expect(importRowLabel({ ...row, path: 'Daily News' }, null)).toBe('Daily News');
+    expect(importRowLabel(row, null)).toBe('https://feeds.example.com/...');
+    expect(importRowLabel({ path: null, feed: null }, null)).toBeNull();
   });
 });

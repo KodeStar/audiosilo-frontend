@@ -1,6 +1,8 @@
 import type { OpmlImportRow } from '@/api/types';
 import { sameOrigin } from '@/lib/same-origin';
 
+import { isWebAddress, redactUrls } from './feed-redact';
+
 /**
  * The feed address of each subscription in an OPML list, by the import rows'
  * `outline_index` (server v2.4.0's import Try again): the server reports only a redacted
@@ -16,7 +18,49 @@ import { sameOrigin } from '@/lib/same-origin';
  * can't find gives the row no Try again (`rowFeedUrl`).
  */
 export function outlineFeeds(text: string): Map<number, string> {
-  const out = new Map<number, string>();
+  return outlineEntries(text).feeds;
+}
+
+/** The longest title a row shows from its list, in code points: a display bound of this
+ * app's (the server reads and keeps at most 1,000 bytes of it, `opml.MaxTitleBytes` and
+ * `bridge.MaxSubscribeTitleBytes`). */
+const MAX_TITLE_CHARS = 500;
+
+/**
+ * Each subscription's own name in an OPML list, by the import rows' `outline_index`
+ * (fe#126): its `title` attribute, else its `text`, on one line, with any web address in it
+ * redacted as the server redacts a follow's title (`redactUrls`): the list is read on the
+ * device, so its name for a private feed may be that feed's address, token and all. The
+ * server never echoes
+ * the list in its answer (a private feed's outline stays in memory), so a row's name is
+ * read from the bytes the page still holds, counted as `outlineFeeds` counts. Markup it
+ * can't read gives no titles (the rows show their address).
+ */
+export function outlineTitles(text: string): Map<number, string> {
+  return outlineEntries(text).titles;
+}
+
+/** A list's addresses (`outlineFeeds`) and names (`outlineTitles`) by `outline_index`,
+ * read in one walk; both empty when the markup can't be read. */
+export function outlineEntries(text: string): {
+  feeds: Map<number, string>;
+  titles: Map<number, string>;
+} {
+  const feeds = new Map<number, string>();
+  const titles = new Map<number, string>();
+  const read = walkOutlines(text, (index, url, title) => {
+    if (url) feeds.set(index, url);
+    if (title) titles.set(index, title);
+  });
+  return read ? { feeds, titles } : { feeds: new Map(), titles: new Map() };
+}
+
+/** Visits each counted outline (`outlineFeeds`) with its index, its `xmlUrl` and its
+ * title; false when the markup can't be read (the caller keeps nothing). */
+function walkOutlines(
+  text: string,
+  visit: (index: number, url: string | null, title: string | null) => void,
+): boolean {
   const clean = text.replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>/g, ' ');
   // A tag: its name, then attributes read value by value (a quoted value may hold `>`).
   const tag = /<(\/?)([^\s/>]+)((?:\s*[^\s=/>"']+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
@@ -27,29 +71,51 @@ export function outlineFeeds(text: string): Map<number, string> {
   for (let at = clean.indexOf('<'); at !== -1; at = clean.indexOf('<', tag.lastIndex)) {
     tag.lastIndex = at;
     const m = tag.exec(clean);
-    if (!m) return new Map();
+    if (!m) return false;
     const [, closing, name, attrs, selfClosing] = m;
     if (closing) {
       stack.pop();
       continue;
     }
     let url: string | null = null;
+    let title = '';
+    let label = '';
     for (let a = attr.exec(attrs); a; a = attr.exec(attrs)) {
       const key = a[1].toLowerCase();
+      const value = a[2] ?? a[3] ?? '';
       // A default namespace makes the element (and those below it) namespaced.
-      if (key === 'xmlns' && (a[2] ?? a[3])) return new Map();
-      if (key === 'xmlurl') url = decodeEntities(a[2] ?? a[3] ?? '').trim();
+      if (key === 'xmlns' && value) return false;
+      if (key === 'xmlurl') url = decodeEntities(value).trim();
+      // The server reads these two by their exact names.
+      else if (a[1] === 'title') title = nameOf(value);
+      else if (a[1] === 'text') label = nameOf(value);
     }
     attr.lastIndex = 0;
     const inTree =
       stack[0] === 'opml' && stack[1] === 'body' && stack.slice(2).every((n) => n === 'outline');
     if (name === 'outline' && inTree) {
       index++;
-      if (url) out.set(index, url);
+      visit(index, url, title || label || null);
     }
     if (!selfClosing) stack.push(name);
   }
-  return out;
+  return true;
+}
+
+/** An outline's name as a row shows it: its web addresses redacted (`redactUrls`), then on
+ * one line, in the server's order (`bridge` redacts a follow's title before `textclean.Line`),
+ * so a space `oneLine` folds that Go's `\S` does not (a no-break space) can't cut an address
+ * short and leave its query behind. */
+function nameOf(value: string): string {
+  return oneLine(redactUrls(decodeEntities(value)));
+}
+
+/** A title on one line: control characters and runs of white space as one space, trimmed
+ * and bounded in code points (never half an emoji's surrogate pair). */
+function oneLine(s: string): string {
+  const line = s.replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim();
+  const chars = Array.from(line);
+  return chars.length > MAX_TITLE_CHARS ? chars.slice(0, MAX_TITLE_CHARS).join('').trimEnd() : line;
 }
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };
@@ -76,6 +142,18 @@ export function rowFeedUrl(
   const labelled = row.feed.replace(/\/\.\.\.$/, '').toLowerCase();
   // `URL.origin` is lower case without a default port, as the server's label writes it.
   return sameOrigin(url, { origin: labelled }) ? url : null;
+}
+
+/** What an import row is called (fe#126): the list's own name for it (`outlineTitles`,
+ * its addresses already redacted), else its show's folder, else the server's (redacted)
+ * label for its address. A name that is only an address gives way to the folder or the
+ * server's label. */
+export function importRowLabel(
+  row: Pick<OpmlImportRow, 'path' | 'feed'>,
+  title: string | null,
+): string | null {
+  if (title && !isWebAddress(title)) return title;
+  return row.path || row.feed || title;
 }
 
 /** The text of a picked list's bytes (UTF-8, as the server reads it; Expo's runtime

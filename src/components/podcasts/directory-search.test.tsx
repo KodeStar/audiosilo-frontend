@@ -302,9 +302,11 @@ describe('DirectorySearch', () => {
     await mount();
     await search('history');
     await fireEvent.press(screen.getByRole('button', { name: 'Follow History Hour' }));
+    // The result's name labels the request in Shows being added (fe#126).
     expect(mockFollow).toHaveBeenCalledWith({
       libraryId: 7,
       feedUrl: 'https://feeds.example.com/history.xml',
+      title: 'History Hour',
     });
     expect(await screen.findByTestId('discovery-result-adding')).toBeTruthy();
   });

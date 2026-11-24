@@ -1,8 +1,14 @@
+import { useIsFocused } from 'expo-router';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { CapabilityError, useFollowPodcastByUrl } from '@/api/hooks';
+import {
+  CapabilityError,
+  useFollowPodcastByUrl,
+  useFollowRequests,
+  usePodcastShows,
+} from '@/api/hooks';
 import type { PodcastShow } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -11,12 +17,20 @@ import { Text } from '@/components/ui/text';
 import { useDeviceOnline } from '@/lib/device-online';
 import { useOpen } from '@/lib/open';
 
-import { feedAddressProblem, followByUrlErrorKey } from './find-shows-model';
+import {
+  feedAddressProblem,
+  followByUrlErrorKey,
+  requestEnd,
+  requestLabel,
+} from './find-shows-model';
+import { requestReasonKey } from './podcast-model';
 
 /** What the follow answered. `publicAlready`: asked as a private feed, but the library
- * already had the show as a public one, so the follow joined it as it is. */
+ * already had the show as a public one, so the follow joined it as it is. `adding`: a
+ * request on its way, read live until it ends (fe#126). */
 type Outcome =
-  { kind: 'following'; show: PodcastShow; publicAlready: boolean } | { kind: 'adding' };
+  | { kind: 'following'; show: PodcastShow; publicAlready: boolean }
+  | { kind: 'adding'; requestId: number };
 
 /**
  * Follow a feed by its address (Bridge Phase 2d-2): a pasted RSS address, checked here
@@ -24,7 +38,9 @@ type Outcome =
  * Private feed switch for a feed made for the listener alone (sent as `private: true`
  * only when on). A show the library has is followed at once (Open show), and the page
  * says so when it was asked for as private but the library has it as a public feed; a new
- * one is a request the page's list follows until it is added.
+ * one is a request read live from the follow requests (the page's list polls them) until
+ * it ends: followed with Open show, or why it could not be added, or cancelled, never
+ * "Adding" after it failed (fe#126), nor once the list no longer holds it (dismissed).
  */
 export function FollowByUrl({
   connectionId,
@@ -41,6 +57,35 @@ export function FollowByUrl({
   const [isPrivate, setPrivate] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
+  const focused = useIsFocused();
+  const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
+  // How the request on its way ended (null while open or not read yet, `unknown` once the
+  // list no longer holds it: dismissed under it, or past the list's week; nothing is said
+  // then, never "Adding" again). The follow put its request in the list (`storeFollowByUrl`).
+  const ended = outcome?.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
+  const request =
+    outcome?.kind === 'adding' ? requests?.find((r) => r.id === outcome.requestId) : undefined;
+  // The added show's name, from the library's show list (read only once there is one).
+  const { data: shows } = usePodcastShows(libraryId, connectionId, {
+    enabled: ended?.kind === 'following',
+  });
+  // The show it follows now: the follow's own answer, or the request that ended added.
+  const followed =
+    outcome?.kind === 'following'
+      ? {
+          title: outcome.show.title,
+          libraryId: outcome.show.library_id,
+          path: outcome.show.path,
+          publicAlready: outcome.publicAlready,
+        }
+      : ended?.kind === 'following'
+        ? {
+            title: request ? requestLabel(request, shows) : ended.path,
+            libraryId: ended.libraryId,
+            path: ended.path,
+            publicAlready: false,
+          }
+        : null;
 
   const submit = () => {
     // The keyboard's Go submits too, so a follow on its way holds both.
@@ -62,7 +107,7 @@ export function FollowByUrl({
                 show: answer.show,
                 publicAlready: askedPrivate && !answer.show.private,
               }
-            : { kind: 'adding' },
+            : { kind: 'adding', requestId: answer.request.id },
         );
         setAddress('');
         setPrivate(false);
@@ -119,26 +164,32 @@ export function FollowByUrl({
         className="self-start"
         testID="follow-by-url-submit"
       />
-      {outcome?.kind === 'following' ? (
+      {followed ? (
         <View className="flex-row flex-wrap items-center gap-3" accessibilityLiveRegion="polite">
           <Text variant="body" testID="follow-by-url-following">
             {t(
-              outcome.publicAlready
+              followed.publicAlready
                 ? 'podcasts.find.address.followingPublic'
                 : 'podcasts.find.address.following',
-              { title: outcome.show.title },
+              { title: followed.title },
             )}
           </Text>
           <Button
             variant="outline"
             size="sm"
             title={t('podcasts.find.search.openShow')}
-            onPress={() =>
-              openPodcastShow(connectionId, outcome.show.library_id, outcome.show.path)
-            }
+            onPress={() => openPodcastShow(connectionId, followed.libraryId, followed.path)}
           />
         </View>
-      ) : outcome?.kind === 'adding' ? (
+      ) : ended?.kind === 'failed' ? (
+        <Text variant="body" accessibilityLiveRegion="polite" testID="follow-by-url-failed">
+          {`${t('podcasts.find.address.failed')} ${t(requestReasonKey(ended.error?.code))}`}
+        </Text>
+      ) : ended?.kind === 'cancelled' ? (
+        <Text variant="body" accessibilityLiveRegion="polite" testID="follow-by-url-cancelled">
+          {t('podcasts.find.address.cancelled')}
+        </Text>
+      ) : outcome?.kind === 'adding' && ended?.kind !== 'unknown' ? (
         <Text variant="body" accessibilityLiveRegion="polite" testID="follow-by-url-adding">
           {t('podcasts.find.address.adding')}
         </Text>

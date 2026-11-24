@@ -661,9 +661,10 @@ export type BookListQuery = {
  * worst). */
 const UPSTREAM_TIMEOUT_MS = 30_000;
 
-/** The timeout of an OPML upload: past the server's own 30 s import budget, by which it
- * always answers. */
-const OPML_IMPORT_TIMEOUT_MS = 45_000;
+/** The timeout of an OPML upload: past the server's own 5 minute import bound, by which it
+ * always answers (its rows, or the bound's 503). The import outlives an upload given up on
+ * (server#553), so a shorter wait would only say it failed while it carried on. */
+export const OPML_IMPORT_TIMEOUT_MS = 330_000;
 
 /** The timeout of an ebook download (`ebook`): for the answer, then restarted by every
  * piece of the file, so a picture-heavy EPUB of tens of megabytes on a slow link arrives
@@ -1511,15 +1512,38 @@ export class ApiClient {
   /** Follow a feed by its address: `200 {state: 'following', show}` when the library has
    * the show, `202 {state: 'subscribing', request}` otherwise (`GET /me/podcasts` follows
    * it). The body is exactly `{library_id, feed_url}`, plus `private: true` only when the
-   * listener says so (`false` can't override the server's own detection). */
-  followPodcastByUrl(libraryId: number, feedUrl: string, opts: { private?: boolean } = {}) {
+   * listener says so (`false` can't override the server's own detection), and `title` when
+   * the caller knows the show's name (a directory result): the request row's label until
+   * the show is added (v2.7.0; a private feed's is never kept). An older server refuses the
+   * unknown field (400, nothing followed), so prefer `useFollowPodcastByUrl`, which sends it
+   * only to a server with `podcast_request_dismiss`. */
+  followPodcastByUrl(
+    libraryId: number,
+    feedUrl: string,
+    opts: { private?: boolean; title?: string } = {},
+  ) {
+    const title = opts.title?.trim();
     return this.request<PodcastFollowResult>('POST', '/podcasts/follow', {
       body: {
         library_id: libraryId,
         feed_url: feedUrl,
         ...(opts.private ? { private: true } : {}),
+        ...(title ? { title } : {}),
       },
     });
+  }
+  /** Dismiss the caller's own follow request once it failed or was cancelled (204;
+   * capability `podcast_request_dismiss`). One still open (or added) is 409 `request_open`;
+   * one the server no longer has (its own 404 `request_not_found`, not a proxy's) counts as
+   * dismissed. */
+  async dismissPodcastRequest(id: number): Promise<void> {
+    try {
+      await this.request<void>('DELETE', `/podcasts/requests/${id}`);
+    } catch (e) {
+      const gone =
+        e instanceof ApiError && e.status === 404 && e.fromServer && e.code === 'request_not_found';
+      if (!gone) throw e;
+    }
   }
   /** Ask a followed show to check its feed now (202, the poll; an open poll is returned
    * as it is). Within a minute of the last check is 429 `checked_recently`; a show the
@@ -1533,8 +1557,9 @@ export class ApiClient {
   /** Upload an OPML list to follow its feeds in `libraryId`: the file's bytes as the raw
    * body, always `Content-Type: text/x-opml`, no compression. The answer is one row per
    * subscription (the decisions, not completion). Uploading the same bytes again is the
-   * retry (`src/components/podcasts/opml-waves.ts`). The server's import budget is 30 s,
-   * so this waits 45. */
+   * retry (`src/components/podcasts/opml-waves.ts`). The server bounds an import at 5
+   * minutes and carries it on if the upload is given up, so this waits past that bound
+   * (`OPML_IMPORT_TIMEOUT_MS`). */
   importOpml(libraryId: number, body: Blob | Uint8Array, signal?: AbortSignal) {
     const headers: Record<string, string> = {
       ...this.clientHeaders,
@@ -1630,6 +1655,22 @@ export class ApiClient {
     return id
       ? this.apiUrl('/podcasts/discovery/artwork', { id, ...this.mediaTokenQuery() })
       : null;
+  }
+  /** Ask for a directory result's artwork once more, to hear why its image failed to load
+   * (fe#126): an image element never sees the status, so a failed load asks the same URL
+   * here (`discoveryArtworkUrl`'s, the media token in it; the route answers HEAD 405).
+   * Resolves on a 2xx (its bytes are not read); rejects with the `ApiError` of a refusal,
+   * whose `retryAfterSeconds` is the server's `Retry-After` on a 429 or 503. */
+  probeDiscoveryArtwork(url: string, signal?: AbortSignal): Promise<void> {
+    const headers: Record<string, string> = {
+      ...this.clientHeaders,
+      ...this.proxyHeadersFor(url),
+    };
+    return this.send('GET', url, headers, { signal }, async (res) => {
+      if (!res.ok) await readJson<void>(res);
+      // The image itself is the next mount's to load.
+      void res.body?.cancel().catch(() => undefined);
+    });
   }
   /** Build a stream URL. `transcode` requests an on-the-fly MP3 re-encode for
    * codecs the client can't decode natively (only useful when the server's

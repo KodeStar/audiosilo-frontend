@@ -9,13 +9,26 @@ jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openPodcastShow: (...a: unknown[]) => mockOpenShow(...a) }),
 }));
 let mockRequests: PodcastRequest[] | undefined;
+let mockShows: { path: string; title: string }[] | undefined;
+let mockDismissable: boolean | undefined = true;
+const mockDismiss = jest.fn((_v: { id: number }) => Promise.resolve());
 const mockAsked: unknown[][] = [];
 jest.mock('@/api/hooks', () => ({
+  CapabilityError: class extends Error {},
   useFollowRequests: (...a: unknown[]) => {
     mockAsked.push(a);
     return { data: mockRequests };
   },
+  usePodcastShows: () => ({ data: mockShows }),
+  useCapability: (flag: string) => (flag === 'podcast_request_dismiss' ? mockDismissable : false),
+  useDismissPodcastRequest: () => ({
+    mutateAsync: (v: { id: number }) => mockDismiss(v),
+    isPending: false,
+    variables: undefined,
+  }),
 }));
+const mockToast = jest.fn();
+jest.mock('@/components/ui/toast', () => ({ toast: (...a: unknown[]) => mockToast(...a) }));
 
 /* eslint-disable import/first */
 import { FollowRequests } from './follow-requests';
@@ -43,6 +56,10 @@ beforeEach(() => {
   mockRequests = undefined;
   mockAsked.length = 0;
   mockOpenShow.mockReset();
+  mockShows = undefined;
+  mockDismissable = true;
+  mockDismiss.mockReset().mockImplementation(() => Promise.resolve());
+  mockToast.mockReset();
 });
 
 describe('FollowRequests', () => {
@@ -114,6 +131,55 @@ describe('FollowRequests', () => {
     expect(screen.getByText('Added')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Open show' }));
     expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'Daily News');
+  });
+
+  it('names each row by the show where it is known, else its feed (fe#126)', async () => {
+    mockShows = [{ path: 'Daily News', title: 'The Daily News' }];
+    mockRequests = [
+      request(1, { title: 'From the directory' }),
+      request(2, { state: 'done', show_path: 'Daily News', title: 'Old name' }),
+      request(3, { title: null }),
+    ];
+    await mount();
+    const title = (id: number) => screen.getByTestId(`follow-request-title-${id}`).props.children;
+    expect(title(1)).toBe('From the directory');
+    // The feed's address stays under a name.
+    expect(
+      within(screen.getByTestId('follow-request-1')).getByText('https://example.com/1.xml'),
+    ).toBeTruthy();
+    expect(title(2)).toBe('The Daily News');
+    expect(title(3)).toBe('https://example.com/3.xml');
+  });
+
+  it('dismisses a failed or cancelled row, and offers it on no other', async () => {
+    mockRequests = [
+      request(1, { state: 'failed', error: { code: 'gone', message: 'x' }, title: 'Gone Show' }),
+      request(2, { state: 'cancelled' }),
+      request(3, { state: 'running' }),
+      request(4, { state: 'done', show_path: 'S' }),
+    ];
+    await mount();
+    expect(screen.queryByTestId('follow-request-dismiss-3')).toBeNull();
+    expect(screen.queryByTestId('follow-request-dismiss-4')).toBeNull();
+    expect(screen.getByTestId('follow-request-dismiss-2')).toBeTruthy();
+    await fireEvent.press(screen.getByRole('button', { name: 'Dismiss Gone Show' }));
+    expect(mockDismiss).toHaveBeenCalledWith({ id: 1 });
+    expect(mockToast).not.toHaveBeenCalled();
+  });
+
+  it('says so when a dismiss fails', async () => {
+    mockDismiss.mockImplementation(() => Promise.reject(new Error('409')));
+    mockRequests = [request(1, { state: 'failed', error: { code: 'gone', message: 'x' } })];
+    await mount();
+    await fireEvent.press(screen.getByTestId('follow-request-dismiss-1'));
+    expect(mockToast).toHaveBeenCalledWith({ title: "Couldn't dismiss that. Try again." });
+  });
+
+  it('offers no Dismiss on a server without it', async () => {
+    mockDismissable = undefined;
+    mockRequests = [request(1, { state: 'failed', error: { code: 'gone', message: 'x' } })];
+    await mount();
+    expect(screen.queryByTestId('follow-request-dismiss-1')).toBeNull();
   });
 
   it('offers no Open show for a request that is not done', async () => {

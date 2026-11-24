@@ -3092,7 +3092,8 @@
         "signed_out": "Du bist von diesem Server abgemeldet. Melde dich wieder an und versuche es dann erneut.",
         "no_access": "Dieses Konto hat keinen Zugriff auf diese Folge.",
         "proxy_refused": "Der Anmelde-Proxy des Servers hat dieses Gerät abgewiesen. Aktualisiere die Proxy-Header unter Konto und versuche es dann erneut.",
-        "other": "Beim Holen ist etwas schiefgegangen. Versuch es später noch einmal."
+        "other": "Beim Holen ist etwas schiefgegangen. Versuch es später noch einmal.",
+        "show_unreadable": "Dein Server kann den Ordner dieser Sendung nicht lesen und deshalb keine Episoden holen. Bitte die Person, die deinen Server betreibt, die Berechtigungen des Ordners zu prüfen."
       }
     },
     "find": {
@@ -3175,7 +3176,9 @@
         "tooLong": "Diese Adresse ist zu lang.",
         "following": "Du folgst {{title}}.",
         "adding": "Die Sendung wird hinzugefügt. Sie erscheint unter Sendungen, sobald sie bereit ist.",
-        "followingPublic": "Du folgst {{title}}. Die Sendung war schon als öffentlicher Feed in dieser Bibliothek, darum ist sie nicht privat."
+        "followingPublic": "Du folgst {{title}}. Die Sendung war schon als öffentlicher Feed in dieser Bibliothek, darum ist sie nicht privat.",
+        "failed": "Die Sendung konnte nicht hinzugefügt werden.",
+        "cancelled": "Das Hinzufügen der Sendung wurde abgebrochen."
       },
       "offline": "Du bist offline. Verbinde dich wieder, um Sendungen zu suchen oder hinzuzufügen.",
       "accessFailed": "Es konnte nicht geprüft werden, ob du Sendungen hinzufügen kannst."
@@ -3205,7 +3208,9 @@
         "feedError": "Der Server des Feeds hat mit einem Fehler geantwortet. Versuch es später noch einmal.",
         "redirectLoop": "Die Adresse des Feeds leitet zu oft weiter.",
         "interrupted": "Das Hinzufügen wurde unterbrochen. Folge dem Feed noch einmal, um es erneut zu versuchen."
-      }
+      },
+      "dismissLabel": "{{title}} ausblenden",
+      "dismissFailed": "Das hat nicht geklappt. Versuch es noch einmal."
     },
     "import": {
       "intro": "Hol dir die Sendungen, denen du in einer anderen Podcast-App folgst. Exportiere dort eine OPML-Datei und wähle sie hier aus. Lange Listen werden in Fünfergruppen hinzugefügt.",
@@ -3238,7 +3243,9 @@
       "fail": {
         "notOpml": "Diese Datei ist keine OPML-Liste.",
         "tooLarge": "Diese Liste ist zu groß zum Importieren.",
-        "other": "Der Import hat nicht geklappt. Versuch es noch einmal."
+        "other": "Der Import hat nicht geklappt. Versuch es noch einmal.",
+        "noAnswer": "Dein Server hat nicht rechtzeitig geantwortet, fügt die Sendungen der Liste aber vielleicht noch hinzu. Sieh in ein paar Minuten unter Sendungen nach oder versuch es noch einmal: Bereits hinzugefügte Sendungen werden übersprungen.",
+        "serverTimeout": "Dein Server hat vor dem Ende der Liste aufgehört. Bereits hinzugefügte Sendungen bleiben. Versuch es noch einmal, um den Rest hinzuzufügen."
       },
       "row": {
         "followed": "Gefolgt",
@@ -3278,7 +3285,11 @@
       "asked": "Server um Prüfung gebeten",
       "recently": "Vor weniger als einer Minute geprüft. Versuch es gleich noch einmal.",
       "cantNow": "Dein Server kann Feeds gerade nicht prüfen. Versuch es später noch einmal.",
-      "failed": "Diese Sendung konnte nicht geprüft werden. Versuch es noch einmal."
+      "failed": "Diese Sendung konnte nicht geprüft werden. Versuch es noch einmal.",
+      "noNew": "Keine neuen Episoden",
+      "found_one": "{{count}} neue Episode",
+      "found_other": "{{count}} neue Episoden",
+      "lastChecked": "Geprüft {{when}}"
     }
   },
   "reader": {

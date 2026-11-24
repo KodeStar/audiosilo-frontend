@@ -1,12 +1,18 @@
 import type { ParseKeys } from 'i18next';
 
 import { ApiError, apiErrorKind } from '@/api/client';
-import type { OpmlImportRow, PodcastRequest } from '@/api/types';
+import type { OpmlImportRow, PodcastRequest, PodcastShow } from '@/api/types';
 import { FIND_SHOWS_SECTIONS, type FindShowsSection } from '@/lib/paths';
 import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { utf8 } from '@/lib/sha256';
 
-import { type AccountRefusal, canRetryImportFailure, isQueuedRow } from './opml-waves';
+import {
+  type AccountRefusal,
+  canRetryImportFailure,
+  isQueuedRow,
+  NO_ANSWER,
+  SERVER_TIMEOUT,
+} from './opml-waves';
 import { requestReasonKey } from './podcast-model';
 
 /**
@@ -133,7 +139,8 @@ export function followByUrlErrorKey(e: unknown): ParseKeys {
   }
 }
 
-/** Why an import stopped with `failed` (`code` the refusal's, null for no answer). */
+/** Why an import stopped with `failed` (`code` the refusal's, or this app's `no_answer` /
+ * `server_timeout`; null when it said none). */
 export function importFailureKey(code: string | null): ParseKeys {
   switch (code) {
     case 'invalid_opml':
@@ -141,6 +148,10 @@ export function importFailureKey(code: string | null): ParseKeys {
       return 'podcasts.import.fail.notOpml';
     case 'opml_limit':
       return 'podcasts.import.fail.tooLarge';
+    case NO_ANSWER:
+      return 'podcasts.import.fail.noAnswer';
+    case SERVER_TIMEOUT:
+      return 'podcasts.import.fail.serverTimeout';
     default:
       return accountRefusalKey(code) ?? 'podcasts.import.fail.other';
   }
@@ -253,6 +264,18 @@ export function requestStateKey(r: Pick<PodcastRequest, 'state'>): ParseKeys {
   }
 }
 
+/** What a follow request's row is called (fe#126): an added show's own title from the
+ * library's show list, else the name the directory or the imported list gave it, else its
+ * (redacted) feed address. */
+export function requestLabel(
+  r: Pick<PodcastRequest, 'state' | 'library_id' | 'show_path' | 'title' | 'feed'>,
+  shows: readonly Pick<PodcastShow, 'path' | 'title'>[] | undefined,
+): string {
+  const added = requestShow(r);
+  const title = added ? shows?.find((s) => s.path === added.path)?.title : undefined;
+  return title || r.title || r.feed;
+}
+
 /** How a follow request ended, read from the live follow requests: `null` while it is
  * open, or before the requests have been read (what the follow's answer said stands);
  * `unknown` once a read list no longer holds it (the server lists a week's requests, so an
@@ -290,11 +313,40 @@ export function feedAddressesOf(feedUrl: string): string[] {
   return [feedUrl, `${other}://${feedUrl.slice(m[0].length)}`];
 }
 
+/** `seen` with each request of `requests` that has ended and `seen` does not hold yet
+ * (`seen` itself when there is none, so a read that ended nothing new changes nothing). */
+export function rememberEnded(
+  seen: ReadonlyMap<number, PodcastRequest>,
+  requests: readonly PodcastRequest[],
+): ReadonlyMap<number, PodcastRequest> {
+  let next: Map<number, PodcastRequest> | null = null;
+  for (const r of requests) {
+    if (isOpenRequest(r) || seen.has(r.id)) continue;
+    next ??= new Map(seen);
+    next.set(r.id, r);
+  }
+  return next ?? seen;
+}
+
+/** The follow requests read live with each one seen ended (`rememberEnded`) that they no
+ * longer hold (fe#126: dismissed since, in another section or on another device), so an
+ * import row whose request ended stays as it ended (`liveImportRows`), never queued again.
+ * The live list wins for a request it holds; a list not read yet stays unread. */
+export function withEndedRequests(
+  requests: readonly PodcastRequest[] | undefined,
+  ended: ReadonlyMap<number, PodcastRequest>,
+): readonly PodcastRequest[] | undefined {
+  if (!requests || ended.size === 0) return requests;
+  const held = new Set(requests.map((r) => r.id));
+  const gone = [...ended.values()].filter((r) => !held.has(r.id));
+  return gone.length ? [...requests, ...gone] : requests;
+}
+
 /** An import's rows with each queued one's request read live: followed once it ended
  * done, cancelled, or an error (with the request's error) once it ended otherwise. A
  * request the list does not hold stands as the import's answer said: the import's own
  * requests are newer than any list's cut-off, and a list read before a wave's requests
- * landed must not end them. */
+ * landed must not end them (one dismissed since it ended is kept: `withEndedRequests`). */
 export function liveImportRows(
   rows: readonly OpmlImportRow[],
   requests: readonly PodcastRequest[] | undefined,
