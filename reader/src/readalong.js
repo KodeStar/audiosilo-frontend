@@ -25,6 +25,8 @@
 //
 // The pure parts (index, lookups, clock, CFI search) are exported for reader/test.
 
+import { clickTaken } from './taps.js';
+
 /** How long after a sentence ends it stays lit while nothing follows it (seconds): the
  * highlight does not flicker off between sentences; a longer gap (music, a passage the
  * text does not have) shows none. */
@@ -375,9 +377,7 @@ export function createReadalong({
   }
 
   function onTap(index, doc, e) {
-    if (!idx || e.defaultPrevented || e.target?.closest?.('a[href]')) return;
-    const selection = doc.getSelection?.();
-    if (selection && !selection.isCollapsed) return;
+    if (!idx || clickTaken(e, doc)) return;
     const pos = caretAt(doc, e.clientX, e.clientY);
     if (!pos?.node) return;
     let hit = -1;

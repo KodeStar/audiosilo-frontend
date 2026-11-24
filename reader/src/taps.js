@@ -6,8 +6,8 @@
 // prevents it too), a selection, or a swipe (the paginator turns the page under it).
 
 /** The middle of the page, as shares of the reader's width. */
-export const CENTRE_FROM = 0.25;
-export const CENTRE_TO = 0.75;
+const CENTRE_FROM = 0.25;
+const CENTRE_TO = 0.75;
 
 /** How far (px) a press may move and still be a tap. */
 export const TAP_SLOP = 10;
@@ -18,6 +18,14 @@ export function isCentre(x, width) {
   if (x === null || !(width > 0)) return true;
   const share = x / width;
   return share >= CENTRE_FROM && share <= CENTRE_TO;
+}
+
+/** Whether a click in `doc` belongs to something else: a link (by its element, or foliate's
+ * handler having prevented it), a sentence the read-along took, or a selection being made. */
+export function clickTaken(e, doc) {
+  if (e.defaultPrevented || e.target?.closest?.('a[href]')) return true;
+  const selection = doc.getSelection?.();
+  return !!selection && !selection.isCollapsed;
 }
 
 /**
@@ -44,10 +52,7 @@ export function watchTaps(doc, { onTap, viewportX, width, defer = (fn) => setTim
     if (from && Math.hypot(e.screenX - from.x, e.screenY - from.y) > TAP_SLOP) return;
     const x = viewportX(e);
     defer(() => {
-      if (e.defaultPrevented || e.target?.closest?.('a[href]')) return;
-      const selection = doc.getSelection?.();
-      if (selection && !selection.isCollapsed) return;
-      if (isCentre(x, width())) onTap();
+      if (!clickTaken(e, doc) && isCentre(x, width())) onTap();
     });
   });
 }
