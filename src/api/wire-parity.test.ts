@@ -38,6 +38,7 @@ const ENVELOPES: Record<string, string> = {
   chapters: 'T.ChaptersResponse',
   progress: '{ progress: T.Progress | null }',
   'me-progress': '{ progress: T.Progress[] | null }',
+  favourites: '{ favourites: T.Favourite[] | null }',
   'listening-sync': 'T.ListeningSyncResponse',
   bookmarks: '{ bookmarks: T.Bookmark[] }',
   meta: 'T.BookMeta',

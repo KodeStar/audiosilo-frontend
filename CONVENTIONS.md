@@ -1799,7 +1799,11 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `next`; a `work` without `local` is the rail's next work left unplaced; a community
 `next` can be in another library);
 `coverUrl(lib, path, {size, version})` (`cover_sizes`; `size` bounds the longer side;
-`version` is the book's `cover_version`, sent as `v=` purely as a cache buster);
+`version` is the book's `cover_version`, sent as `v=` purely as a cache buster; a
+`/me/progress` row, a `Favourite`, an `FsEntry` and a `HouseListeningRow` carry their book's
+too (server#215); a progress row's cover (Home's tiles and Now card, See all, the
+palette, the car) takes the row's own before its `/item`'s, so the URL does not change as
+the book loads);
 `bookMeta(..., {includePrevious, hideSpoilers})` and `useBookMeta(..., opts)`
 (`meta_bundle`; each variant has its own `qk.bookMeta` key; `nextBook` and an
 `includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains

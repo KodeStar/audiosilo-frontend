@@ -195,7 +195,12 @@ function useBookItems(
           subtitle: [b.author, sourceOf(b.connectionId, b.library_id, b.connectionName)]
             .filter(Boolean)
             .join(' · '),
-          cover: { connectionId: b.connectionId, libraryId: b.library_id, path: b.rel_path },
+          cover: {
+            connectionId: b.connectionId,
+            libraryId: b.library_id,
+            path: b.rel_path,
+            version: b.cover_version,
+          },
           run: () => openBook(b.connectionId, b.library_id, b.rel_path),
         };
       }),
@@ -221,7 +226,12 @@ function useBookItems(
           ]
             .filter(Boolean)
             .join(' · '),
-          cover: { connectionId: p.connectionId, libraryId: p.library_id, path: p.path },
+          cover: {
+            connectionId: p.connectionId,
+            libraryId: p.library_id,
+            path: p.path,
+            version: p.cover_version,
+          },
           run: () => openBook(p.connectionId, p.library_id, p.path),
         };
       }),
@@ -289,7 +299,10 @@ function CoverThumb({ cover, label }: { cover: PaletteCover; label: string }) {
   const api = useApi(cover.connectionId);
   return (
     <Cover
-      source={{ uri: api.coverUrl(cover.libraryId, cover.path), headers: api.authHeaders() }}
+      source={{
+        uri: api.coverUrl(cover.libraryId, cover.path, { version: cover.version }),
+        headers: api.authHeaders(),
+      }}
       label={label}
       rounded="rounded-cover"
       size={36}

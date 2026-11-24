@@ -52,10 +52,29 @@ jest.mock('@/stores/session', () => ({
   onConnectionRemoved: () => () => {},
 }));
 jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({ coverUrl: () => 'https://s/cover', authHeaders: () => ({}) }),
+  useOptionalApi: () => ({
+    coverUrl: (_lib: number, path: string, o?: { version?: string }) =>
+      `https://s/cover?path=${path}${o?.version ? `&v=${o.version}` : ''}`,
+    authHeaders: () => ({}),
+  }),
   useApis: () => [],
   ConnectionScope: ({ children }: { children: unknown }) => children,
 }));
+
+// Each cover's image URL, by its label (the real Cover still renders).
+const mockCoverUris = new Map<string, string | undefined>();
+jest.mock('@/components/ui/cover', () => {
+  const actual = jest.requireActual('@/components/ui/cover');
+  return {
+    ...actual,
+    Cover: (p: { source?: string | { uri?: string } | null; label?: string }) => {
+      if (p.label)
+        mockCoverUris.set(p.label, typeof p.source === 'string' ? p.source : p.source?.uri);
+      return actual.Cover(p);
+    },
+  };
+});
+let mockFavourites: unknown[] = [];
 
 type Progress = {
   connectionId: string;
@@ -122,7 +141,7 @@ jest.mock('@/api/hooks', () => ({
   }),
   useLibrariesAll: () => ({ groups: mockGroups }),
   useRecentAll: () => ({ unreadError: mockRecent.error, ...mockRecent }),
-  useFavouritesAll: () => ({ favourites: [] }),
+  useFavouritesAll: () => ({ favourites: mockFavourites }),
   useBook: () => ({ data: undefined }),
   useKnownBook: () => undefined,
   useMyListening: () => ({
@@ -239,6 +258,8 @@ const started = (path: string, updated: string): Progress => ({
 });
 
 beforeEach(() => {
+  mockFavourites = [];
+  mockCoverUris.clear();
   mockModulesOn = {};
   mockUseActiveModules.mockClear();
   mockCaps = {};
@@ -293,6 +314,28 @@ describe('HomeScreen', () => {
     mockPlayable = () => false;
     await mountHome();
     expect(screen.getByText('Now card: Newest (not here)')).toBeTruthy();
+  });
+
+  it("versions a favourite's cover URL by its cover_version", async () => {
+    const fav = (path: string, title: string, cover_version?: string) => ({
+      connectionId: 'a',
+      connectionName: 'A',
+      library_id: 1,
+      path,
+      is_book: true,
+      title,
+      author: 'Ann',
+      series: '',
+      series_index: 0,
+      duration: 100,
+      created_at: '2026-10-01T00:00:00Z',
+      cover_version,
+    });
+    mockFavourites = [fav('F/One', 'Fav One', 'fv1'), fav('F/Two', 'Fav Two')];
+    await mountHome();
+    expect(mockCoverUris.get('Fav One')).toBe('https://s/cover?path=F/One&v=fv1');
+    // A favourite from an older server (no cover_version) asks without one.
+    expect(mockCoverUris.get('Fav Two')).toBe('https://s/cover?path=F/Two');
   });
 
   it('places Listening in the house with the signed-in servers', async () => {

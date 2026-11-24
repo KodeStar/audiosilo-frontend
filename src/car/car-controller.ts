@@ -901,7 +901,9 @@ async function buildAndWrite(reads: ReadMode): Promise<void> {
       artwork.set(key, local);
       continue;
     }
-    const name = artworkName(key, b.book?.cover_version);
+    // The progress row's own version (GET /me/progress), else the book's.
+    const version = b.progress?.cover_version ?? b.book?.cover_version;
+    const name = artworkName(key, version);
     names.add(name);
     if (onDisk.has(name)) {
       artwork.set(key, artworkUri(name));
@@ -914,7 +916,7 @@ async function buildAndWrite(reads: ReadMode): Promise<void> {
     const url = sizes
       ? client.coverUrl(b.ref.libraryId, b.ref.path, {
           size: COVER_SIZE,
-          version: b.book?.cover_version,
+          version,
         })
       : client.coverUrl(b.ref.libraryId, b.ref.path);
     missing.set(key, { name, url, headers: client.proxyHeadersFor(url) });
