@@ -2,7 +2,7 @@ import {
   memo,
   type ReactNode,
   useCallback,
-  useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -127,7 +127,9 @@ function PageRows({
   }, [page]);
   const layoutOf = () => page.get().layout;
   const layout = useSyncExternalStore(page.subscribe, layoutOf, layoutOf);
-  useEffect(() => measure(), [layout, measure]);
+  // Before the paint (the new architecture reads layout synchronously here): a list that
+  // mounts while the page is scrolled far down never shows the spacer where its rows go.
+  useLayoutEffect(() => measure(), [layout, measure]);
   const rows = () => {
     const { y, height } = page.get();
     return inlineRows(count, rowHeight, top, y, height || windowHeight);
