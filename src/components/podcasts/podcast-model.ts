@@ -29,6 +29,7 @@ const FETCH_REASONS = [
   'demo_account',
   'too_large',
   'identity_changed',
+  'show_unreadable',
   'signed_out',
   'no_access',
   'proxy_refused',

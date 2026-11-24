@@ -19,14 +19,20 @@ const proxied = (rel: string | null): string | null =>
   rel ? `https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m` : null;
 const mockArtworkUrl = jest.fn(proxied);
 let mockProxyHeaders: Record<string, string> | undefined;
-jest.mock('@/api/provider', () => ({
-  useOptionalApi: () => ({
-    discoveryArtworkUrl: (rel: string | null) => mockArtworkUrl(rel),
-    proxyHeadersFor: () => mockProxyHeaders,
-  }),
-}));
+// Asking the URL again after a failed load (fe#126): no answer unless a test says.
+const mockProbe = jest.fn((_url: string, _signal?: AbortSignal): Promise<void> =>
+  Promise.reject(new TypeError('Failed to fetch')),
+);
+const mockApi = {
+  discoveryArtworkUrl: (rel: string | null) => mockArtworkUrl(rel),
+  proxyHeadersFor: () => mockProxyHeaders,
+  probeDiscoveryArtwork: (url: string, signal?: AbortSignal) => mockProbe(url, signal),
+};
+jest.mock('@/api/provider', () => ({ useOptionalApi: () => mockApi }));
 
 /* eslint-disable import/first */
+import { ApiError } from '@/api/client';
+
 import { DiscoveryArtwork } from './discovery-artwork';
 import { ARTWORK_RETRY_DELAYS_MS } from './artwork-retry';
 /* eslint-enable import/first */
@@ -46,6 +52,7 @@ beforeEach(() => {
   mockArtworkUrl.mockClear().mockImplementation(proxied);
   mockProxyHeaders = undefined;
   mockMounts = 0;
+  mockProbe.mockClear().mockImplementation(() => Promise.reject(new TypeError('Failed to fetch')));
 });
 afterEach(() => {
   jest.useRealTimers();
@@ -104,6 +111,42 @@ describe('DiscoveryArtwork', () => {
     const other = '/api/v1/podcasts/discovery/artwork?id=def';
     await view.rerender(<DiscoveryArtwork connectionId="c1" artworkUrl={other} size={56} />);
     expect(image()!.props.source).toEqual({ uri: `https://s${other}&token=m` });
+  });
+
+  it('asks the URL once after a failed load and mounts again at once when it answers', async () => {
+    mockProbe.mockImplementation(() => Promise.resolve());
+    await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    await fail();
+    expect(mockProbe).toHaveBeenCalledWith(
+      'https://s/api/v1/podcasts/discovery/artwork?id=abc&token=m',
+      expect.any(AbortSignal),
+    );
+    await act(async () => jest.advanceTimersByTime(0));
+    expect(image()).not.toBeNull();
+    expect(mockMounts).toBe(2);
+  });
+
+  it("waits the server's Retry-After when the probe is turned away with one", async () => {
+    mockProbe.mockImplementation(() =>
+      Promise.reject(new ApiError(429, 'busy', 'provider_rate_limited', 7)),
+    );
+    await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    await fail();
+    await act(async () => jest.advanceTimersByTime(6_999));
+    expect(image()).toBeNull();
+    await act(async () => jest.advanceTimersByTime(1));
+    expect(image()).not.toBeNull();
+  });
+
+  it('keeps the placeholder for artwork that is gone', async () => {
+    mockProbe.mockImplementation(() =>
+      Promise.reject(new ApiError(404, 'gone', 'artwork_not_found')),
+    );
+    await render(<DiscoveryArtwork connectionId="c1" artworkUrl={REL} size={56} />);
+    await fail();
+    await act(async () => jest.advanceTimersByTime(10 * 60_000));
+    expect(image()).toBeNull();
+    expect(mockMounts).toBe(1);
   });
 
   it('stops its timer when it goes away', async () => {

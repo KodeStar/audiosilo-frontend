@@ -1,7 +1,7 @@
 import { fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
-import type { PodcastFollowResult } from '@/api/types';
+import type { PodcastFollowResult, PodcastRequest } from '@/api/types';
 import { podcastShow } from '@/testing/podcast-fixtures';
 import { mountWithPortal } from '@/testing/render-overlay';
 
@@ -16,11 +16,16 @@ jest.mock('@/lib/open', () => ({
   useOpen: () => ({ openPodcastShow: (...a: unknown[]) => mockOpenShow(...a) }),
 }));
 const mockFollow = jest.fn();
+let mockRequests: PodcastRequest[] | undefined;
+let mockShows: { path: string; title: string }[] | undefined;
+jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 jest.mock('@/api/hooks', () => {
   const { CapabilityError } = jest.requireActual('@/api/hooks');
   return {
     CapabilityError,
     useFollowPodcastByUrl: () => ({ mutateAsync: mockFollow, isPending: false }),
+    useFollowRequests: () => ({ data: mockRequests }),
+    usePodcastShows: () => ({ data: mockShows }),
   };
 });
 
@@ -38,6 +43,8 @@ async function follow(address: string) {
 }
 
 beforeEach(() => {
+  mockRequests = undefined;
+  mockShows = undefined;
   mockOnline = true;
   mockFollow.mockReset();
   mockOpenShow.mockReset();
@@ -78,6 +85,78 @@ describe('FollowByUrl', () => {
     expect(await screen.findByTestId('follow-by-url-adding')).toBeTruthy();
     // The form clears for the next one.
     expect(screen.getByTestId('feed-address').props.value).toBe('');
+  });
+
+  describe('a new show, read live until its request ends (fe#126)', () => {
+    const request = (over: Partial<PodcastRequest>): PodcastRequest => ({
+      id: 1,
+      library_id: 7,
+      state: 'running',
+      feed: 'https://example.com/...',
+      private: false,
+      show_path: null,
+      error: null,
+      created_at: '2026-10-20T10:00:00Z',
+      updated_at: '2026-10-20T10:00:00Z',
+      ...over,
+    });
+    const asked = async () => {
+      mockFollow.mockResolvedValue({ state: 'subscribing', request: request({}) });
+      const view = await mount();
+      await follow(FEED);
+      await screen.findByTestId('follow-by-url-adding');
+      return view;
+    };
+    const rerender = (view: Awaited<ReturnType<typeof mount>>) =>
+      view.rerender(<FollowByUrl connectionId="c1" libraryId={7} />);
+
+    it('says why it could not be added, not Adding, once it failed', async () => {
+      const view = await asked();
+      mockRequests = [request({ state: 'failed', error: { code: 'not_a_feed', message: 'x' } })];
+      await rerender(view);
+      expect(screen.queryByTestId('follow-by-url-adding')).toBeNull();
+      expect(screen.getByTestId('follow-by-url-failed').props.children).toBe(
+        "Couldn't add the show. That address isn't a podcast feed.",
+      );
+    });
+
+    it('says it was cancelled', async () => {
+      const view = await asked();
+      mockRequests = [request({ state: 'cancelled' })];
+      await rerender(view);
+      expect(screen.getByTestId('follow-by-url-cancelled')).toBeTruthy();
+    });
+
+    it('offers Open show once it is added', async () => {
+      const view = await asked();
+      mockShows = [{ path: 'New Show', title: 'The New Show' }];
+      mockRequests = [request({ state: 'done', show_path: 'New Show' })];
+      await rerender(view);
+      expect(screen.getByTestId('follow-by-url-following').props.children).toBe(
+        'You follow The New Show.',
+      );
+      await fireEvent.press(screen.getByRole('button', { name: 'Open show' }));
+      expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'New Show');
+    });
+
+    it('keeps Adding while it is open, or before the list is read', async () => {
+      const view = await asked();
+      expect(screen.getByTestId('follow-by-url-adding')).toBeTruthy();
+      mockRequests = [request({ state: 'queued' })];
+      await rerender(view);
+      expect(screen.getByTestId('follow-by-url-adding')).toBeTruthy();
+    });
+
+    it('says nothing once the list no longer holds it (dismissed), never Adding again', async () => {
+      const view = await asked();
+      mockRequests = [request({ state: 'failed', error: { code: 'not_a_feed', message: 'x' } })];
+      await rerender(view);
+      expect(screen.getByTestId('follow-by-url-failed')).toBeTruthy();
+      mockRequests = [];
+      await rerender(view);
+      expect(screen.queryByTestId('follow-by-url-failed')).toBeNull();
+      expect(screen.queryByTestId('follow-by-url-adding')).toBeNull();
+    });
   });
 
   it('sends a private feed as private', async () => {

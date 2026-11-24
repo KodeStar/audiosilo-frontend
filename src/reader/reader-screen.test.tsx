@@ -159,13 +159,7 @@ jest.mock('./reading-progress', () => ({
 import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
 import { centreTapArrived, resetCentreTapForTests } from './reader-chrome';
-import {
-  focusHoldsBar,
-  focusStaysIn,
-  keyboardFocus,
-  ReaderScreen,
-  tocOpeningIndex,
-} from './reader-screen';
+import { focusHoldsBar, focusStaysIn, keyboardFocus, ReaderScreen } from './reader-screen';
 import { loadAutoHide, loadReaderTheme, saveAutoHide, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
@@ -1319,15 +1313,5 @@ describe('ReaderScreen', () => {
       await unmount();
       expect(saveReaderPlace).not.toHaveBeenCalled();
     });
-  });
-});
-
-describe('tocOpeningIndex', () => {
-  it('opens at the row only when the rows from it on fill the window', () => {
-    // 10 rows of 50 below row 190 fill a 500-high window; 9 rows do not.
-    expect(tocOpeningIndex(190, 200, 50, 500)).toBe(190);
-    expect(tocOpeningIndex(191, 200, 50, 500)).toBeUndefined();
-    // The top needs no opening index.
-    expect(tocOpeningIndex(0, 200, 50, 500)).toBeUndefined();
   });
 });

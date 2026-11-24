@@ -2164,6 +2164,10 @@ export type PodcastRequest = {
   library_id: number | null;
   state: string;
   feed: string;
+  /** The show's name as the directory or the imported list gave it (v2.7.0, fe#126): null
+   * for a follow by address, a private feed, or a request from before; absent on older
+   * servers. */
+  title?: string | null;
   private: boolean;
   show_path: string | null;
   error: PodcastError | null;

@@ -1,4 +1,4 @@
-import { ApiError } from '@/api/client';
+import { ApiError, isServerAwayError } from '@/api/client';
 import type { OpmlImportResult, OpmlImportRow, PodcastRequest } from '@/api/types';
 import { FOLLOW_REQUEST_POLL_MS, isOpenRequest } from '@/lib/podcast-requests';
 
@@ -25,8 +25,12 @@ import { FOLLOW_REQUEST_POLL_MS, isOpenRequest } from '@/lib/podcast-requests';
  *   again). A wave with no `limited` row sends no other: what is queued is followed live.
  * - `429 opml_rate_limited` / `503 opml_busy` wait their `Retry-After` (else 30 s / 2 s);
  *   five such answers in a row stop it (`stopped`, `busy`). Any other refusal is `failed`
- *   with its code; a network failure or a timeout is `failed` with none (re-uploading is
- *   safe: rows already done answer `already_following` / `already_queued`).
+ *   with its code. An upload with no answer (the network, the client's timeout, a gateway
+ *   giving up) is `failed` with this app's `no_answer`: the server carries an import on
+ *   when its upload is given up (server#553), so it may still be adding the list's shows;
+ *   the server's own bound (its 503 with no code) is `server_timeout`: the rows it reached
+ *   are done. Re-uploading is safe either way: rows already done answer
+ *   `already_following` / `already_queued`.
  * - `pause()` (the app went to the background) holds every timer; `resume()` looks again
  *   at once. `mayAct()` (the person listening may act for this connection) is checked
  *   before each upload. `stop()` and `dispose()` send nothing more.
@@ -69,6 +73,9 @@ export type WaveDeps = {
   onChange: (state: WaveState) => void;
   /** Each answered upload (the caller reads its show list again). */
   onWave?: (result: OpmlImportResult) => void;
+  /** An upload that got no answer (`no_answer`): the import may carry on, so the caller
+   * reads what it may have followed again. */
+  onNoAnswer?: () => void;
   now?: () => number;
 };
 
@@ -102,6 +109,20 @@ const PERMANENT_REFUSALS: readonly string[] = [
   'invalid_feed_url',
   ...ACCOUNT_REFUSALS,
 ];
+
+/** This app's failure codes for an upload that ended without the import's answer (see the
+ * rules above): `no_answer`, the import may still be running; `server_timeout`, the
+ * server's own bound ended it. */
+export const NO_ANSWER = 'no_answer';
+export const SERVER_TIMEOUT = 'server_timeout';
+
+/** The failure code of an upload that failed for any reason but a busy answer. */
+function uploadFailureCode(e: unknown): string | null {
+  if (isServerAwayError(e)) return NO_ANSWER;
+  if (!(e instanceof ApiError)) return null;
+  // The server's own 503 with no code: its import bound (or its stop) ended the import.
+  return e.code ?? (e.status === 503 && e.fromServer ? SERVER_TIMEOUT : null);
+}
 
 /** Refusals that repeating the same import or feed request cannot resolve. */
 export function canRetryImportFailure(code: string | null): boolean {
@@ -333,9 +354,9 @@ export class OpmlWaves {
         ? (e.retryAfterSeconds ?? (e.status === 429 ? RATE_LIMITED_FALLBACK_S : BUSY_FALLBACK_S))
         : null;
     if (busy === null) {
-      this.set({
-        status: { kind: 'failed', code: e instanceof ApiError ? (e.code ?? null) : null },
-      });
+      const code = uploadFailureCode(e);
+      this.set({ status: { kind: 'failed', code } });
+      if (code === NO_ANSWER) this.deps.onNoAnswer?.();
       return;
     }
     this.busyStreak++;

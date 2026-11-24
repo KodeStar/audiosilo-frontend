@@ -23,6 +23,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { mocksChanged } from '@/testing/mock-hooks';
 
+import { outlineTitles } from './opml-feeds';
 import { OpmlImportPanel } from './opml-import-panel';
 import type { WaveState } from './opml-waves';
 import type { OpmlImport } from './use-opml-import';
@@ -45,6 +46,8 @@ function importer(over: Partial<OpmlImport> = {}): OpmlImport {
     state: null,
     problem: null,
     fileName: null,
+    titles: null,
+    ended: new Map(),
     start: jest.fn(),
     unreadable: jest.fn(),
     stop: jest.fn(),
@@ -195,6 +198,56 @@ describe('OpmlImportPanel', () => {
     expect(screen.queryByTestId('opml-retry')).toBeNull();
   });
 
+  it("labels a row by the list's own name for it, else its show's folder (fe#126)", async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          titles: new Map([
+            [1, 'Morning Brief'],
+            [3, 'Night Owls'],
+          ]),
+          state: state({ kind: 'done' }, [
+            row(1, { path: 'Daily News' }),
+            row(2, { path: 'Tiny Tones' }),
+            row(3, { status: 'error' }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    const r = (i: number) => within(screen.getByTestId(`opml-row-${i}`));
+    expect(r(1).getByText('Morning Brief')).toBeTruthy();
+    expect(r(1).queryByText('Daily News')).toBeNull();
+    expect(r(2).getByText('Tiny Tones')).toBeTruthy();
+    expect(r(3).getByText('Night Owls')).toBeTruthy();
+  });
+
+  it("never shows a name's private address in full", async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          titles: outlineTitles(
+            `<opml><body>
+              <outline title="https://feeds.example.com/p/abc?key=s3cr3t"/>
+              <outline text="Listen at https://feeds.example.com/p/abc?key=s3cr3t today"/>
+            </body></opml>`,
+          ),
+          state: state({ kind: 'done' }, [
+            row(1, { private: true, feed: 'https://feeds.example.com/...' }),
+            row(2, { private: true }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    const r = (i: number) => within(screen.getByTestId(`opml-row-${i}`));
+    expect(r(1).getByText('https://feeds.example.com/...')).toBeTruthy();
+    expect(r(2).getByText('Listen at https://feeds.example.com/... today')).toBeTruthy();
+    expect(screen.queryByText(/s3cr3t/)).toBeNull();
+  });
+
   it('numbers the feeds 1..n when a folder outline came first (BRIDGE-06)', async () => {
     await render(
       <OpmlImportPanel
@@ -287,6 +340,24 @@ describe('OpmlImportPanel', () => {
     );
     expect(screen.getByTestId('opml-summary').props.children).toBe(
       '2 of 3 shows followed or being added',
+    );
+  });
+
+  it('keeps a row as its request ended once the list no longer holds it (dismissed, fe#126)', async () => {
+    const rows = [row(1, { status: 'queued', request_id: 5 })];
+    const gone = {
+      id: 5,
+      state: 'failed',
+      library_id: 7,
+      show_path: null,
+      error: { code: 'not_a_feed', message: 'x' },
+    } as PodcastRequest;
+    mockRequests = [];
+    const opml = importer({ state: state({ kind: 'done' }, rows), ended: new Map([[5, gone]]) });
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(within(screen.getByTestId('opml-row-1')).getByText("Couldn't add")).toBeTruthy();
+    expect(screen.getByTestId('opml-status').props.children).toBe(
+      "Import finished. 1 show wasn't added. See its status below.",
     );
   });
 

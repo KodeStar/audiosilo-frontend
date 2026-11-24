@@ -6,15 +6,16 @@ import { CoverImage } from '@/components/ui/cover-image';
 import { Icon } from '@/components/ui/icon';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-import { artworkRetryDelay } from './artwork-retry';
+import { artworkRetryDelay, probeArtwork } from './artwork-retry';
 
 /**
  * A directory result's artwork (Bridge Phase 2d-2), from this server's proxy with the
  * media token (`discoveryArtworkUrl`; never the directory's own image host). No artwork,
  * or one that keeps failing, is the microphone placeholder. A failed load (the server
- * fetches uncached images a few at a time, so some get 429 / 503) mounts the image again
- * with the same URL on `artworkRetryDelay`'s schedule. Rows mount as the list windows
- * them in, so artwork loads lazily.
+ * fetches uncached images a few at a time, so some get 429 / 503) asks the URL once to hear
+ * why (`probeArtwork`) and mounts the image again when `artworkRetryDelay` says: at once,
+ * never for artwork that is gone, else on its fixed schedule or after the server's longer
+ * `Retry-After`. Rows mount as the list windows them in, so artwork loads lazily.
  */
 export function DiscoveryArtwork({
   connectionId,
@@ -40,12 +41,19 @@ export function DiscoveryArtwork({
     setFailed(false);
   }
   useEffect(() => {
-    if (!failed) return;
-    const delay = artworkRetryDelay(failures);
-    if (delay === null) return;
-    const timer = setTimeout(() => setFailed(false), delay);
-    return () => clearTimeout(timer);
-  }, [failed, failures]);
+    if (!failed || !uri || !api || artworkRetryDelay(failures) === null) return;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    void probeArtwork(() => api.probeDiscoveryArtwork(uri, abort.signal)).then((probe) => {
+      if (abort.signal.aborted) return;
+      const delay = artworkRetryDelay(failures, probe);
+      if (delay !== null) timer = setTimeout(() => setFailed(false), delay);
+    });
+    return () => {
+      abort.abort();
+      clearTimeout(timer);
+    };
+  }, [failed, failures, uri, api]);
   return (
     <View
       className="items-center justify-center overflow-hidden rounded-lg bg-muted"

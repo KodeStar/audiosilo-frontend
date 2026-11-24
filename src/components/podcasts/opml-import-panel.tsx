@@ -22,7 +22,9 @@ import {
   importRowReasonKey,
   liveImportRows,
   stillAdding,
+  withEndedRequests,
 } from './find-shows-model';
+import { importRowLabel } from './opml-feeds';
 import { pickOpml } from './opml-pick';
 import {
   canRetryImport,
@@ -163,10 +165,22 @@ function ImportProgress({
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const { fileName, retries, canRetryRow, retryRow, stop: onStop, retry: onRetry } = opml;
+  const {
+    fileName,
+    titles,
+    ended,
+    retries,
+    canRetryRow,
+    retryRow,
+    stop: onStop,
+    retry: onRetry,
+  } = opml;
+  // A row's request dismissed since it ended (another section's list, another device) is
+  // read as it ended, not as the queued row the import answered (fe#126).
+  const known = useMemo(() => withEndedRequests(requests, ended), [requests, ended]);
   const rows = useMemo(
-    () => liveImportRows(withRetries(state.rows, retries), requests),
-    [state.rows, retries, requests],
+    () => liveImportRows(withRetries(state.rows, retries), known),
+    [state.rows, retries, known],
   );
   const numbers = useMemo(() => entryNumbers(rows), [rows]);
   const { settled, total } = importProgress(rows);
@@ -214,13 +228,14 @@ function ImportProgress({
             <ImportRow
               key={row.outline_index}
               row={row}
+              title={titles?.get(row.outline_index) ?? null}
               number={i + 1}
               duplicateOf={
                 row.duplicate_of === null
                   ? null
                   : (numbers.get(row.duplicate_of) ?? row.duplicate_of)
               }
-              reasonKey={importRowReasonKey(row, requests)}
+              reasonKey={importRowReasonKey(row, known)}
               busy={retries[row.outline_index]?.kind === 'busy'}
               onRetry={online && canRetryRow(row) ? retryRow : undefined}
             />
@@ -255,6 +270,7 @@ function StatusText({ status, rows }: { status: WaveStatus; rows: readonly OpmlI
 
 const ImportRow = memo(function ImportRow({
   row,
+  title,
   number,
   duplicateOf,
   reasonKey,
@@ -262,6 +278,8 @@ const ImportRow = memo(function ImportRow({
   onRetry,
 }: {
   row: OpmlImportRow;
+  /** The list's own name for it (`outlineTitles`), when it has one. */
+  title: string | null;
   /** Its place in the list as shown (`entryNumbers`). */
   number: number;
   /** A duplicate's earlier entry, numbered the same way. */
@@ -276,7 +294,7 @@ const ImportRow = memo(function ImportRow({
   const { t } = useTranslation();
   // The server marks a list's private feeds; a row with no usable feed has none to mark.
   const hasFeed = row.feed !== null && row.status !== 'invalid' && row.status !== 'duplicate';
-  const label = row.path ?? row.feed;
+  const label = importRowLabel(row, title);
   return (
     <RowSurface
       testID={`opml-row-${row.outline_index}`}

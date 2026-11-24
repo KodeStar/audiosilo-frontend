@@ -501,7 +501,7 @@ describe('requestEpisodeFetch', () => {
     expect(invalidate).toHaveBeenCalledWith({ queryKey: ['podcastEpisodes', 'c1', 5] });
   });
 
-  it.each(['module_off', 'bridge_unavailable', 'library_not_writable'])(
+  it.each(['module_off', 'bridge_unavailable', 'library_not_writable', 'show_unreadable'])(
     'reads a %s refusal as unavailable',
     async (code) => {
       mockClient!.retryPodcastFetch.mockRejectedValue(new ApiError(409, 'x', code));
@@ -511,6 +511,20 @@ describe('requestEpisodeFetch', () => {
       expect(useEpisodeFetch.getState().pending?.code).toBe(code);
     },
   );
+
+  it('stops following a fetch the server can no longer read the show for (show_unreadable)', async () => {
+    mockClient!.podcastFetchStatus.mockRejectedValue(
+      new ApiError(409, "Can't read the show.", 'show_unreadable'),
+    );
+    requestEpisodeFetch(target, book);
+    await flush();
+    await jest.advanceTimersByTimeAsync(2000);
+    expect(phase()).toBe('unavailable');
+    expect(useEpisodeFetch.getState().pending?.code).toBe('show_unreadable');
+    const calls = mockClient!.podcastFetchStatus.mock.calls.length;
+    await jest.advanceTimersByTimeAsync(60_000);
+    expect(mockClient!.podcastFetchStatus).toHaveBeenCalledTimes(calls);
+  });
 
   it('keeps waiting through a network blip while it follows the fetch', async () => {
     mockClient!.podcastFetchStatus.mockRejectedValueOnce(new TypeError('Network request failed'));
