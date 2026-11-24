@@ -73,25 +73,50 @@ export function communityCoverage(content: GenerateContent | undefined): {
   };
 }
 
-/** Whether any of the book's characters or recaps came from this server's own files. */
-function hasGenerated(content: GenerateContent | undefined): boolean {
-  return !!(content?.generated?.characters || content?.generated?.recaps);
+/** Whether the community has both the book's characters and its recaps
+ * (`communityCoverage`): nothing to generate, the covered line instead. */
+export function communityCovers(content: GenerateContent | undefined): boolean {
+  const community = communityCoverage(content);
+  return community.characters && community.recaps;
+}
+
+/**
+ * Whether characters or recaps generated here show on the book (server#218, the one rule
+ * the console reads from its estimate, `has.local` without `has.community`): a list the
+ * page renders that `generated` marks. A file the community's list masks never reaches
+ * `/meta`, so it counts for nothing, and a generated whole-book summary alone is no
+ * recaps (`generated.recaps` marks it too, but no list shows).
+ */
+export function generatedShown(content: GenerateContent | undefined): boolean {
+  return (
+    (!!content?.generated?.characters && (content.characters?.length ?? 0) > 0) ||
+    (!!content?.generated?.recaps && (content.recaps?.length ?? 0) > 0)
+  );
 }
 
 /** The `sidecars.generate` job a book's status shows: its newest one while it is open
  * (queued, running or parked) or once it failed. A cancelled or finished one shows
- * nothing (the button is back, or the tabs are there). */
-export function statusJob(jobs: readonly BridgeJob[] | undefined): BridgeJob | undefined {
-  return statusJobOf(jobs, SIDECARS_GENERATE);
+ * nothing (the button is back, or the tabs are there). A failed one gives way to the
+ * covered line once the community has both (`covered`, `communityCovers`; server#218):
+ * decided by the book's state now, not the job's time, since the community covering
+ * the book leaves nothing to try again, however recent the failure. An open job still
+ * shows (it can be cancelled). */
+export function statusJob(
+  jobs: readonly BridgeJob[] | undefined,
+  covered = false,
+): BridgeJob | undefined {
+  const job = statusJobOf(jobs, SIDECARS_GENERATE);
+  return covered && job?.state === 'failed' ? undefined : job;
 }
 
 /**
  * What a book offers an admin (Bridge Phase 1e, the one rule the console shares): while
  * the community lacks either characters or recaps, `regenerate` (quieter, the overflow
- * menu) when some were generated here, else `generate`. When the community has both,
- * `covered`: no Generate, a line that says so instead (old generated files are masked by
- * the community's anyway). Nothing until the book's metadata and its jobs are known (no
- * button that vanishes a moment later), or while a job shows its status.
+ * menu) when some generated here show (`generatedShown`), else `generate`. When the
+ * community has both, `covered`: no Generate, a line that says so instead (old generated
+ * files are masked by the community's anyway). Nothing until the book's metadata and its
+ * jobs are known (no button that vanishes a moment later), or while a job shows its
+ * status (`statusJob`, where a failure gives way to the covered line).
  */
 export function generateOffer(opts: {
   allowed: boolean;
@@ -103,9 +128,8 @@ export function generateOffer(opts: {
 }): 'generate' | 'regenerate' | 'covered' | null {
   const { allowed, metaKnown, jobsKnown, showsJob, content } = opts;
   if (!allowed || !metaKnown || !jobsKnown || showsJob) return null;
-  const community = communityCoverage(content);
-  if (community.characters && community.recaps) return 'covered';
-  return hasGenerated(content) ? 'regenerate' : 'generate';
+  if (communityCovers(content)) return 'covered';
+  return generatedShown(content) ? 'regenerate' : 'generate';
 }
 
 /** The order books are queued in: the earlier books of the series first, in reading
