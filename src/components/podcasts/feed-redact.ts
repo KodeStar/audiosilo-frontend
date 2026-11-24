@@ -17,7 +17,7 @@ export function isWebAddress(text: string): boolean {
 }
 
 const WEB_ADDRESS = /https?:\/\/[^\t\n\f\r ]+/gi;
-const ONLY_WEB_ADDRESS = /^https?:\/\/[^\t\n\f\r ]+$/i;
+const ONLY_WEB_ADDRESS = new RegExp(`^${WEB_ADDRESS.source}$`, 'i');
 
 const UNREADABLE = '[redacted URL]';
 
@@ -52,8 +52,9 @@ const HOST_REFUSED = /[\\^`{|}]/;
 function readHost(host: string): string | null {
   if (!host || HOST_REFUSED.test(host)) return null;
   // A port: what follows an IPv6 literal's `]`, else the last `:`.
-  const close = host.startsWith('[') ? host.lastIndexOf(']') : -1;
-  if (host.startsWith('[') && close === -1) return null;
+  const bracket = host.startsWith('[');
+  const close = bracket ? host.lastIndexOf(']') : -1;
+  if (bracket && close === -1) return null;
   const colon = close === -1 ? host.lastIndexOf(':') : close + 1;
   if (colon !== -1 && !/^(:\d*)?$/.test(host.slice(colon))) return null;
   for (let i = host.indexOf('%'); i !== -1; i = host.indexOf('%', i + 1)) {
