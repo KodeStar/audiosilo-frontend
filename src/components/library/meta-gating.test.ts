@@ -371,6 +371,25 @@ describe('recapMarks', () => {
     expect(recapMarks({ recaps: false }, both)).toEqual(none);
   });
 
+  // server#218: the earlier books' recaps below are the community's, each crediting its
+  // own work in its row, so they move the chips onto the parts but add no credit here.
+  it("marks each generated part above the earlier books' recaps, without this work's credit", () => {
+    expect(recapMarks({ recaps: true, recap_summary: true }, { ...both, previous: true })).toEqual({
+      panel: false,
+      list: true,
+      summary: true,
+      credit: false,
+    });
+    expect(recapMarks({ recaps: true }, { list: false, summary: false, previous: true })).toEqual({
+      ...none,
+      credit: false,
+    });
+    // A community summary of this book's keeps its credit beside them.
+    expect(recapMarks({ recaps: true, recap_summary: false }, { ...both, previous: true })).toEqual(
+      { panel: false, list: true, summary: false, credit: true },
+    );
+  });
+
   it('only counts the parts the panel shows', () => {
     // A generated summary the panel withholds does not mark a community list.
     expect(recapMarks({ recap_summary: true }, { list: true, summary: false })).toEqual(none);

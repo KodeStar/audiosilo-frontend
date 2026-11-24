@@ -917,10 +917,15 @@ Read-along); the console covers everything else.
   The community has both: `covered` (no action; `useGenerate` splits it out as `covered`, and
   the book page's `GenerateCovered` says so, admin-only, with "See characters" opening the
   Characters tab; the companion never shows it). Else
-  `regenerate` (the book menu) when some were generated here, else `generate`. Nothing until
-  the book's `/meta` answer
+  `regenerate` (the book menu) when generated content shows (`generatedShown`:
+  `generated.characters`, or `generated.recaps` with a non-empty `recaps` list; a masked file never
+  reaches `/meta` and a generated summary alone is no recaps), else `generate`: the one rule the
+  console reads from its estimate as `has.local[d] && !has.community[d]` (server#218, pinned on
+  the server by `TestGeneratedShownAgrees`). Nothing until the book's `/meta` answer
   (`metaAnswered`) and its jobs are known, or while a job shows its status (`statusJob`: the
-  newest generate job while open or once failed). The player always sends `GENERATE_PARAMS`
+  newest generate job while open or once failed; a failed one gives way to the covered line once
+  the community has both, `communityCovers`, by the book's state now, not the job's time: nothing
+  is left to try again, server#218). The player always sends `GENERATE_PARAMS`
   (`source: auto`, `contribute: local`): it never offers to contribute.
 - **Surfaces**: `useGenerate` (one book's model: allowed, offer, the confirmation, the queue
   and cancel writes; its own job read is `active: false` with a `select`, so progress polls
@@ -1413,6 +1418,37 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   chosen shows at once on every surface mounted (`themeWatchers`). The host
   only ever gets hex colours and a scheme (`ReaderTheme`, `readerThemeOf`): black is the dark
   scheme on `#000000`, so the reader's dark rules and read-along highlight apply unchanged.
+- **Immersive mode** (fe#246, `reader-chrome.ts`): the full-screen reader's top bar hides
+  `CHROME_HIDE_MS` (4 s) after it shows or was last pressed, or at the first page turn the
+  reader made (never the narration's while it follows); a tap in the middle half of the page
+  shows it again, and a second hides it. The rules are pure (`mayHide`, `nextChrome`,
+  `settleChrome`) under `useReaderChrome`. It never hides with the setting off (the reader
+  menu's "Hide while reading", `loadAutoHide`, per device, default on), a screen reader on
+  (`useScreenReader`, `src/lib/screen-reader.ts`), no book on the page, or the reader menu,
+  the contents or (web) the keyboard's focus on the screen's own controls (the bar, the page
+  edges, the cards; never the book's frame), so a keyboard user tabbing out of the book
+  brings the hidden bar back. While it can hide, the bar lies over the page (in the apps an
+  `Animated.View`, a slide that reduce motion drops), so showing it never lays the book out
+  again. On the web, which cannot tell a screen reader is on, the hidden bar stays mounted,
+  only slid off the top (a CSS transform, never `display:none`, `aria-hidden` or `inert`): a
+  virtual cursor still reaches Close and Contents, any focus arriving in it shows and holds
+  it (`focusHoldsBar`), and it comes before the book in the DOM, so Close is the first Tab
+  stop and Shift+Tab out of the book lands on it. The room above the page is the page's
+  colour and holds its largest top inset per window size (`useHeldTopInset`, each size its
+  own, keyed by the insets' own
+  `useSafeAreaFrame`, which comes with them), since the status bar (hidden with the bar in
+  the apps, expo-status-bar, and only while the reader is the screen on top: Reconnect's
+  sign-in opens over it) going would shrink it on Android. The Android navigation bar stays (no
+  `expo-navigation-bar`). The centre tap is the reader document's `centreTap`
+  (`reader/src/taps.js`): a click in the page's middle half (a section's click placed by its
+  frame, which scrolls sideways under the page), never one a link took (foliate prevents it;
+  it is judged a tick later), a selection, a swipe or a modified click. A read-along sentence
+  tap counts too (it seeks and leaves the click alone): with a map in, nearly every tap lands
+  on a sentence. It is a `click` on the section's document, the path the read-along's
+  sentence tap proved on iOS. In the apps, until a centre tap has arrived in this run of the
+  app (`centreTapArrived`), a page turn shows the bar for the wait instead of hiding it
+  (`turnShows`), so a WebView that never delivers one cannot strand the reader without it.
+  The companion's Text tab has no top bar and ignores it.
 - **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
   session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
   message goes: `ready` runs the host's `onReady`, sends what waited, then the read-along side's
@@ -1772,6 +1808,15 @@ and the About card under its eyebrow for a generated description) and never the 
 CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
 generated, and every `Attribution` beside characters (or a lone list recap) reads through it.
+The book page's earlier books (`PreviousBooksSection`) are other works: each opened row credits
+its own work's `attribution` (its `source_url` is that work's page), never the current work's,
+which is absent when the current work's content was all generated (server#218).
+Every rendered credit links its `source_url` (CC BY-SA asks the material be linked) and its
+licence the deed: `Attribution` and Search's `CharacterCredits` draw both with `CaptionLink`
+(companion-pieces.tsx), plain text when the URL is missing or not http(s). Search credits the
+character rows on screen (`characterCredits(hits)`, each hit carrying its book's
+`attribution`), one line per credit, licence and source page, naming the book when there are
+several.
 A Recaps panel reads
 **`recapMarks(generated, shown)`** instead (Bridge 1e): the whole-book summary's source is
 `generated.recap_summary` (absent on an older server, whose `recaps` then stands for both),
@@ -1779,7 +1824,9 @@ the list's `generated.recaps` (the wire sets it for either part, but the server 
 summary only with its generated list, so a shown list it flags is generated), so a community
 summary beside a generated list keeps its credit and each part wears its own chip when they
 differ (one chip heads the panel when every shown part was generated; a part's chip sits under
-the list's heading or above the summary).
+the list's heading or above the summary). The book page passes `shown.previous` (its previous
+books, the community's): its generated parts then take their own chips instead of one heading
+the panel, and its `credit` stays this work's own parts' (server#218).
 
 **Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on

@@ -1,6 +1,6 @@
 import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react-native';
-import { AppState } from 'react-native';
+import { AppState, Text } from 'react-native';
 
 import type { BridgeEstimate, BridgeJob, BridgeJobRequest, ServerInfo, User } from '@/api/types';
 
@@ -54,7 +54,7 @@ import type { GenerateContent } from './bridge-model';
 import { GenerateCovered } from './generate-covered';
 import { GenerateOffer } from './generate-offer';
 import { GenerateStatus } from './generate-status';
-import type { GenerateModel } from './use-generate';
+import { type GenerateModel, useGenerate } from './use-generate';
 /* eslint-enable import/first */
 
 notifyQueriesSynchronously();
@@ -175,6 +175,83 @@ describe('the covered line', () => {
     await mountWithPortal(<GenerateCovered onOpen={onOpen} />);
     await fireEvent.press(screen.getByTestId('generate-covered-open'));
     expect(onOpen).toHaveBeenCalledTimes(1);
+  });
+});
+
+/** The book page's part of it (`book-page.tsx`): the offer's label, the job's status, and
+ * the covered line in the status's place. */
+function BookPageGenerate({ content }: { content: GenerateContent }) {
+  const model = useGenerate({ target: TARGET, content, metaKnown: true });
+  return (
+    <>
+      {model.offer ? <Text testID={`offer-${model.offer}`}>{model.offer}</Text> : null}
+      <GenerateStatus model={model} />
+      {model.covered ? <GenerateCovered onOpen={jest.fn()} /> : null}
+    </>
+  );
+}
+
+async function mountPage(content: GenerateContent) {
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  });
+  queryClients.push(qc);
+  await mountWithPortal(
+    <QueryClientProvider client={qc}>
+      <BookPageGenerate content={content} />
+    </QueryClientProvider>,
+  );
+  return qc;
+}
+
+// server#218: the book page's label and line, against the console's.
+describe("the book page's label and covered line", () => {
+  const covered = { characters: [{}], recaps: [{}] };
+
+  it('shows the covered line, not an old failure with Try again, once the community has both', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({ state: 'failed', path: TARGET.path, error: 'agent output failed validation' }),
+    ]);
+    await mountPage(covered);
+    expect(await screen.findByTestId('generate-covered')).toBeTruthy();
+    expect(screen.queryByTestId('generate-status')).toBeNull();
+    expect(screen.queryByTestId('generate-retry')).toBeNull();
+  });
+
+  it('still shows the failure, with Try again, while the community lacks either', async () => {
+    mockBridgeJobs.mockResolvedValue([
+      bridgeJob({ state: 'failed', path: TARGET.path, error: 'agent output failed validation' }),
+    ]);
+    await mountPage({ characters: [{}] });
+    expect(await screen.findByTestId('generate-retry')).toBeTruthy();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+
+  it('shows an open job over the covered line (it can be cancelled)', async () => {
+    mockBridgeJobs.mockResolvedValue([bridgeJob({ state: 'running', path: TARGET.path })]);
+    await mountPage(covered);
+    expect(await screen.findByTestId('generate-cancel')).toBeTruthy();
+    expect(screen.queryByTestId('generate-covered')).toBeNull();
+  });
+
+  it.each([
+    // [case, content, label]: Regenerate only while generated content shows.
+    [
+      'generated recaps shown',
+      { characters: [{}], recaps: [{}], generated: { recaps: true } },
+      'regenerate',
+    ],
+    // A file the community masks never reaches /meta, so nothing is marked.
+    ['masked generated characters', { characters: [{}] }, 'generate'],
+    // A generated summary alone is no recaps.
+    [
+      'a generated summary alone',
+      { recaps: [], generated: { recaps: true, recap_summary: true } },
+      'generate',
+    ],
+  ] as const)('labels the action from what shows: %s', async (_label, content, offer) => {
+    await mountPage(content);
+    expect(await screen.findByTestId(`offer-${offer}`)).toBeTruthy();
   });
 });
 

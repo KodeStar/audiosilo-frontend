@@ -1851,6 +1851,7 @@
       "history": "History",
       "attribution": "Community notes from {{credit}}",
       "licence": "Licence: {{licence}}",
+      "creditSource": "{{credit}}, opens the source page",
       "hideAgain": "Hide them again",
       "spoilersShown": "Spoilers shown",
       "justMet": "Just met",
@@ -3286,13 +3287,17 @@
     "contents": "Contents",
     "smaller": "Smaller text",
     "larger": "Larger text",
+    "settings": "Reading settings",
     "theme": {
-      "label": "Page colours: {{theme}}",
       "heading": "Page colours",
       "follow": "Like the app",
       "light": "Light",
       "dark": "Dark",
       "black": "Black"
+    },
+    "topBar": {
+      "heading": "Top bar",
+      "autoHide": "Hide while reading"
     },
     "previous": "Previous page",
     "next": "Next page",

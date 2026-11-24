@@ -1851,6 +1851,7 @@
       "history": "Verlauf",
       "attribution": "Community-Notizen von {{credit}}",
       "licence": "Lizenz: {{licence}}",
+      "creditSource": "{{credit}}, öffnet die Quellseite",
       "hideAgain": "Wieder ausblenden",
       "spoilersShown": "Spoiler sichtbar",
       "justMet": "Gerade kennengelernt",
@@ -3286,13 +3287,17 @@
     "contents": "Inhalt",
     "smaller": "Kleinere Schrift",
     "larger": "Größere Schrift",
+    "settings": "Leseeinstellungen",
     "theme": {
-      "label": "Seitenfarben: {{theme}}",
       "heading": "Seitenfarben",
       "follow": "Wie die App",
       "light": "Hell",
       "dark": "Dunkel",
       "black": "Schwarz"
+    },
+    "topBar": {
+      "heading": "Obere Leiste",
+      "autoHide": "Beim Lesen ausblenden"
     },
     "previous": "Vorherige Seite",
     "next": "Nächste Seite",

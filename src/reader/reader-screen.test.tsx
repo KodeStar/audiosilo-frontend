@@ -69,6 +69,27 @@ jest.mock('./ebook-file', () => ({ hasLocalEbook: (ref: unknown) => mockHasLocal
 jest.mock('@/api/provider', () => ({ useOptionalApi: () => ({}) }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/lib/back-or-home', () => ({ backOrHome: jest.fn() }));
+// The status bar's props as the screen last set them.
+let mockStatusBar: { hidden?: boolean } | null = null;
+jest.mock('expo-status-bar', () => ({
+  StatusBar: (props: { hidden?: boolean }) => {
+    mockStatusBar = props;
+    return null;
+  },
+}));
+// Whether VoiceOver or TalkBack is on (screen-reader's own tests); the rest of the module
+// is the real one (the toast starts its watch as it loads).
+let mockScreenReader = false;
+jest.mock('@/lib/screen-reader', () => ({
+  ...jest.requireActual('@/lib/screen-reader'),
+  useScreenReader: () => mockScreenReader,
+}));
+// Whether the reader is the screen on top (a page opened over it is not).
+let mockFocused = true;
+jest.mock('expo-router', () => ({
+  ...jest.requireActual('expo-router'),
+  useIsFocused: () => mockFocused,
+}));
 jest.mock('@/playback/progress-sync', () => ({ getDeviceId: () => Promise.resolve('dev') }));
 // The connection while it needs signing in again (sign-in-again's own tests); the sign-in
 // state itself is the real one.
@@ -137,8 +158,15 @@ jest.mock('./reading-progress', () => ({
 /* eslint-disable import/first */
 import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
-import { ReaderScreen, tocOpeningIndex } from './reader-screen';
-import { loadReaderTheme, saveReaderTheme } from './reader-settings';
+import { centreTapArrived, resetCentreTapForTests } from './reader-chrome';
+import {
+  focusHoldsBar,
+  focusStaysIn,
+  keyboardFocus,
+  ReaderScreen,
+  tocOpeningIndex,
+} from './reader-screen';
+import { loadAutoHide, loadReaderTheme, saveAutoHide, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
 const CFI_A = 'epubcfi(/6/4!/4/2/1:0)';
@@ -207,6 +235,9 @@ const answered = (kept: ReadingProgress, seen = false) =>
 
 describe('ReaderScreen', () => {
   beforeEach(() => {
+    // The reader's taps reach this app (a page turn hides the bar), but for the test of the
+    // fallback that waits for the first.
+    centreTapArrived();
     mockHasLocalEbook.mockReset().mockResolvedValue(true);
     jest.clearAllMocks();
     mockHost = null;
@@ -219,6 +250,9 @@ describe('ReaderScreen', () => {
     mockMap = null;
     mockNarrating = false;
     mockPlaying = true;
+    mockScreenReader = false;
+    mockFocused = true;
+    mockStatusBar = null;
   });
 
   describe('saving the place', () => {
@@ -246,6 +280,8 @@ describe('ReaderScreen', () => {
       await say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
       // A rotation lands on a page that starts a little earlier: shown, not saved.
       await say({ type: 'progress', cfi: CFI_A, fraction: 0.29, sectionLabel: '', relayout: true });
+      // The page turn hid the top bar (fe#246): a centre tap shows it.
+      await say({ type: 'centreTap' });
       expect(screen.getByText('29% through the book')).toBeTruthy();
       await unmount();
       expect(saveReaderPlace).toHaveBeenCalledTimes(1);
@@ -504,7 +540,7 @@ describe('ReaderScreen', () => {
       foreground: '#121c36',
     });
     await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
-    await fireEvent.press(screen.getByLabelText('Page colours: Like the app'));
+    await fireEvent.press(screen.getByLabelText('Reading settings'));
     await fireEvent.press(await screen.findByText('Black'));
     await waitFor(() =>
       expect(mockHost!.theme).toEqual({
@@ -513,9 +549,231 @@ describe('ReaderScreen', () => {
         foreground: '#e7ebf4',
       }),
     );
-    expect(screen.getByLabelText('Page colours: Black')).toBeTruthy();
     await expect(loadReaderTheme()).resolves.toBe('black');
     await saveReaderTheme('follow');
+  });
+
+  describe('immersive mode (fe#246)', () => {
+    // Also under an open menu, which hides the page from a screen reader.
+    const bar = () => screen.queryByLabelText('Close the reader', { includeHiddenElements: true });
+    const turn = () => say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+    const statusBarHidden = () => mockStatusBar?.hidden;
+    // Back on for the next test, whatever this one did (or where it stopped).
+    afterEach(() => saveAutoHide(true));
+
+    it('hides the top bar and the status bar at the first page turn, and a centre tap shows them', async () => {
+      await mount();
+      await opened();
+      // The landing is no page turn.
+      expect(bar()).toBeTruthy();
+      expect(statusBarHidden()).toBe(false);
+      await turn();
+      expect(bar()).toBeNull();
+      expect(statusBarHidden()).toBe(true);
+      // The page edges keep turning pages with the bar away.
+      await fireEvent.press(screen.getByLabelText('Next page'));
+      expect(mockHandle.next).toHaveBeenCalled();
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeTruthy();
+      expect(statusBarHidden()).toBe(false);
+      // A second tap puts it away again.
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeNull();
+    });
+
+    it('in the app, shows the bar at each page turn until a centre tap has arrived', async () => {
+      resetCentreTapForTests();
+      await mount();
+      await opened();
+      await turn();
+      expect(bar()).toBeTruthy();
+      expect(statusBarHidden()).toBe(false);
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.2, sectionLabel: '' });
+      expect(bar()).toBeTruthy();
+      // The first centre tap: taps reach the app, so the next turn hides the bar as usual.
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeNull();
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeTruthy();
+      await turn();
+      expect(bar()).toBeNull();
+    });
+
+    it('keeps the bar while the narration turns the page it follows', async () => {
+      mockNarrating = true;
+      mockMap = { sections: [{ href: 'c1.xhtml', spans: [] }] };
+      await mount();
+      await opened();
+      await act(async () => {
+        mockHost!.onFollowing!(true);
+      });
+      await turn();
+      expect(bar()).toBeTruthy();
+    });
+
+    it('hides the bar when the reader turns the page away from the narration', async () => {
+      mockNarrating = true;
+      mockMap = { sections: [{ href: 'c1.xhtml', spans: [] }] };
+      await mount();
+      await opened();
+      await act(async () => {
+        mockHost!.onFollowing!(true);
+      });
+      // The reader document says the place first, then that it stopped following.
+      await turn();
+      expect(bar()).toBeTruthy();
+      await act(async () => {
+        mockHost!.onFollowing!(false);
+      });
+      expect(bar()).toBeNull();
+    });
+
+    it('keeps the bar while its menu is open', async () => {
+      await mount();
+      await opened();
+      await fireEvent.press(screen.getByLabelText('Reading settings'));
+      await screen.findByText('Hide while reading');
+      await turn();
+      expect(bar()).toBeTruthy();
+    });
+
+    it('keeps the bar with a screen reader on, the bar above the page', async () => {
+      mockScreenReader = true;
+      await mount();
+      await opened();
+      await turn();
+      expect(bar()).toBeTruthy();
+      expect(statusBarHidden()).toBe(false);
+    });
+
+    it('keeps the bar while no book shows (a failure said over it)', async () => {
+      await mount();
+      await opened();
+      await say({ type: 'error', code: 'section', message: 'x' });
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeTruthy();
+    });
+
+    it('turns auto-hide off from the reader menu and keeps it off on this device', async () => {
+      await mount();
+      await opened();
+      await fireEvent.press(screen.getByLabelText('Reading settings'));
+      const item = await screen.findByText('Hide while reading');
+      await fireEvent.press(item);
+      await waitFor(async () => expect(await loadAutoHide()).toBe(false));
+      await turn();
+      expect(bar()).toBeTruthy();
+      expect(statusBarHidden()).toBe(false);
+    });
+
+    it('opens with the bar kept when auto-hide was turned off before', async () => {
+      await saveAutoHide(false);
+      await mount();
+      await opened();
+      await turn();
+      expect(bar()).toBeTruthy();
+    });
+
+    it('shows the status bar while a page opened over the reader is on top', async () => {
+      const { rerender } = await mount();
+      await opened();
+      await turn();
+      expect(statusBarHidden()).toBe(true);
+      // Reconnect's sign-in pushed over it: the reader stays mounted, its bar hidden.
+      mockFocused = false;
+      await rerender(<ReaderScreen connectionId="c1" libraryId={1} path="A/Book" />);
+      expect(bar()).toBeNull();
+      expect(statusBarHidden()).toBe(false);
+    });
+  });
+
+  describe("the web's hidden top bar (fe#246)", () => {
+    const turn = () => say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+    const topBar = () => screen.getByTestId('reader-top-bar');
+    const slidAway = () => /(^|\s)-translate-y-full(\s|$)/.test(String(topBar().props.className));
+    let prevOS: typeof Platform.OS;
+    beforeEach(() => {
+      prevOS = Platform.OS;
+      Platform.OS = 'web';
+    });
+    afterEach(() => {
+      Platform.OS = prevOS;
+    });
+
+    it('stays in the page while hidden, slid off the top, for a screen reader to reach', async () => {
+      await mount();
+      await opened();
+      expect(slidAway()).toBe(false);
+      await turn();
+      expect(slidAway()).toBe(true);
+      // Hidden from sight only: a virtual cursor still reaches Close and Contents.
+      expect(screen.getByLabelText('Close the reader')).toBeTruthy();
+      expect(screen.getByLabelText('Contents')).toBeTruthy();
+      await say({ type: 'centreTap' });
+      expect(slidAway()).toBe(false);
+    });
+
+    it("shows for the keyboard's focus arriving in it while hidden", async () => {
+      await mount();
+      await opened();
+      await turn();
+      expect(slidAway()).toBe(true);
+      const target = {
+        tagName: 'DIV',
+        matches: (selector: string) => selector === ':focus-visible',
+      };
+      await fireEvent(topBar(), 'focus', { nativeEvent: { target } });
+      expect(slidAway()).toBe(false);
+    });
+
+    it('comes before the book, so Close is the first Tab stop and Shift+Tab from the book meets it', async () => {
+      await mount();
+      await opened();
+      const tree = JSON.stringify(screen.toJSON());
+      expect(tree.indexOf('"reader-top-bar"')).toBeGreaterThan(-1);
+      expect(tree.indexOf('"reader-top-bar"')).toBeLessThan(tree.indexOf('"reader-page"'));
+    });
+  });
+
+  describe("the web's keyboard focus on the screen's controls (fe#246)", () => {
+    const element = (tagName: string, focusVisible: boolean) => ({
+      tagName,
+      matches: (selector: string) => selector === ':focus-visible' && focusVisible,
+    });
+
+    it("holds the bar for a keyboard's focus on the screen's controls, not a click's or the book's", () => {
+      expect(keyboardFocus({ target: element('DIV', true) })).toBe(true);
+      expect(keyboardFocus({ target: element('DIV', false) })).toBe(false);
+      // The book's frame: focus in the book is the reader's, reading.
+      expect(keyboardFocus({ target: element('IFRAME', true) })).toBe(false);
+      expect(keyboardFocus({})).toBe(false);
+    });
+
+    it("holds the bar for any focus that came into it hidden, not a click's on it shown", () => {
+      const button = element('DIV', false);
+      const bar = { contains: (node: unknown) => node === button };
+      // A screen reader's focus, with no focus ring, in the hidden bar.
+      expect(focusHoldsBar({ target: button }, bar, true, false)).toBe(true);
+      // Kept as it moves within the bar once shown.
+      expect(focusHoldsBar({ target: button }, bar, false, true)).toBe(true);
+      // A click on the bar showing: its wait runs.
+      expect(focusHoldsBar({ target: button }, bar, false, false)).toBe(false);
+      // Outside the bar, only the keyboard's holds.
+      expect(focusHoldsBar({ target: element('DIV', false) }, bar, true, true)).toBe(false);
+      expect(focusHoldsBar({ target: element('DIV', true) }, null, false, false)).toBe(true);
+    });
+
+    it('lets the focus move between the controls, and leave into the book', () => {
+      const edge = element('DIV', true);
+      const frame = element('IFRAME', true);
+      const screenRoot = { contains: (node: unknown) => node === edge || node === frame };
+      const blur = (relatedTarget: unknown) =>
+        focusStaysIn({ currentTarget: screenRoot, nativeEvent: { relatedTarget } });
+      expect(blur(edge)).toBe(true);
+      expect(blur(frame)).toBe(false);
+      expect(blur(null)).toBe(false);
+      expect(blur(element('DIV', true))).toBe(false);
+    });
   });
 
   it('reads a download holding the EPUB offline, the capability unknown', async () => {

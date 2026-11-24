@@ -1376,4 +1376,51 @@ describe('book page Bridge (generated characters and recaps)', () => {
     expect(screen.queryByTestId('generated-mark')).toBeNull();
     expect(screen.getByText(/Community notes from/)).toBeTruthy();
   });
+
+  // server#218: everything of this book's was generated here, but the earlier books below
+  // are the community's, so the generated parts wear their own marks rather than one
+  // heading the whole panel. A work whose content was all generated carries no
+  // `attribution`, and the earlier books' rows each carry their own work's credit.
+  it("marks the generated parts above the earlier books' community ones", async () => {
+    mockCaps = { metadata: true };
+    mockBook = { ...BOOK, asin: 'B0', series_index: 2 };
+    mockMeta = {
+      matched: true,
+      work: {
+        id: 'w',
+        title: 'Words of Radiance',
+        authors: [],
+        language: 'en',
+        characters,
+        recaps,
+        generated: { characters: true, recaps: true, recap_summary: false },
+      },
+      series: [
+        {
+          id: 'stormlight',
+          name: 'The Stormlight Archive',
+          position: '2',
+          works: [
+            {
+              id: 'twok',
+              title: 'The Way of Kings',
+              position: '1',
+              authors: [],
+              web_url: 'https://meta.audiosilo.app/work?id=twok',
+            },
+          ],
+        },
+      ],
+      web_url: 'https://meta.audiosilo.app/work?id=w',
+    };
+    await mountAt('desktop');
+    await fireEvent.press(screen.getByTestId('book-tab-recaps'));
+    expect(screen.getByText('Previous books')).toBeTruthy();
+    expect(screen.getByTestId('recaps-generated-mark')).toBeTruthy();
+    expect(screen.queryByTestId('generated-mark')).toBeNull();
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
+    await fireEvent.press(screen.getByTestId('book-tab-characters'));
+    expect(screen.getByTestId('generated-mark')).toBeTruthy();
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
+  });
 });

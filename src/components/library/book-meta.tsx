@@ -15,6 +15,7 @@ import type {
   BookMetaSeriesWork,
   BookMetaWork,
 } from '@/api/types';
+import { Attribution } from '@/components/player/companion/companion-pieces';
 import { NameToken } from '@/components/search/name-token';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Cover } from '@/components/ui/cover';
@@ -33,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
+  communityCredit,
   type ListeningProgress,
   recapDescriptor,
   revealIsPastEnd,
@@ -628,20 +630,32 @@ export function RecapSummaryBlock({
 
 /** A previous book's recap body: its whole-work summary (ending included - the
  * reader opened this earlier book's row deliberately), else its furthest
- * book-scope "story so far", else a quiet note. */
+ * book-scope "story so far", else a quiet note. The recap is that book's community
+ * content, so it carries that work's own CC BY-SA credit (`communityCredit` of that
+ * work, whose `source_url` is its page), never the current book's. */
 function PreviousRecapBody({ work, entry }: { work: BookMetaWork; entry: BookMetaSeriesWork }) {
   const { t } = useTranslation();
   // `finished` is true throughout: the reader opened this EARLIER book's row
   // deliberately, so its summary renders inline and its ending is fair game.
-  if (summaryIsVisible(work.recap_summary, true))
-    return <RecapSummaryBlock summary={work.recap_summary} finished />;
-  const fallback = lastBookRecap(work.recaps);
-  if (fallback) return <Text variant="body">{fallback.text}</Text>;
-  return <PreviousBookNote message={t('book.meta.noRecap')} url={entry.web_url} />;
+  const summaryShown = summaryIsVisible(work.recap_summary, true);
+  const fallback = summaryShown ? undefined : lastBookRecap(work.recaps);
+  if (!summaryShown && !fallback)
+    return <PreviousBookNote message={t('book.meta.noRecap')} url={entry.web_url} />;
+  return (
+    <View className="gap-2">
+      {fallback ? (
+        <Text variant="body">{fallback.text}</Text>
+      ) : (
+        <RecapSummaryBlock summary={work.recap_summary} finished />
+      )}
+      <Attribution attribution={communityCredit(work, 'recaps')} />
+    </View>
+  );
 }
 
 /** A previous book's character body: the same cards as the Characters tab, with
- * no spoiler gating (same reason). */
+ * no spoiler gating (same reason), and that work's own CC BY-SA credit (see
+ * `PreviousRecapBody`). */
 function PreviousCharactersBody({
   work,
   entry,
@@ -658,6 +672,7 @@ function PreviousCharactersBody({
       {cast.map((c) => (
         <CharacterCard key={c.id} character={c} />
       ))}
+      <Attribution attribution={communityCredit(work, 'characters')} />
     </View>
   );
 }
@@ -753,8 +768,9 @@ export function BookMetaRecapsTab({
    * shows its placeholder. */
   coverFor?: CommunityCoverFor;
   /** Which part wears its own "Generated on this server" chip when the summary and the
-   * list came from different places (`recapMarks`, whose `summary` already implies
-   * `summaryVisible`); one heading the panel is the caller's. */
+   * list came from different places, or the earlier books' community recaps follow
+   * (`recapMarks`, whose `summary` already implies `summaryVisible`); one heading the
+   * panel is the caller's. */
   generatedParts?: Pick<RecapMarks, 'list' | 'summary'>;
 }) {
   const { t } = useTranslation();

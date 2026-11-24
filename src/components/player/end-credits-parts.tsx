@@ -32,6 +32,7 @@ import { useDownloadEntry } from '@/downloads/store';
 import { formatCountdown, formatDuration, formatReleaseDate } from '@/lib/format';
 import { openExternalUrl } from '@/lib/support';
 import { linesFor } from '@/lib/text-scale';
+import { httpUrl } from '@/lib/url-host';
 import { cn } from '@/lib/utils';
 import type { UnplacedWork, UpNextBook } from '@/playback/up-next-resolver';
 import { useConnectionName } from '@/stores/session';
@@ -234,19 +235,24 @@ export function CreditsDialog({
   if (data.released)
     rows.push([t('player.finished.released'), text(formatReleaseDate(data.released))]);
   const credit = data.attribution;
+  const creditText = credit ? [credit.credit, credit.license].filter(Boolean).join(' · ') : '';
+  // A link only to an http(s) page: `openExternalUrl` opens nothing else.
+  const source = credit?.source_url ? httpUrl(credit.source_url) : null;
   if (credit)
     rows.push([
       t('player.finished.community'),
-      <Pressable
-        key="credit"
-        role="link"
-        onPress={() => void openExternalUrl(credit.source_url)}
-        className={cn('self-start rounded-sm', Platform.select({ web: FOCUS_RING_CLASS }))}
-      >
-        <Text className="text-sm text-brand-ink underline">
-          {[credit.credit, credit.license].filter(Boolean).join(' · ')}
-        </Text>
-      </Pressable>,
+      source ? (
+        <Pressable
+          key="credit"
+          role="link"
+          onPress={() => void openExternalUrl(source)}
+          className={cn('self-start rounded-sm', Platform.select({ web: FOCUS_RING_CLASS }))}
+        >
+          <Text className="text-sm text-brand-ink underline">{creditText}</Text>
+        </Pressable>
+      ) : (
+        text(creditText)
+      ),
     ]);
   rows.push([t('player.finished.onServer'), text(data.path, true)]);
   return (

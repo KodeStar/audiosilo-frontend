@@ -3,7 +3,8 @@ import type { ViewInstance } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { useReducedMotion } from 'react-native-reanimated';
 
-import { useScreenReaderEnabled } from './use-screen-reader';
+import { useScreenReader } from '@/lib/screen-reader';
+
 import { useShareCard } from './use-share-card';
 import { useStoryPlayer } from './use-story-player';
 import type { ReadyYearStory } from './use-year-story';
@@ -19,7 +20,7 @@ import { shareFileName } from './year-model';
 export function useStoryStage(story: ReadyYearStory, cid: string, initial?: number) {
   const { t } = useTranslation();
   const reduced = useReducedMotion();
-  const screenReader = useScreenReaderEnabled();
+  const screenReader = useScreenReader();
   const share = useShareCard();
   const [held, setHeld] = useState(false);
   const player = useStoryPlayer(story.cards.length, {

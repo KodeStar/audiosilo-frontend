@@ -477,6 +477,9 @@ describe('ReaderHost (app)', () => {
     expect(onMessage).not.toHaveBeenCalled();
     await say({ type: 'escape' });
     expect(onMessage).toHaveBeenCalledWith({ type: 'escape' });
+    // A centre tap (fe#246) goes to the screen, which shows or hides its top bar.
+    await say({ type: 'centreTap' });
+    expect(onMessage).toHaveBeenCalledWith({ type: 'centreTap' });
   });
 });
 

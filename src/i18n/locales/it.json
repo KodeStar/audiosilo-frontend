@@ -1851,6 +1851,7 @@
       "history": "Cronologia",
       "attribution": "Note della community di {{credit}}",
       "licence": "Licenza: {{licence}}",
+      "creditSource": "{{credit}}, apre la pagina di origine",
       "hideAgain": "Nascondili di nuovo",
       "spoilersShown": "Spoiler visibili",
       "justMet": "Appena incontrato",
@@ -3286,13 +3287,17 @@
     "contents": "Indice",
     "smaller": "Testo più piccolo",
     "larger": "Testo più grande",
+    "settings": "Impostazioni di lettura",
     "theme": {
-      "label": "Colori della pagina: {{theme}}",
       "heading": "Colori della pagina",
       "follow": "Come l'app",
       "light": "Chiaro",
       "dark": "Scuro",
       "black": "Nero"
+    },
+    "topBar": {
+      "heading": "Barra superiore",
+      "autoHide": "Nascondi durante la lettura"
     },
     "previous": "Pagina precedente",
     "next": "Pagina successiva",
