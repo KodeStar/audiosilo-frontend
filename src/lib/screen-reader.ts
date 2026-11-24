@@ -35,6 +35,13 @@ export function screenReaderOn(): boolean {
 
 function subscribe(listener: () => void): () => void {
   watchScreenReader();
+  // Asked again for each component that starts following it: a change the system's event
+  // never brought (one made while the app was away) is not kept.
+  if (Platform.OS !== 'web') {
+    AccessibilityInfo.isScreenReaderEnabled()
+      .then(set)
+      .catch(() => {});
+  }
   listeners.add(listener);
   return () => {
     listeners.delete(listener);
