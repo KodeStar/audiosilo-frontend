@@ -8,8 +8,8 @@ import {
   cachedCapability,
   cachedShowTitle,
   chaptersQuery,
-  fetchBookProgress,
   fetchFailFast,
+  fetchServerProgress,
   itemQuery,
   qk,
 } from '@/api/hooks';
@@ -20,7 +20,6 @@ import {
   seedServerSnapshot,
   type ServerSnapshot,
 } from '@/api/server-snapshots';
-import type { ApiClient } from '@/api/client';
 import type { Book, BookMeta, ChaptersResponse } from '@/api/types';
 import { withMatchFields } from '@/components/library/meta-gating';
 import { identityMovePending } from '@/lib/connection-id';
@@ -340,7 +339,7 @@ export const useDownloads = create<DownloadsState>()((set, get) => ({
 }));
 
 // A book downloaded here, or on its way, keeps its server's place in the progress mirror
-// as the book's progress is read (`fetchBookProgress`, which can't import this store).
+// as the book's progress is read (`fetchServerProgress`, which can't import this store).
 setKeptOfflineCheck((connectionId, libraryId, path) => {
   const entry = useDownloads.getState().entries[downloadKey(connectionId, libraryId, path)];
   return !!entry && entry.status !== 'error';
@@ -2334,25 +2333,6 @@ async function runQueue() {
   }
 }
 
-/**
- * Keep the server's place for a book whose download starts in the progress mirror, so the
- * book opens there offline (and its first offline save starts there, instead of at 0 over
- * the server's place: v2.5.1 PLAYER-01). The book page's own read (`fetchBookProgress`)
- * does it: the book has a downloads entry now, so the server's answer goes into the mirror
- * (keep-newest, so a newer save of this device's own stays). A server with no record, or one
- * that can't be reached, leaves the mirror as it is; the book's next progress read keeps the
- * place. Best effort.
- */
-async function keepServerPlace(
-  api: ApiClient,
-  connectionId: string,
-  libraryId: number,
-  path: string,
-  signal: AbortSignal,
-): Promise<void> {
-  await fetchBookProgress(api, connectionId, libraryId, path, signal);
-}
-
 async function runOne(key: string) {
   const entry = useDownloads.getState().entries[key];
   if (!entry) return;
@@ -2382,8 +2362,12 @@ async function runOne(key: string) {
   const dropFiles = () => engine.removeBook(connectionId, libraryId, path).catch(() => {});
   patch({ status: 'downloading', progress: 0, bytes: 0 });
   void persist();
-  // Beside the transfer: the place the download opens at offline.
-  void keepServerPlace(api, connectionId, libraryId, path, ctrl.signal).catch(() => {});
+  // Beside the transfer, the place the download opens at offline (v2.5.1 PLAYER-01): the
+  // book has a downloads entry now, so the server's answer goes into the progress mirror, and
+  // the book's first offline save starts there instead of at 0 over the server's place. A
+  // server with no record, or one that can't be reached, leaves the mirror as it is; the
+  // book's next progress read keeps the place.
+  void fetchServerProgress(api, connectionId, libraryId, path, ctrl.signal).catch(() => {});
 
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];

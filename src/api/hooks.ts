@@ -1544,6 +1544,26 @@ export function useBookProgress(
 }
 
 /**
+ * The server's progress row for a book, kept in the progress mirror when the book is
+ * downloaded (keep-newest, so a newer save of this device's own stays; a failed write keeps
+ * nothing, and the next read keeps it). `fetchBookProgress`'s server half, and what a
+ * download that starts asks for the place it opens at offline. Rejects as the GET does.
+ */
+export async function fetchServerProgress(
+  api: ApiClient,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  signal: AbortSignal,
+): Promise<Progress | null> {
+  const progress = await api.getProgress(libraryId, path, signal);
+  if (progress && isKeptOffline(connectionId, libraryId, path)) {
+    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
+  }
+  return progress;
+}
+
+/**
  * The `useBookProgress` fetch, extracted so the fallback policy is unit-testable.
  *
  * Ask the server, and answer with the place Resume plays from (`bookPlace`: the server's
@@ -1583,7 +1603,7 @@ export async function fetchBookProgress(
   const recovered = spanRecovered();
   let progress: Progress | null;
   try {
-    progress = await api.getProgress(libraryId, path, signal);
+    progress = await fetchServerProgress(api, connectionId, libraryId, path, signal);
   } catch (e) {
     // A cancelled query must stay cancelled - only a real failure falls back.
     if (signal.aborted) throw e;
@@ -1592,9 +1612,6 @@ export async function fetchBookProgress(
     noteFailure(connectionId, e);
     await recovered;
     return await bookPlace(undefined, connectionId, libraryId, path);
-  }
-  if (progress && isKeptOffline(connectionId, libraryId, path)) {
-    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
   }
   await recovered;
   // A local read that fails leaves the server's answer: it is still where the server is.

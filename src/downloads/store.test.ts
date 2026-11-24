@@ -176,10 +176,10 @@ const mockMarkEpisodeOnServer = jest.fn();
 jest.mock('@/api/podcast-cache', () => ({
   markEpisodeOnServer: (...a: unknown[]) => mockMarkEpisodeOnServer(...a),
 }));
-const mockFetchBookProgress = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
+const mockFetchServerProgress = jest.fn(async (..._a: unknown[]): Promise<unknown> => null);
 jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
-  fetchBookProgress: (...a: unknown[]) => mockFetchBookProgress(...a),
+  fetchServerProgress: (...a: unknown[]) => mockFetchServerProgress(...a),
   cachedCapability: (cid: string, flag: string) => {
     const info = mockGetQueryData(['server', cid]) as
       { capabilities: Record<string, boolean> } | undefined;
@@ -1085,7 +1085,7 @@ describe('a download behind an auth proxy (fe#167)', () => {
 });
 
 // v2.5.1 PLAYER-01: the place a download opens at offline is its server's. The book's own
-// progress read keeps it in the mirror (`fetchBookProgress`, hooks.test.ts covers the
+// progress read keeps it in the mirror (`fetchServerProgress`, hooks.test.ts covers the
 // keep-newest write); the download asks it once its entry is there, so the read keeps it.
 describe("a download keeps its server's place", () => {
   function client() {
@@ -1106,14 +1106,14 @@ describe("a download keeps its server's place", () => {
 
   it("reads the book's progress as the download starts, with the book kept", async () => {
     let keptAtRead: boolean | undefined;
-    mockFetchBookProgress.mockImplementationOnce(async (...a: unknown[]) => {
+    mockFetchServerProgress.mockImplementationOnce(async (...a: unknown[]) => {
       const [, cid, lib, path] = a as [unknown, string, number, string];
       keptAtRead = isKeptOffline(cid, lib, path);
       return null;
     });
     const api = client();
     await downloadIt();
-    expect(mockFetchBookProgress).toHaveBeenCalledWith(
+    expect(mockFetchServerProgress).toHaveBeenCalledWith(
       api,
       'c1',
       2,
@@ -1124,7 +1124,7 @@ describe("a download keeps its server's place", () => {
   });
 
   it('downloads the book when the progress read fails', async () => {
-    mockFetchBookProgress.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    mockFetchServerProgress.mockRejectedValueOnce(new TypeError('Failed to fetch'));
     client();
     await downloadIt();
     expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]?.status).toBe(

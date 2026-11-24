@@ -116,6 +116,7 @@ jest.mock('@/api/hooks', () => ({
   useSavedProgress: () => undefined,
   cachedCapability: () => undefined,
   cachedShowTitle: () => undefined,
+  fetchServerProgress: async () => null,
   qk: {
     item: (cid: string, lib: number, path: string) => ['item', cid, lib, path],
     progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path],
