@@ -388,8 +388,8 @@ export function createReadalong({
     }
     if (hit < 0 || bad.has(hit)) return;
     const { start } = idx.spans[hit];
-    // Taken: the centre tap (taps.js) leaves the top bar as it is.
-    e.preventDefault();
+    // Not taken: a sentence tap in the middle of the page is a centre tap too (taps.js), so
+    // the top bar comes back while a map is in.
     setFollowing(true);
     clock.seekTo(start);
     send({ type: 'seek', t: start });

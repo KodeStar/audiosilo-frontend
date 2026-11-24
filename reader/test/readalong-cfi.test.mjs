@@ -17,6 +17,7 @@ import {
   spanAt,
   spineStepIndex,
 } from '../src/readalong.js';
+import { watchTaps } from '../src/taps.js';
 import { fakeView, loadAlice, resolveCFI } from './epub-fixture.mjs';
 
 const book = loadAlice();
@@ -259,9 +260,22 @@ test('a tap on a sentence seeks to its start and follows', async () => {
     caret.setStart(target.startContainer, target.startOffset + 2);
     return caret;
   };
-  chapter.doc.body.dispatchEvent(new book.window.MouseEvent('click', { bubbles: true }));
+  // The centre tap listens too (fe#246): a sentence tap still brings the top bar back.
+  const taps = [];
+  const later = [];
+  watchTaps(chapter.doc, {
+    onTap: () => taps.push('tap'),
+    viewportX: () => 500,
+    width: () => 1000,
+    defer: (fn) => later.push(fn),
+  });
+  const click = new book.window.MouseEvent('click', { bubbles: true, cancelable: true });
+  chapter.doc.body.dispatchEvent(click);
   assert.deepEqual(r.of('seek').at(-1), { type: 'seek', t: spans[6].start });
   assert.deepEqual(r.of('following').at(-1), { type: 'following', value: true });
+  assert.equal(click.defaultPrevented, false, 'the seek leaves the click to the centre tap');
+  for (const fn of later.splice(0)) fn();
+  assert.deepEqual(taps, ['tap']);
   // A sample from before the player moved is ignored; the clock stays at the tap.
   r.readalong.position({ t: spans[2].start + 1, rate: 1, playing: true });
   assert.ok(Math.abs(r.readalong.state().t - spans[6].start) < 0.5);

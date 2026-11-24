@@ -1,6 +1,6 @@
 // The centre tap (reader/src/taps.js, fe#246): a tap in the middle of the page shows or hides
-// the host's top bar; a link, a read-along sentence, a selection, a swipe or a tap near the
-// sides does not.
+// the host's top bar, even on a sentence the read-along seeks to (readalong-cfi.test.mjs); a
+// link, a selection, a swipe or a tap near the sides does not.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
@@ -82,13 +82,13 @@ test('a swipe is not a tap, a press that moved a little is', () => {
   assert.deepEqual(taps, ['tap']);
 });
 
-test('a click something else took is not a tap: a link, a read-along sentence, a selection', () => {
+test('a click something else took is not a tap: a link, a selection', () => {
   const { doc, taps } = watched();
   // A link, by its element or by foliate's handler having prevented the click.
   tap(doc, { target: { closest: (s) => (s === 'a[href]' ? {} : null) } });
   tap(doc, { prevented: true });
   assert.deepEqual(taps, []);
-  // The read-along prevents a click it seeks with, after this listener ran: judged later.
+  // Foliate's link handler prevents the click after this listener ran: judged later.
   const later = [];
   const doc2 = fakeDoc();
   const heard = [];

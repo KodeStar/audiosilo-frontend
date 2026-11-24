@@ -2,8 +2,13 @@
 // host's top bar. The page edges that turn pages are the host's own, over the book, so a tap
 // that reaches the book is never a page turn; only one in the middle counts, so a tap that
 // just missed a narrow edge does nothing. Never a tap that did something else: a link
-// (foliate's handler, which prevents the click), a sentence the read-along seeks to (it
-// prevents it too), a selection, or a swipe (the paginator turns the page under it).
+// (foliate's handler, which prevents the click), a selection, or a swipe (the paginator turns
+// the page under it). A sentence the read-along seeks to still counts: with a map in, nearly
+// every tap lands on one, and the bar must come back.
+//
+// The path is the read-along's: a `click` listener on the section's document, which iOS
+// WebKit delivers for a tap on plain text (Bridge 3c-2's sentence tap, verified in the iOS
+// simulator). The host keeps a fallback in case one never arrives (reader-chrome.ts).
 
 /** The middle of the page, as shares of the reader's width. */
 const CENTRE_FROM = 0.25;
@@ -21,7 +26,7 @@ export function isCentre(x, width) {
 }
 
 /** Whether a click in `doc` belongs to something else: a link (by its element, or foliate's
- * handler having prevented it), a sentence the read-along took, or a selection being made. */
+ * handler having prevented it) or a selection being made. */
 export function clickTaken(e, doc) {
   if (e.defaultPrevented || e.target?.closest?.('a[href]')) return true;
   const selection = doc.getSelection?.();
@@ -33,8 +38,8 @@ export function clickTaken(e, doc) {
  * middle of the page, and calls `onTap` for each. `viewportX(e)` is the click's distance from
  * the reader's left (a section's document lies in a frame that scrolls sideways under the
  * page, so its own clientX is not), null when it cannot tell; `width()` the reader's width.
- * The click is judged once its other listeners ran (`defer`), so a link or a sentence that
- * took it is seen whatever order the listeners were added in.
+ * The click is judged once its other listeners ran (`defer`), so a link that took it is seen
+ * whatever order the listeners were added in.
  */
 export function watchTaps(doc, { onTap, viewportX, width, defer = (fn) => setTimeout(fn, 0) }) {
   let down = null;
