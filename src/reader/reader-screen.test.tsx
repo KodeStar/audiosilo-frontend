@@ -534,7 +534,7 @@ describe('ReaderScreen', () => {
       foreground: '#121c36',
     });
     await say({ type: 'opened', title: 'Alice', toc: [], rtl: false });
-    await fireEvent.press(screen.getByLabelText('Page colours: Like the app'));
+    await fireEvent.press(screen.getByLabelText('Reading settings'));
     await fireEvent.press(await screen.findByText('Black'));
     await waitFor(() =>
       expect(mockHost!.theme).toEqual({
@@ -543,7 +543,6 @@ describe('ReaderScreen', () => {
         foreground: '#e7ebf4',
       }),
     );
-    expect(screen.getByLabelText('Page colours: Black')).toBeTruthy();
     await expect(loadReaderTheme()).resolves.toBe('black');
     await saveReaderTheme('follow');
   });
@@ -626,7 +625,7 @@ describe('ReaderScreen', () => {
     it('keeps the bar while its menu is open', async () => {
       await mount();
       await opened();
-      await fireEvent.press(screen.getByLabelText('Page colours: Like the app'));
+      await fireEvent.press(screen.getByLabelText('Reading settings'));
       await screen.findByText('Hide while reading');
       await turn();
       expect(bar()).toBeTruthy();
@@ -652,7 +651,7 @@ describe('ReaderScreen', () => {
     it('turns auto-hide off from the reader menu and keeps it off on this device', async () => {
       await mount();
       await opened();
-      await fireEvent.press(screen.getByLabelText('Page colours: Like the app'));
+      await fireEvent.press(screen.getByLabelText('Reading settings'));
       const item = await screen.findByText('Hide while reading');
       await fireEvent.press(item);
       await waitFor(async () => expect(await loadAutoHide()).toBe(false));

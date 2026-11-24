@@ -1015,7 +1015,8 @@ function TocRow({
 
 /** The reader's own settings (fe#246), saved on this device: the page colours (like the app,
  * light, dark or black, for the reader and the companion's Text tab) and whether the top bar
- * hides while reading. Its glyph is the colours' scheme. */
+ * hides while reading, behind a button named for both ("Reading settings"). Its glyph is the
+ * colours' scheme. */
 function ReaderMenu({
   value,
   dark,
@@ -1043,7 +1044,7 @@ function ReaderMenu({
           variant="ghost"
           size="icon"
           icon={dark ? 'moon' : 'sun'}
-          accessibilityLabel={t('reader.theme.label', { theme: t(`reader.theme.${value}`) })}
+          accessibilityLabel={t('reader.settings')}
         />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

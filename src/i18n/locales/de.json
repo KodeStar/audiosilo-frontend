@@ -3285,8 +3285,8 @@
     "contents": "Inhalt",
     "smaller": "Kleinere Schrift",
     "larger": "Größere Schrift",
+    "settings": "Leseeinstellungen",
     "theme": {
-      "label": "Seitenfarben: {{theme}}",
       "heading": "Seitenfarben",
       "follow": "Wie die App",
       "light": "Hell",

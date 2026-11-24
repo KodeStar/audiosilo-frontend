@@ -3285,8 +3285,8 @@
     "contents": "Indice",
     "smaller": "Testo più piccolo",
     "larger": "Testo più grande",
+    "settings": "Impostazioni di lettura",
     "theme": {
-      "label": "Colori della pagina: {{theme}}",
       "heading": "Colori della pagina",
       "follow": "Come l'app",
       "light": "Chiaro",

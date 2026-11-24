@@ -3285,8 +3285,8 @@
     "contents": "Contenido",
     "smaller": "Texto más pequeño",
     "larger": "Texto más grande",
+    "settings": "Ajustes de lectura",
     "theme": {
-      "label": "Colores de la página: {{theme}}",
       "heading": "Colores de la página",
       "follow": "Como la app",
       "light": "Claro",
