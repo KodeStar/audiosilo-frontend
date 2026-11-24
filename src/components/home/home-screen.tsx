@@ -31,6 +31,7 @@ import { Text } from '@/components/ui/text';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
 import { useDeviceOnline } from '@/lib/device-online';
 import type { MergedBook } from '@/lib/dedup';
+import { useLocale } from '@/i18n/locale';
 import { formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { offlineState, useUnreadAll } from '@/lib/offline-state';
@@ -466,9 +467,10 @@ function AddedTile({
   server?: string;
   width: number;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useLocale();
   const now = useMinuteClock();
-  const added = formatRelative(b.added_at, i18n.language || 'en', now);
+  const added = formatRelative(b.added_at, locale, now);
   return (
     <CoverTile
       connectionId={b.connectionId}

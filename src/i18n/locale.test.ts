@@ -2,7 +2,12 @@ let mockDevice: { languageTag: string; languageCode: string | null }[] = [];
 jest.mock('expo-localization', () => ({ getLocales: () => mockDevice }));
 
 /* eslint-disable import/first */
-import { regionalLocale } from './locale';
+import { act, renderHook } from '@testing-library/react-native';
+import type { getLocales } from 'expo-localization';
+import i18next from 'i18next';
+import { AppState } from 'react-native';
+
+import { regionalLocale, useLocale } from './locale';
 /* eslint-enable import/first */
 
 const en = (languageTag: string) => ({ languageTag, languageCode: languageTag.split('-')[0] });
@@ -41,5 +46,43 @@ describe('getLocale', () => {
       i18n.language = 'de';
       expect(locale()).toBe('de');
     });
+  });
+});
+
+describe('useLocale', () => {
+  // fe#358: the device's region changed in its settings while the app was away; back in
+  // front, a memoized caller's dates follow it.
+  it("follows the device's region once the app is back in front", async () => {
+    const listeners: ((state: string) => void)[] = [];
+    const spy = jest.spyOn(AppState, 'addEventListener').mockImplementation((_e, fn) => {
+      listeners.push(fn as (state: string) => void);
+      return { remove: () => void listeners.splice(listeners.indexOf(fn as never), 1) };
+    });
+    // The module the test setup's own read of the locale bound to, not this file's mock.
+    const device = jest
+      .spyOn(
+        jest.requireActual<typeof import('expo-localization')>('expo-localization'),
+        'getLocales',
+      )
+      .mockImplementation(() => mockDevice as ReturnType<typeof getLocales>);
+    const back = () => act(async () => listeners.slice().forEach((fn) => fn('active')));
+    const language = i18next.language;
+    i18next.language = 'en';
+    try {
+      const { result, unmount } = await renderHook(() => useLocale());
+      mockDevice = [en('en-GB')];
+      await back();
+      expect(result.current).toBe('en-GB');
+      mockDevice = [en('en-AU')];
+      await back();
+      expect(result.current).toBe('en-AU');
+      await unmount();
+      expect(listeners).toHaveLength(0);
+    } finally {
+      spy.mockRestore();
+      device.mockRestore();
+      mockDevice = [];
+      i18next.language = language;
+    }
   });
 });

@@ -4,6 +4,7 @@ import { View } from 'react-native';
 
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
+import { useLocale } from '@/i18n/locale';
 import { formatLongDate, formatRelative } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { linesFor, useLargeText } from '@/lib/text-scale';
@@ -64,7 +65,8 @@ export function Greeting({
   /** The device has no network. */
   offline?: boolean;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useLocale();
   // Under large text the date and the pills stack, and their words wrap.
   const large = useLargeText();
   const lines = linesFor(1, large);
@@ -84,7 +86,7 @@ export function Greeting({
         : t('home.sync.local')
       : sync?.kind === 'synced'
         ? t(phone ? 'home.sync.syncedShort' : 'home.sync.synced', {
-            when: formatRelative(sync.at, i18n.language || 'en', minute),
+            when: formatRelative(sync.at, locale, minute),
           })
         : null;
   const serversText = down

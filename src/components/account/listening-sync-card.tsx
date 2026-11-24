@@ -5,6 +5,7 @@ import { View } from 'react-native';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Text } from '@/components/ui/text';
+import { useLocale } from '@/i18n/locale';
 import { formatClock, formatRelative } from '@/lib/format';
 import { pathLeaf } from '@/lib/paths';
 import { useNow } from '@/lib/use-now';
@@ -65,7 +66,8 @@ export function ListeningSyncCard({
   /** The server's `listening_sync` flag. */
   supported: boolean;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useLocale();
   const sync = useListeningSync(connectionId);
   const now = useNow(60_000);
   if (!supported && sync.waiting === 0 && sync.failed.length === 0) return null;
@@ -81,7 +83,7 @@ export function ListeningSyncCard({
       .join(' · ') || t('account.listeningSync.allSynced', { server: serverName });
   const last = sync.lastSyncAt
     ? t('account.listeningSync.lastSynced', {
-        when: formatRelative(sync.lastSyncAt, i18n.language || 'en', now),
+        when: formatRelative(sync.lastSyncAt, locale, now),
       })
     : t('account.listeningSync.neverSynced');
 

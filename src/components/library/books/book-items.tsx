@@ -6,6 +6,7 @@ import { useBookTimeLeft } from '@/components/player/use-time-left';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
+import { useLocale } from '@/i18n/locale';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
@@ -44,9 +45,9 @@ export function tileCaption(
  * language and minute of its first render (fe#162). Ticks only for Recently added, on
  * the clock every tile shares. */
 function useTileClock(sort: BooksSort | undefined) {
-  const { i18n } = useTranslation();
+  const locale = useLocale();
   const now = useMinuteClock(sort === 'recent');
-  return { locale: i18n.language || 'en', now };
+  return { locale, now };
 }
 
 /** A book of the listener's library as a cover tile (which marks its own progress).

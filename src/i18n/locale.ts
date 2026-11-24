@@ -1,5 +1,7 @@
 import { getLocales } from 'expo-localization';
 import i18next from 'i18next';
+import { AppState } from 'react-native';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Active BCP-47 locale for `Intl.*` formatting: the UI language from the i18next singleton,
@@ -17,8 +19,33 @@ export function getLocale(): string {
   return regional.tag;
 }
 
-/** The last language's answer: the device's locales are read once per UI language. */
+/** The last language's answer: the device's locales are read once per UI language, and again
+ * once the app is back in front (the region can change in the device's settings meanwhile). */
 let regional: { language: string; tag: string } | null = null;
+AppState.addEventListener('change', (state) => {
+  if (state === 'active') regional = null;
+});
+
+/** Renders `onChange`'s reader again when the UI language changes or the app comes back in
+ * front (the device's region may have changed). */
+function subscribeLocale(onChange: () => void): () => void {
+  i18next.on('languageChanged', onChange);
+  const app = AppState.addEventListener('change', (state) => {
+    if (state !== 'active') return;
+    regional = null;
+    onChange();
+  });
+  return () => {
+    i18next.off('languageChanged', onChange);
+    app.remove();
+  };
+}
+
+/** `getLocale()` for a render: a memoized caller's words follow a language switch, and a
+ * region changed in the device's settings while the app was away (fe#358). */
+export function useLocale(): string {
+  return useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+}
 
 function deviceLocales(): { languageTag: string; languageCode: string | null }[] {
   try {
