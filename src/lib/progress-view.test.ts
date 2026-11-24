@@ -1,4 +1,7 @@
+import type { TFunction } from 'i18next';
+
 import {
+  listenedWords,
   isInProgress,
   percentHeard,
   percentOf,
@@ -76,5 +79,22 @@ describe('savedProgressView', () => {
       started: false,
       finished: false,
     });
+  });
+});
+
+describe('listenedWords', () => {
+  const t = ((key: string, o?: { percent: number }) =>
+    o ? `${key}:${o.percent}` : key) as unknown as TFunction;
+
+  it('says finished, else the percent once started, else nothing', () => {
+    expect(listenedWords(t, { fraction: 0.4, finished: true })).toBe('covers.finished');
+    expect(listenedWords(t, { fraction: 0.999 })).toBe('covers.listened:99');
+    expect(listenedWords(t, { fraction: 0 })).toBe('');
+    expect(listenedWords(t, {})).toBe('');
+  });
+
+  it('takes a row’s own started over its fraction (an unknown length reads 0%)', () => {
+    expect(listenedWords(t, { fraction: 0, started: true })).toBe('covers.listened:0');
+    expect(listenedWords(t, { fraction: 0.5, started: false })).toBe('');
   });
 });

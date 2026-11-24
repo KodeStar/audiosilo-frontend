@@ -14,7 +14,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadProgress, useDownloadServerFetch, useDownloadState } from '@/downloads/store';
 import { useOpen } from '@/lib/open';
-import { isInProgress, progressFractionRemaining } from '@/lib/progress-view';
+import { savedProgressView } from '@/lib/progress-view';
 import { cn } from '@/lib/utils';
 import { requestEpisodeFetch } from '@/playback/episode-fetch';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -113,7 +113,8 @@ export function EpisodeRow({
   // follows its progress).
   const pending = usePendingEpisodeFetch(connectionId, libraryId, episode.path);
   const state = episodeRowState(episode, pending, canFetch);
-  const finished = !!progress?.finished;
+  const view = savedProgressView(progress, episode.duration);
+  const finished = view.finished;
   // On this device (not `episode.downloaded`, which is its server's copy), or on its way.
   const device = useDownloadState(connectionId, libraryId, episode.path).status;
   const onDevice = device === 'downloaded';
@@ -123,11 +124,8 @@ export function EpisodeRow({
   const reasonKey = onDevice ? null : rowStateReasonKey(state);
   const retryable = !onDevice && canRetryFetch(state);
   const reason = reasonKey ? t(reasonKey) : null;
-  const started = !!progress && isInProgress(progress);
-  const fraction =
-    progress && !finished && progress.position > 0
-      ? progressFractionRemaining(progress.position, progress.duration || episode.duration).fraction
-      : 0;
+  const started = view.started && !finished;
+  const fraction = started ? view.fraction : 0;
   const meta = episodeMetaLine(episode, t, now);
   const marks = episodeMarks(episode, t);
 

@@ -1,3 +1,5 @@
+import type { TFunction } from 'i18next';
+
 import type { Progress } from '@/api/types';
 
 /**
@@ -55,4 +57,16 @@ export function savedProgressView(
   const total = p.duration > 0 ? p.duration : fallbackDuration;
   const fraction = p.finished ? 1 : progressFractionRemaining(p.position, total).fraction;
   return { fraction, started: p.position > 0, finished: p.finished, updatedAt: p.updated_at };
+}
+
+/** How far the listener is, in a caption's words: "Finished", "40% listened" once started
+ * (`started`, else a fraction past 0), else nothing. A tile, a recording row and a
+ * library list row say it alike (fe#313). */
+export function listenedWords(
+  t: TFunction,
+  v: { fraction?: number; started?: boolean; finished?: boolean },
+): string {
+  if (v.finished) return t('covers.finished');
+  const fraction = v.fraction ?? 0;
+  return (v.started ?? fraction > 0) ? t('covers.listened', { percent: percentOf(fraction) }) : '';
 }

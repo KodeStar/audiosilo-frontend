@@ -10,7 +10,12 @@ import { useLocale } from '@/i18n/locale';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
-import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
+import {
+  listenedWords,
+  percentOf,
+  progressFractionRemaining,
+  savedProgressView,
+} from '@/lib/progress-view';
 import { useMinuteClock } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -204,18 +209,11 @@ export function BookListRow({
     seriesIndex: book.series_index,
     seriesIndexEnd: book.series_index_end,
   });
-  const status = bookStatus(progress);
   // Without columns the subtitle carries the length and the state.
   const phoneLine = [
     byline,
     formatDuration(book.duration),
-    status === 'finished'
-      ? t('covers.finished')
-      : status === 'progress'
-        ? t('covers.listened', {
-            percent: percentHeard(progress!.position, book.duration, false),
-          })
-        : '',
+    listenedWords(t, savedProgressView(progress, book.duration)),
   ]
     .filter(Boolean)
     .join(' · ');
