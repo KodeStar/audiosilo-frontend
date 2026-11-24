@@ -2,6 +2,9 @@ import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { Book, PeopleList } from '@/api/types';
 import { settleFlashList } from '@/testing/flash-list';
+import { seriesBook } from '@/testing/series-fixtures';
+
+import type { ProgressLookup } from './series-model';
 
 const mockPush = jest.fn();
 const mockSetParams = jest.fn();
@@ -36,8 +39,7 @@ jest.mock('@/stores/session', () => ({
   useConnectionName: (id: string) => (id === 'home' ? 'Home Library' : ''),
 }));
 let mockCaps: Record<string, boolean | undefined> = {};
-let mockProgressOf: (cid: string, libraryId: number, path: string) => object | undefined = () =>
-  undefined;
+let mockProgressOf: ProgressLookup = () => undefined;
 let mockSeries: {
   isPending: boolean;
   isPaused?: boolean;
@@ -285,21 +287,8 @@ describe('SeriesMode', () => {
     // Four works, the first held in two recordings (server#241): /series counts five
     // recordings, the card four books, each finished.
     let id = 0;
-    const book = (title: string, index: number): Book => ({
-      id: ++id,
-      library_id: 1,
-      rel_path: `Corey/Expanse/${title}`,
-      is_folder: true,
-      title,
-      author: 'James S. A. Corey',
-      series: 'The Expanse',
-      series_index: index,
-      narrator: 'Jefferson Mays',
-      duration: 36_000,
-      format: 'm4b',
-      size: 1,
-      work_id: `w${index}`,
-    });
+    const book = (title: string, index: number): Book =>
+      seriesBook(title, index, { id: ++id, work_id: `w${index}` });
     const books = [
       book('Leviathan Wakes', 1),
       book('Leviathan Wakes (full cast)', 1),

@@ -1,6 +1,7 @@
 import type { Book, BookMetaSeries, BookMetaSeriesWork } from '@/api/types';
 import { contentKey } from '@/lib/content-key';
 import { seriesViews } from '@/lib/series-orderings';
+import { seriesBook as book } from '@/testing/series-fixtures';
 
 import {
   currentEntry,
@@ -18,27 +19,10 @@ import {
   seriesOf,
   seriesStats,
   trackSegments,
+  workRefs,
 } from './series-model';
 
 const CID = 'home';
-
-function book(title: string, index: number, extra: Partial<Book> = {}): Book {
-  return {
-    id: index,
-    library_id: 1,
-    rel_path: `Corey/Expanse/${title}`,
-    is_folder: true,
-    title,
-    author: 'James S. A. Corey',
-    series: 'The Expanse',
-    series_index: index,
-    narrator: 'Jefferson Mays',
-    duration: 36_000,
-    format: 'm4b',
-    size: 1,
-    ...extra,
-  };
-}
 
 function work(id: string, title: string, position: string, local?: Book): BookMetaSeriesWork {
   return {
@@ -694,5 +678,19 @@ describe('a range (an omnibus of books 1-3)', () => {
         ['ghost', '1-3'],
       ]);
     });
+  });
+});
+
+describe('workRefs', () => {
+  it("lists a rail work's pick first, then its other recordings, else nothing", () => {
+    const pick = { library_id: 1, path: 'A' };
+    const others = [
+      { library_id: 2, path: 'B' },
+      { library_id: 1, path: 'C' },
+    ];
+    const w = work('w1', 'One', '1');
+    expect(workRefs({ ...w, local: pick, local_others: others })).toEqual([pick, ...others]);
+    expect(workRefs({ ...w, local_others: others })).toEqual(others);
+    expect(workRefs(w)).toEqual([]);
   });
 });

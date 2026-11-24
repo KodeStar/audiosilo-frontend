@@ -48,6 +48,7 @@ import {
   seriesStats,
   trackSegments,
   typicalSeconds,
+  workRefs,
 } from './series-model';
 import { EntryList, ProgressTrack, ShelfCaption, ShelfLegend, statsLine } from './series-parts';
 import { spineDims } from './spine-fit';
@@ -130,10 +131,11 @@ export function SeriesPage({
   // show. The rest only the recordings picker lists, and it reads them when it opens
   // (fe#313: up to 20 a work).
   const placedRefs: BookRef[] = (view?.works ?? []).flatMap((w) =>
-    [
-      ...(w.local ? [w.local] : []),
-      ...(w.local_others ?? []).filter((r) => progressOf(cid, r.library_id, r.path)),
-    ].filter((r) => !ownedKeys.has(contentKey(cid, r.library_id, r.path))),
+    workRefs(w).filter(
+      (r) =>
+        (r === w.local || progressOf(cid, r.library_id, r.path)) &&
+        !ownedKeys.has(contentKey(cid, r.library_id, r.path)),
+    ),
   );
   const placed = usePlacedBooks(cid, placedRefs);
   const elsewhere = useElsewhereBooks(cid, rail ? familyName(rail, views) : name);
