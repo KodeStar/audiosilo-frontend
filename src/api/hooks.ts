@@ -1998,6 +1998,10 @@ export type ToggleFavouriteVars = {
   pendingBook?: boolean;
 };
 
+/** The connections whose current run of favourite toggles began with their list unread
+ * (`useToggleFavourite`): the list it leaves is the toggles' own, never an answer. */
+const favouritesUnreadRun = new Set<string>();
+
 /** Toggle a path's favourite state. Optimistically updates the shared favourites
  * list so the heart and shelf react instantly, then reconciles via invalidation
  * (which fills in server-derived fields like is_book/title for a fresh add).
@@ -2013,10 +2017,6 @@ export type ToggleFavouriteVars = {
  * a heart's read is still out reaches the server after the add, never before it; and
  * only the last of a run reads the list again, so an earlier one's answer can't flip
  * the heart back while a later toggle is still waiting. */
-/** The connections whose current run of favourite toggles began with their list unread
- * (`useToggleFavourite`): the list it leaves is the toggles' own, never an answer. */
-const favouritesUnreadRun = new Set<string>();
-
 export function useToggleFavourite(connectionId?: string, onFailure?: () => void) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
