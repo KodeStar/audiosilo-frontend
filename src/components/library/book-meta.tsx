@@ -34,6 +34,7 @@ import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import {
+  communityCredit,
   type ListeningProgress,
   recapDescriptor,
   revealIsPastEnd,
@@ -630,8 +631,8 @@ export function RecapSummaryBlock({
 /** A previous book's recap body: its whole-work summary (ending included - the
  * reader opened this earlier book's row deliberately), else its furthest
  * book-scope "story so far", else a quiet note. The recap is that book's community
- * content, so it carries that work's own CC BY-SA credit (`work.attribution`, whose
- * `source_url` is its page), never the current book's. */
+ * content, so it carries that work's own CC BY-SA credit (`communityCredit` of that
+ * work, whose `source_url` is its page), never the current book's. */
 function PreviousRecapBody({ work, entry }: { work: BookMetaWork; entry: BookMetaSeriesWork }) {
   const { t } = useTranslation();
   // `finished` is true throughout: the reader opened this EARLIER book's row
@@ -647,7 +648,7 @@ function PreviousRecapBody({ work, entry }: { work: BookMetaWork; entry: BookMet
       ) : (
         <RecapSummaryBlock summary={work.recap_summary} finished />
       )}
-      <Attribution attribution={work.attribution} />
+      <Attribution attribution={communityCredit(work, 'recaps')} />
     </View>
   );
 }
@@ -671,7 +672,7 @@ function PreviousCharactersBody({
       {cast.map((c) => (
         <CharacterCard key={c.id} character={c} />
       ))}
-      <Attribution attribution={work.attribution} />
+      <Attribution attribution={communityCredit(work, 'characters')} />
     </View>
   );
 }

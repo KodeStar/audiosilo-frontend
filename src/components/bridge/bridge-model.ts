@@ -87,7 +87,7 @@ export function communityCovers(content: GenerateContent | undefined): boolean {
  * `/meta`, so it counts for nothing, and a generated whole-book summary alone is no
  * recaps (`generated.recaps` marks it too, but no list shows).
  */
-export function generatedShown(content: GenerateContent | undefined): boolean {
+function generatedShown(content: GenerateContent | undefined): boolean {
   return (
     (!!content?.generated?.characters && (content.characters?.length ?? 0) > 0) ||
     (!!content?.generated?.recaps && (content.recaps?.length ?? 0) > 0)
