@@ -140,10 +140,11 @@ function members(type: ts.Type): ts.Type[] {
 /** An object type, or an intersection of them (`A & { b: number }`); never an array. */
 function isObject(checker: ts.TypeChecker, type: ts.Type): boolean {
   if (type.isIntersection()) return type.types.every((t) => isObject(checker, t));
-  return (
-    !!(type.flags & ts.TypeFlags.Object) && !checker.isArrayType(type) && !checker.isTupleType(type)
-  );
+  return !!(type.flags & ts.TypeFlags.Object) && !isArrayLike(checker, type);
 }
+
+const isArrayLike = (checker: ts.TypeChecker, type: ts.Type) =>
+  checker.isArrayType(type) || checker.isTupleType(type);
 
 const SCALAR: Record<string, ts.TypeFlags> = {
   string: ts.TypeFlags.StringLike,
@@ -151,6 +152,13 @@ const SCALAR: Record<string, ts.TypeFlags> = {
   boolean: ts.TypeFlags.BooleanLike,
   null: ts.TypeFlags.Null,
 };
+
+/** Whether member is the JSON kind of shape (a scalar, an array or an object). */
+function fitsKind(checker: ts.TypeChecker, shape: Shape, member: ts.Type): boolean {
+  if (typeof shape === 'string') return !!(member.flags & SCALAR[shape]);
+  if (Array.isArray(shape)) return isArrayLike(checker, member);
+  return isObject(checker, member);
+}
 
 // A single answer must fit one whole alternative. Keep the closest member's
 // diagnostics when all fail so the report names the fields to fix.
@@ -181,15 +189,14 @@ function walk(
     return;
   }
   if (typeof shape === 'string') {
-    const flag = SCALAR[shape];
-    if (flag === undefined) throw new Error(`${at}: unknown shape ${shape}`);
-    if (!variants.some((m) => m.flags & flag)) {
+    if (!(shape in SCALAR)) throw new Error(`${at}: unknown shape ${shape}`);
+    if (!variants.some((m) => fitsKind(checker, shape, m))) {
       out.errors.push(`${at}: the server sends ${shape}, the type is ${name()}`);
     }
     return;
   }
   if (Array.isArray(shape)) {
-    const arrays = variants.filter((m) => checker.isArrayType(m) || checker.isTupleType(m));
+    const arrays = variants.filter((m) => fitsKind(checker, shape, m));
     if (arrays.length === 0) {
       out.errors.push(`${at}: the server sends an array, the type is ${name()}`);
       return;
@@ -202,7 +209,7 @@ function walk(
     else closest(elements, (row, p) => walkRows([row], p), out);
     return;
   }
-  const objects = variants.filter((m) => isObject(checker, m));
+  const objects = variants.filter((m) => fitsKind(checker, shape, m));
   if (objects.length === 0) {
     out.errors.push(`${at}: the server sends an object, the type is ${name()}`);
     return;
@@ -217,9 +224,12 @@ function canAppear(checker: ts.TypeChecker, shape: Shape, type: ts.Type): boolea
   if (isOr(shape)) return shape.$or.some((alt) => canAppear(checker, alt, type));
   return members(type).some((member) => {
     if (member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return true;
-    if (typeof shape === 'string') return !!(member.flags & SCALAR[shape]);
-    if (Array.isArray(shape)) return checker.isArrayType(member) || checker.isTupleType(member);
-    return isObject(checker, member) && requiredGaps(checker, shape, member, true).length === 0;
+    if (!fitsKind(checker, shape, member)) return false;
+    return (
+      typeof shape === 'string' ||
+      Array.isArray(shape) ||
+      requiredGaps(checker, shape, member, true).length === 0
+    );
   });
 }
 
@@ -357,7 +367,15 @@ describe('the parity check itself', () => {
       h?: (string | number)[];
       i?: Inner & { y: string };
     };`;
-  const { checker, types } = probeTypes(['Probe'], extra);
+  const { checker, types } = probeTypes(
+    [
+      'Probe',
+      'string[] | number[]',
+      '({ a: string; value: { x: string; data: number[] } } | { b: boolean; id: number; value: { y: number; data: string[] } })[]',
+      '({ left: number; shared: { value: string } } | { right: number; shared: { value: boolean } })[]',
+    ],
+    extra,
+  );
   const good: Shape = {
     a: 'string',
     c: 'string',
@@ -401,21 +419,13 @@ describe('the parity check itself', () => {
   });
 
   it('checks later array alternatives and keeps a single array consistent with its type', () => {
-    const {
-      checker,
-      types: [type],
-    } = probeTypes(['string[] | number[]']);
+    const type = types[1];
     expect(compare(checker, ['number'], type)).toEqual({ errors: [], unknown: [] });
     expect(compare(checker, [{ $or: ['string', 'number'] }], type).errors).toHaveLength(1);
   });
 
   it('walks all members represented in a merged row, including their nested fields', () => {
-    const {
-      checker,
-      types: [type],
-    } = probeTypes([
-      '({ a: string; value: { x: string; data: number[] } } | { b: boolean; id: number; value: { y: number; data: string[] } })[]',
-    ]);
+    const type = types[2];
     const value = { x: 'string', y: 'number', data: [{ $or: ['number', 'string'] }] };
     const row = { a: 'string', b: 'boolean', id: 'number', value };
     expect(compare(checker, [row], type)).toEqual({ errors: [], unknown: [] });
@@ -435,12 +445,7 @@ describe('the parity check itself', () => {
   });
 
   it('requires each represented row to account for its shared fields', () => {
-    const {
-      checker,
-      types: [type],
-    } = probeTypes([
-      '({ left: number; shared: { value: string } } | { right: number; shared: { value: boolean } })[]',
-    ]);
+    const type = types[3];
     const row = {
       left: 'number',
       right: 'number',
