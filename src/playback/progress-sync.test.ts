@@ -181,6 +181,24 @@ describe('progress-sync', () => {
     expect(reachability.noteSuccess).toHaveBeenCalled();
   });
 
+  // An older server's decodeJSON refuses unknown fields (a 400), so a save built from a
+  // /me/progress row (which now carries `cover_version`) must PUT only the input's fields.
+  it('PUTs only the progress input fields, whatever the save was built from', async () => {
+    const api = fakeApi(() => Promise.resolve());
+    const fromRow = { ...save, cover_version: 'v7', file: 'A/Book/01.mp3', file_pos: 3 };
+    await saveProgress(api, fromRow as typeof save);
+    const body = (api.saveProgress as jest.Mock).mock.calls[0][2];
+    expect(Object.keys(body).sort()).toEqual([
+      'device_id',
+      'duration',
+      'finished',
+      'playback_speed',
+      'position',
+      'updated_at',
+      'version',
+    ]);
+  });
+
   it('queues offline without hitting the network', async () => {
     reachable.mockReturnValue(false);
     const api = fakeApi(() => Promise.resolve());
