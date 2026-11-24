@@ -3,15 +3,15 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { apiErrorKind } from '@/api/client';
-import { CapabilityError, useCapability, useFollowPodcast, useUnfollowPodcast } from '@/api/hooks';
+import { CapabilityError, useFollowPodcast, useUnfollowPodcast } from '@/api/hooks';
 import type { PodcastShow } from '@/api/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { isKidAccount } from '@/lib/account';
-import { useSession } from '@/stores/session';
+
+import { useAddShowsAccess } from './shows-actions';
 
 /** A refused follow or unfollow, in the listener's words (never the server's English). */
 function followErrorKey(e: unknown): ParseKeys {
@@ -27,15 +27,6 @@ function followErrorKey(e: unknown): ParseKeys {
     default:
       return 'podcasts.follow.errorFailed';
   }
-}
-
-/** Whether this listener may follow and unfollow shows on `connectionId`'s server: it can
- * follow (`podcasts`: the module on and its Bridge online), and the account is neither a
- * kid's nor the demo's. */
-export function useMayFollow(connectionId: string): boolean {
-  const can = useCapability('podcasts', connectionId) === true;
-  const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
-  return can && !isKidAccount(user) && !user?.is_demo;
 }
 
 /**
@@ -56,7 +47,8 @@ export function FollowButton({
   onGone?: () => void;
 }) {
   const { t } = useTranslation();
-  const mayFollow = useMayFollow(connectionId);
+  // The same rule as adding shows: every way in ends in a follow.
+  const mayFollow = useAddShowsAccess(connectionId) === 'allowed';
   const follow = useFollowPodcast(connectionId);
   const unfollow = useUnfollowPodcast(connectionId);
   const [confirming, setConfirming] = useState(false);
