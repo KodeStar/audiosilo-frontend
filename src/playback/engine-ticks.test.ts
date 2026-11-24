@@ -1,4 +1,4 @@
-import { engineTick, engineTicker, engineTimeout } from './engine-ticks';
+import { engineTick, engineTicker, engineTimeout, engineTimeoutsTick } from './engine-ticks';
 
 /** `seconds` of engine events, one a second, with no JS timer firing (Android with the
  * screen off). */
@@ -200,6 +200,20 @@ describe('engineTimeout', () => {
     eventsOnly(5);
     jest.advanceTimersByTime(10_000);
     expect(fn).not.toHaveBeenCalled();
+  });
+
+  // The store's late landing: its tickers wait a turn, the stall watchdog does not.
+  it('runs a timeout past its deadline from engineTimeoutsTick, and no ticker', () => {
+    const fn = jest.fn();
+    const tick = jest.fn();
+    const ticker = engineTicker(tick, 1_000);
+    ticker.start();
+    engineTimeout(fn, 3_000);
+    jest.setSystemTime(Date.now() + 3_000);
+    engineTimeoutsTick();
+    expect(fn).toHaveBeenCalledTimes(1);
+    expect(tick).not.toHaveBeenCalled();
+    ticker.stop();
   });
 
   it('does not run one an earlier timeout cancelled in the same pass', () => {

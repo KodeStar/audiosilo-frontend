@@ -61,7 +61,7 @@ import {
   type LocalFiles,
 } from './book-source';
 import { connectionGeneration } from './connection-generation';
-import { engineTick, engineTicker, engineTimeout } from './engine-ticks';
+import { engineTick, engineTicker, engineTimeout, engineTimeoutsTick } from './engine-ticks';
 import { type FinishRef, finishedSave, setFinishRecorder, type UndoRef } from './finish-route';
 import {
   afterInTurn,
@@ -4463,9 +4463,12 @@ async function createService(): Promise<PlaybackService> {
     // The engine's events drive the periodic work (the save, the sleep timer, the stall
     // watchdog) where Android has paused the JS timers: see `engineTicker`.
     // This report could be ordinary playback reaching a timed-out seek's target. Give
-    // the seek call that emitted it this turn to confirm it before a due save cuts.
-    if (lateLanding === 'unconfirmed') setTimeout(engineTick, 0);
-    else engineTick();
+    // the seek call that emitted it this turn to confirm it before a due save cuts; the
+    // stall watchdog runs now, as on any report.
+    if (lateLanding === 'unconfirmed') {
+      engineTimeoutsTick();
+      setTimeout(engineTick, 0);
+    } else engineTick();
   };
   // A run into a later file waits for the listener's own move (`EngineAsk.held`): `raw`, the
   // latest report, decides it once the wait is over and no other report came.

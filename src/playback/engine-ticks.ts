@@ -105,6 +105,13 @@ export function engineTick() {
   runEach(consumers, now, 'a ticker');
 }
 
+/** `engineTick`'s timeouts alone, for an engine event whose tickers wait a turn (the store's
+ * late landing, `setTimeout(engineTick, 0)`): a timer Android has paused would hold the stall
+ * watchdog back with them. */
+export function engineTimeoutsTick() {
+  runEach(timeouts, Date.now(), 'a timeout');
+}
+
 /** Runs each of `set` still in it (one an earlier one cancelled this pass does not run). One
  * throw must not starve the rest this pass, nor escape into the engine's snapshot listener
  * that called `engineTick`. */
