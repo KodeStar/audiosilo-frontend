@@ -19,8 +19,9 @@ export function outlineFeeds(text: string): Map<number, string> {
   return outlineEntries(text).feeds;
 }
 
-/** The longest title a row shows from its list (the server's `opml.MaxTitleBytes` bound
- * on what it keeps). */
+/** The longest title a row shows from its list, in code points: a display bound of this
+ * app's (the server reads and keeps at most 1,000 bytes of it, `opml.MaxTitleBytes` and
+ * `bridge.MaxSubscribeTitleBytes`). */
 const MAX_TITLE_CHARS = 500;
 
 /**

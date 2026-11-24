@@ -6,10 +6,11 @@ import { ApiError, isRefusedForGood } from '@/api/client';
  * list can get 429 / 503 for some. An image element can't see the status, and the route
  * takes no extra parameter (no cache buster) and answers HEAD 405, so a failed load asks
  * the same URL once with GET (`probeArtwork`) and the image mounts again with that URL:
- * at once when the probe got the image, after the server's `Retry-After` when it was
- * turned away with one, never when the artwork is gone (an id that expired is a 404 every
- * time), and otherwise after 3 s, 10 s and 30 s. Four tries in all, then it keeps the
- * placeholder.
+ * at once when the probe got the image, never when the artwork is gone (an id that expired
+ * is a 404 every time), and otherwise after 3 s, 10 s and 30 s, or the server's longer
+ * `Retry-After` when it was turned away with one (never a shorter one: a busy server's 1 s
+ * would spend all four tries within seconds of the spike they are for). Four tries in all,
+ * then it keeps the placeholder.
  */
 export const ARTWORK_RETRY_DELAYS_MS = [3_000, 10_000, 30_000] as const;
 
@@ -50,7 +51,8 @@ export function artworkRetryDelay(failures: number, probe?: ArtworkProbe): numbe
     case 'gone':
       return null;
     case 'wait':
-      return Math.min(MAX_RETRY_AFTER_MS, Math.max(1_000, probe.seconds * 1_000));
+      // The tries are few: a wait shorter than the schedule's would spend them in a burst.
+      return Math.min(MAX_RETRY_AFTER_MS, Math.max(scheduled, probe.seconds * 1_000));
     default:
       return scheduled;
   }

@@ -14,8 +14,8 @@ import { artworkRetryDelay, probeArtwork } from './artwork-retry';
  * or one that keeps failing, is the microphone placeholder. A failed load (the server
  * fetches uncached images a few at a time, so some get 429 / 503) asks the URL once to hear
  * why (`probeArtwork`) and mounts the image again when `artworkRetryDelay` says: at once,
- * after the server's `Retry-After`, never for artwork that is gone, else on its fixed
- * schedule. Rows mount as the list windows them in, so artwork loads lazily.
+ * never for artwork that is gone, else on its fixed schedule or after the server's longer
+ * `Retry-After`. Rows mount as the list windows them in, so artwork loads lazily.
  */
 export function DiscoveryArtwork({
   connectionId,

@@ -34,8 +34,10 @@ describe('artworkRetryDelay', () => {
     expect(artworkRetryDelay(2, { kind: 'ready' })).toBe(0);
     expect(artworkRetryDelay(1, { kind: 'gone' })).toBeNull();
     expect(artworkRetryDelay(1, { kind: 'wait', seconds: 7 })).toBe(7_000);
-    // Never under a second, never past a minute.
-    expect(artworkRetryDelay(1, { kind: 'wait', seconds: 0 })).toBe(1_000);
+    // Never under the schedule's wait (a busy server's 1 s would spend every try in a few
+    // seconds), never past a minute.
+    expect(artworkRetryDelay(1, { kind: 'wait', seconds: 0 })).toBe(ARTWORK_RETRY_DELAYS_MS[0]);
+    expect(artworkRetryDelay(2, { kind: 'wait', seconds: 1 })).toBe(ARTWORK_RETRY_DELAYS_MS[1]);
     expect(artworkRetryDelay(1, { kind: 'wait', seconds: 600 })).toBe(60_000);
     // Past the last try nothing asks again, whatever the probe said.
     expect(artworkRetryDelay(ARTWORK_RETRY_DELAYS_MS.length + 1, { kind: 'ready' })).toBeNull();

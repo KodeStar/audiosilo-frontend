@@ -1178,8 +1178,9 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   (only then a picker), the device region for Apple only. Artwork loads only through the
   server's proxy with the media token (`discoveryArtworkUrl` refuses any other URL), and a
   failed load asks the proxy why (`probeDiscoveryArtwork`, a GET) before it mounts again:
-  ready at once, a 429 / 503 after its `Retry-After` (1 to 60 s), a 4xx never, anything else
-  on `artworkRetryDelay`'s schedule (`artwork-retry.ts`). All copy for refusals lives in
+  ready at once, a 4xx never, anything else on `artworkRetryDelay`'s schedule, a 429 / 503
+  after its `Retry-After` when that is longer (at most 60 s; never shorter, so a busy server's
+  1 s can't spend the four tries in a burst) (`artwork-retry.ts`). All copy for refusals lives in
   `find-shows-model.ts`; a code it does not know reads as the general line. A search read
   again that failed keeps its results under "Showing the last results" with the failure and
   Search again (fe#299), hidden while it is asked again.
@@ -1188,12 +1189,16 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   `claimed`, `running`, `needs_attention`), `active` (its screen focused: the Shows mode stays
   mounted under a pushed Find shows) and the app in the foreground. A request ending `done`
   reads its library's show list again (`myPodcastsQuery`). A row is named by `requestLabel`
-  (the added show's title, else the request's `title`, sent with a directory result's follow,
-  never for a private feed, else its redacted address). A failed or cancelled row has Dismiss
+  (the added show's title, else the request's `title`, sent with a directory result's follow
+  and an import row's Try again, never kept for a private feed, else its redacted address).
+  **`title` goes only to a server with `podcast_request_dismiss`** (`useFollowPodcastByUrl`):
+  the server's decoder refuses unknown fields, so an older one answers a follow carrying it
+  400 and follows nothing. A failed or cancelled row has Dismiss
   (`useDismissPodcastRequest`, capability `podcast_request_dismiss`, `DELETE
   /podcasts/requests/{id}`; a server 404 dismisses it too). A follow by address keeps its
   request id and turns "Adding" into Following, failed (with the reason) or cancelled once the
-  request ends (`requestEnd`).
+  request ends (`requestEnd`), and says nothing more once the list no longer holds it (a
+  dismissed request), never "Adding" again.
 - **The OPML import is `OpmlWaves`**, a framework-free controller (its own timers, tested with
   fake timers; `useOpmlImport` wraps it at page level so it survives a section switch and ends
   with the page). It re-uploads the same bytes in waves (the server keeps nothing): after the
