@@ -1850,6 +1850,7 @@
       "history": "Historique",
       "attribution": "Notes de la communauté par {{credit}}",
       "licence": "Licence : {{licence}}",
+      "creditSource": "{{credit}}, ouvre la page source",
       "hideAgain": "Les masquer à nouveau",
       "spoilersShown": "Spoilers affichés",
       "justMet": "Rencontré à l’instant",

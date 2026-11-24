@@ -8,6 +8,7 @@ import { useSession } from '@/stores/session';
 
 import {
   bridgeRefusalKey,
+  communityCovers,
   GENERATE_PARAMS,
   type GenerateContent,
   generateOffer,
@@ -33,7 +34,8 @@ export type GenerateModel = {
   /** The action the book offers now (`generateOffer`'s `generate` or `regenerate`). */
   offer: 'generate' | 'regenerate' | null;
   /** The community has both characters and recaps (`generateOffer`'s `covered`): no
-   * action, only the line that says so (`GenerateCovered`). */
+   * action, only the line that says so (`GenerateCovered`), and no failed job's status
+   * (`statusJob`'s `covered`; an open job's status shows instead of the line). */
   covered: boolean;
   /** The confirmation is open (never while `allowed` is off: it closes with it). */
   confirming: boolean;
@@ -50,8 +52,10 @@ export type GenerateModel = {
 
 /** Whether a book's job list has a job whose status shows (`statusJob`): all the offer
  * reads of it, so a poll that only moves a job's progress re-renders nobody but the
- * status. */
+ * status. One for a book the community covers (a failed job gives way to the covered
+ * line) and one for any other, each stable for the job list's `select`. */
 const showsJob = (jobs: BridgeJob[]) => statusJob(jobs) !== undefined;
+const showsJobCovered = (jobs: BridgeJob[]) => statusJob(jobs, true) !== undefined;
 
 /**
  * The player's "Generate characters and recaps" for one book (Bridge Phase 1a): who may
@@ -77,7 +81,9 @@ export function useGenerate({
   const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
   const server = useServerInfo(connectionId).data;
   const allowed = mayGenerate(user, server);
-  const surface = useBridgeJobSurface(target, allowed, showsJob);
+  // A failed job gives way to the covered line: read only once the metadata is in.
+  const covers = metaKnown && communityCovers(content);
+  const surface = useBridgeJobSurface(target, allowed, covers ? showsJobCovered : showsJob);
   const { queueJob, setQueueing } = surface;
 
   const kind = generateOffer({

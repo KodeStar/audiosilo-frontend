@@ -1850,6 +1850,7 @@
       "history": "Cronologia",
       "attribution": "Note della community di {{credit}}",
       "licence": "Licenza: {{licence}}",
+      "creditSource": "{{credit}}, apre la pagina di origine",
       "hideAgain": "Nascondili di nuovo",
       "spoilersShown": "Spoiler visibili",
       "justMet": "Appena incontrato",

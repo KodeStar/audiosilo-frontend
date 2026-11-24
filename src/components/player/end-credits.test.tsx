@@ -752,6 +752,34 @@ describe('EndCredits', () => {
     expect(screen.getByText('Macmillan')).toBeTruthy();
   });
 
+  it.each([
+    ['https://meta.example/work?id=w1', true],
+    ['javascript:alert(1)', false],
+    ['', false],
+  ])("links the community credit to the work's page %j only when http(s)", async (url, link) => {
+    mockCaps = { ...mockCaps, metadata: true };
+    mockMeta = {
+      matched: true,
+      work: {
+        id: 'w1',
+        title: 'The Way of Kings',
+        attribution: {
+          credit: 'AudioSilo Meta contributors',
+          license: 'CC BY-SA 4.0',
+          license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+          source_url: url,
+        },
+      },
+      recording: { id: 'r1', narrators: [] },
+    };
+    await mount();
+    await fireEvent.press(screen.getByText('Credits'));
+    expect(screen.getByText('AudioSilo Meta contributors · CC BY-SA 4.0')).toBeTruthy();
+    expect(
+      screen.queryAllByRole('link', { name: 'AudioSilo Meta contributors · CC BY-SA 4.0' }),
+    ).toHaveLength(link ? 1 : 0);
+  });
+
   it("shows the server's own publisher before the recording's, as the book page does", async () => {
     // An admin's edit or an Audiobookshelf metadata.json: on a book nothing matched, too.
     mockPublisher = 'Tor Books';

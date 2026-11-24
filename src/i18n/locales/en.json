@@ -1850,6 +1850,7 @@
       "history": "History",
       "attribution": "Community notes from {{credit}}",
       "licence": "Licence: {{licence}}",
+      "creditSource": "{{credit}}, opens the source page",
       "hideAgain": "Hide them again",
       "spoilersShown": "Spoilers shown",
       "justMet": "Just met",

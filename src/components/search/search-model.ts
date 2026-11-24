@@ -219,6 +219,8 @@ export type CharacterHit = {
   connectionId: string;
   libraryId: number;
   path: string;
+  /** The book's CC BY-SA credit (`CharacterBook.attribution`). */
+  attribution?: BookMetaAttribution;
 };
 
 export type CharacterMatches = {
@@ -230,9 +232,32 @@ export type CharacterMatches = {
    * count only, never a name. A name met in one book is not counted again for
    * another book that has not reached it yet. */
   hidden: number;
-  /** The credits of the books the hits come from, once each (render beside them). */
-  attributions: BookMetaAttribution[];
 };
+
+/** A book's community credit beside its character hits, with the title it credits. */
+type CharacterCredit = BookMetaAttribution & { bookTitle: string };
+
+/**
+ * The credits of the books `hits` (the rows on screen) come from, once per credit, licence
+ * and source page: render them beside the rows, each linking its `source_url`.
+ */
+export function characterCredits(hits: readonly CharacterHit[]): CharacterCredit[] {
+  const credits: CharacterCredit[] = [];
+  for (const { attribution, bookTitle } of hits) {
+    if (!attribution) continue;
+    if (
+      credits.some(
+        (a) =>
+          a.credit === attribution.credit &&
+          a.license === attribution.license &&
+          (a.source_url ?? '') === (attribution.source_url ?? ''),
+      )
+    )
+      continue;
+    credits.push({ ...attribution, bookTitle });
+  }
+  return credits;
+}
 
 /**
  * The characters matching `query` across the listener's started books, gated by their
@@ -246,13 +271,10 @@ export function matchCharacters(
   limit = Infinity,
 ): CharacterMatches {
   const q = fold(query.trim());
-  const empty: CharacterMatches = { hits: [], total: 0, hidden: 0, attributions: [] };
+  const empty: CharacterMatches = { hits: [], total: 0, hidden: 0 };
   if (!q) return empty;
 
-  const met = new Map<
-    string,
-    { hit: CharacterHit; rank: number; attribution?: BookMetaAttribution }
-  >();
+  const met = new Map<string, { hit: CharacterHit; rank: number }>();
   const unmet = new Set<string>();
   const atWordStart = wordStart(q);
   const rank = (text: string) => rankFolded(fold(text), q, atWordStart);
@@ -277,28 +299,19 @@ export function matchCharacters(
           connectionId: book.connectionId,
           libraryId: book.libraryId,
           path: book.path,
+          attribution: book.attribution,
         },
         // An alias-only match ranks after every name match.
         rank: nameRank ?? 3,
-        attribution: book.attribution,
       });
     }
   });
 
   const ordered = [...met.values()].sort((a, b) => a.rank - b.rank);
   const shown = ordered.slice(0, limit);
-  const attributions: BookMetaAttribution[] = [];
-  for (const { attribution } of shown) {
-    if (!attribution) continue;
-    if (
-      attributions.some((a) => a.credit === attribution.credit && a.license === attribution.license)
-    )
-      continue;
-    attributions.push(attribution);
-  }
   let hidden = 0;
   for (const name of unmet) if (!met.has(name)) hidden++;
-  return { hits: shown.map((e) => e.hit), total: ordered.length, hidden, attributions };
+  return { hits: shown.map((e) => e.hit), total: ordered.length, hidden };
 }
 
 /** A stable hue slot (0-3) for a name: the character token's tint. */

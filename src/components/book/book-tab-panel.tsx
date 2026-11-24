@@ -92,6 +92,7 @@ export function BookTabPanel({
       const marks = recapMarks(work?.generated, {
         list: recaps.length > 0,
         summary: community.summaryVisible,
+        previous: community.previousBooks.length > 0,
       });
       return (
         <View className="gap-4">
