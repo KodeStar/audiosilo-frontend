@@ -2,6 +2,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import { settleFlashList } from '@/testing/flash-list';
+import { mocksChanged } from '@/testing/mock-hooks';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({
@@ -120,7 +121,8 @@ jest.mock('@/api/hooks', () => ({
     unreadError: mockProgress.error,
     ...mockProgress,
   }),
-  useLibrariesAll: () => ({ groups: mockGroups }),
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useLibrariesAll: require('@/testing/mock-hooks').mockedHook(() => ({ groups: mockGroups })),
   useRecentAll: () => ({ unreadError: mockRecent.error, ...mockRecent }),
   useFavouritesAll: () => ({ favourites: [] }),
   useBook: () => ({ data: undefined }),
@@ -154,10 +156,11 @@ let mockNext: { answers: unknown[]; supported: boolean | undefined; isLoading: b
 };
 const mockCandidates = jest.fn();
 jest.mock('./use-next-in-series', () => ({
-  useNextInSeries: (candidates: unknown) => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useNextInSeries: require('@/testing/mock-hooks').mockedHook((candidates: unknown) => {
     mockCandidates(candidates);
     return mockNext;
-  },
+  }),
 }));
 // A tile's actions menu has its own tests.
 jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
@@ -199,13 +202,17 @@ jest.mock('@/components/upcoming/upcoming-rail', () => ({
 // Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite.
 let mockModulesOn: Record<string, boolean> = {};
 const mockUseActiveModules = jest.fn();
-jest.mock('@/modules/registry', () => ({
-  ...jest.requireActual('@/modules/registry'),
-  useActiveModules: (list: readonly { id: string }[]) => {
-    mockUseActiveModules();
-    return list.filter((m) => mockModulesOn[m.id]);
-  },
-}));
+jest.mock('@/modules/registry', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mockedHook } = require('@/testing/mock-hooks');
+  return {
+    ...jest.requireActual('@/modules/registry'),
+    useActiveModules: mockedHook((list: readonly { id: string }[]) => {
+      mockUseActiveModules();
+      return list.filter((m) => mockModulesOn[m.id]);
+    }),
+  };
+});
 
 /* eslint-disable import/first */
 import { useState } from 'react';
@@ -674,19 +681,17 @@ describe("HomeScreen's module rails (Bridge Phase 2a)", () => {
       homeRails: () => HookedRail({ name: '2' }),
     } as unknown as PlayerModule;
     const modules = [one, two];
-    const client = new QueryClient();
-    const tree = () => (
-      <QueryClientProvider client={client}>
-        <HomeScreen modules={modules} />
-      </QueryClientProvider>
-    );
     mockModulesOn = { contributions: true };
-    await render(tree());
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
+        <HomeScreen modules={modules} />
+      </QueryClientProvider>,
+    );
     await settleFlashList();
     expect(screen.getByText('Hooked rail 1')).toBeTruthy();
     expect(screen.queryByText('Hooked rail 2')).toBeNull();
     mockModulesOn = { contributions: true, other: true };
-    await screen.rerender(tree());
+    await mocksChanged();
     expect(screen.getByText('Hooked rail 2')).toBeTruthy();
   });
 });
@@ -751,9 +756,8 @@ describe("HomeScreen's book shelves leave episodes out", () => {
       started('Book', '2026-10-04T00:00:00Z'),
       { ...started('Done', '2026-10-03T00:00:00Z'), finished: true, position: 1000 },
     ];
-    const client = new QueryClient();
-    const view = await render(
-      <QueryClientProvider client={client}>
+    await render(
+      <QueryClientProvider client={new QueryClient()}>
         <HomeScreen />
       </QueryClientProvider>,
     );
@@ -770,11 +774,7 @@ describe("HomeScreen's book shelves leave episodes out", () => {
 
     mockGroups = [{ connectionId: 'a', libraries: [{ id: 1, kind: 'books' }], status: 'ready' }];
     mockNext = { answers: [], supported: true, isLoading: false };
-    await view.rerender(
-      <QueryClientProvider client={client}>
-        <HomeScreen />
-      </QueryClientProvider>,
-    );
+    await mocksChanged();
     await settleFlashList();
     expect(screen.getByText('Smart shelves')).toBeTruthy();
     expect(screen.getByRole('button', { name: /^Done/ })).toBeTruthy();

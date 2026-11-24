@@ -186,10 +186,12 @@ export function useBookActions(
   // behind the close of the span the book was left with. Never a progress edit there: sent
   // over HTTP beside the outbox, it reached the server before that span did. An older server
   // with progress edits: the edit (no span waits there, and Undo is an edit too); one without:
-  // the offline-aware save at the book's end.
+  // the offline-aware save at the book's end. The route is chosen before the `try`: the React
+  // Compiler skips a hook with a condition inside one, and this hook is built by it (fe#280).
   const recordFinished = async (): Promise<boolean> => {
+    const viaEdit = progressEdit === true && !finishTakesEvent(connectionId);
     try {
-      if (progressEdit === true && !finishTakesEvent(connectionId)) {
+      if (viaEdit) {
         await edit.mutateAsync({ libraryId, path, edit: { finished: true } });
       } else {
         await markFinished.mutateAsync({

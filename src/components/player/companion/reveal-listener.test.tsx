@@ -1,4 +1,4 @@
-import { act, render, screen } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 
 import type { PlayerStoreMock } from '@/testing/player-store-mock';
 
@@ -12,7 +12,8 @@ const mockPush = jest.fn();
 let mockSegments = ['(app)'];
 jest.mock('expo-router', () => ({
   router: { push: (h: unknown) => mockPush(h) },
-  useSegments: () => mockSegments,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useSegments: require('@/testing/mock-hooks').mockedHook(() => mockSegments),
 }));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,
@@ -53,6 +54,7 @@ jest.mock('@/api/hooks', () => ({
 
 /* eslint-disable import/first */
 import { toast } from '@/components/ui/toast';
+import { mocksChanged } from '@/testing/mock-hooks';
 import { playerStoreMock } from '@/testing/player-store-mock';
 
 import { usePlayerSheets } from '../player-sheets';
@@ -211,9 +213,7 @@ describe('CompanionRevealListener', () => {
     const show = (toast as jest.Mock).mock.calls[0][0].action.onPress as () => void;
     // The full player opened while the toast was up.
     mockSegments = ['player'];
-    await act(async () => {
-      await screen.rerender(<CompanionRevealListener />);
-    });
+    await mocksChanged();
     show();
     expect(mockPush).not.toHaveBeenCalled();
     expect(usePlayerSheets.getState().open).toBe('companion');
