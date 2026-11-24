@@ -150,7 +150,11 @@ export type Capabilities = {
    * `POST /podcasts/opml/import` (the module's) and `GET /podcasts/opml/export` (core).
    * Absent on older servers: treat missing as false and offer neither. */
   podcast_opml?: boolean;
-  /** The server accepts a title on follow and lets a listener dismiss a failed or cancelled request. */
+  /** Whether a listener may dismiss their own failed or cancelled follow request (v2.7.0,
+   * fe#126): `DELETE /podcasts/requests/{id}`, not the module's (it works with podcasts
+   * off). Absent on older servers: treat missing as false and offer no Dismiss. It also
+   * marks a server whose `POST /podcasts/follow` takes `title` (the same change; an older
+   * one refuses the field with a 400): `useFollowPodcastByUrl` sends it only then. */
   podcast_request_dismiss?: boolean;
   /** Whether the server has the ebook reader (Bridge Phase 3b): a book's `ebook`
    * ({@link BookEbook}), its bytes at `GET /libraries/{id}/ebook` (the `Authorization`
