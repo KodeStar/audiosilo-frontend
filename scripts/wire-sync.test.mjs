@@ -108,7 +108,7 @@ test('freshness warns at 50 main commits beyond the pin, using the GitHub compar
   t.mock.method(globalThis, 'fetch', async (url) => {
     assert.equal(
       url,
-      `https://api.github.com/repos/KodeStar/audiosilo-server/compare/${ref}...main?per_page=1`,
+      `https://api.github.com/repos/KodeStar/audiosilo-server/compare/${ref}...main?per_page=1&page=2`,
     );
     // behind_by counts commits only on the review branch, the opposite direction.
     return Response.json({ ahead_by: ahead, behind_by: 1 });

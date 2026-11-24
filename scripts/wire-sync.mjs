@@ -137,7 +137,9 @@ export function pinnedRef(out) {
 export async function freshnessWarning(ref, server) {
   const behind = server
     ? Number(git(server, 'rev-list', '--count', `${ref}..origin/main`).trim())
-    : (await github(`compare/${ref}...main?per_page=1`, `comparing ${ref} to main`)).ahead_by;
+    : // Page 2 still carries the totals but not page 1's up to 300 file patches.
+      (await github(`compare/${ref}...main?per_page=1&page=2`, `comparing ${ref} to main`))
+        .ahead_by;
   if (!Number.isSafeInteger(behind) || behind < 0) throw new Error('invalid server commit count');
   if (behind >= WARN_BEHIND)
     return `Wire pin ${ref} is ${behind} commits behind server main. Run npm run wire:sync and review the goldens.`;
@@ -177,7 +179,10 @@ async function main() {
     return;
   }
   const ref = pinnedRef(OUT);
-  const want = server ? idsInCheckout(server, ref) : await idsOnGitHub(ref);
+  const [want, warning] = await Promise.all([
+    server ? idsInCheckout(server, ref) : idsOnGitHub(ref),
+    freshnessWarning(ref, server),
+  ]);
   const problems = compareCopy(want, OUT);
   if (problems.length > 0) {
     console.error(`src/api/__wire__ does not match ${REPO}@${ref}:\n  ${problems.join('\n  ')}`);
@@ -185,7 +190,6 @@ async function main() {
     process.exit(1);
   }
   console.log(`src/api/__wire__ matches ${REPO}@${ref} (${Object.keys(want).length} goldens)`);
-  const warning = await freshnessWarning(ref, server);
   if (warning)
     console.warn(process.env.GITHUB_ACTIONS ? `::warning::${warning}` : `Warning: ${warning}`);
 }
