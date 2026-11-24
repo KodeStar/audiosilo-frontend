@@ -13,7 +13,7 @@ import {
 import { BookmarksSection } from '@/components/library/bookmarks-section';
 import { HistorySection } from '@/components/library/history-section';
 import {
-  charactersCredit,
+  communityCredit,
   type ListeningProgress,
   recapMarks,
 } from '@/components/library/meta-gating';
@@ -126,12 +126,9 @@ export function BookTabPanel({
             previousBooks={community.previousBooks}
             coverFor={coverFor}
           />
-          <Attribution
-            attribution={charactersCredit(work, {
-              list: characters.length > 0,
-              previous: community.previousBooks.length > 0,
-            })}
-          />
+          {characters.length > 0 ? (
+            <Attribution attribution={communityCredit(work, 'characters')} />
+          ) : null}
         </View>
       );
     }

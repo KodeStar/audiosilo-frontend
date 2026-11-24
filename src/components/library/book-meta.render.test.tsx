@@ -404,6 +404,13 @@ const fetched = (over: Partial<BookMetaWork>): BookMetaWork => ({
   ...over,
 });
 
+const twoTowersCredit = {
+  credit: 'AudioSilo Meta community contributors',
+  license: 'CC BY-SA 4.0',
+  license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+  source_url: 'https://meta.audiosilo.app/work?id=book-two',
+};
+
 describe('previous books (Recaps tab)', () => {
   it('lists the earlier books closed, and fetches one only when it is opened', async () => {
     await mount(
@@ -475,6 +482,24 @@ describe('previous books (Recaps tab)', () => {
     expect(screen.queryByText('Early on.')).toBeNull();
   });
 
+  // A previous book's recap is its work's community content: credited to that work.
+  it("credits an earlier book's recap to that book's own work", async () => {
+    mockUseMetaWork.mockReturnValue({
+      data: fetched({
+        recaps: [{ through: { chapter: 20 }, scope: 'book', text: 'Nearly all of it.' }],
+        attribution: twoTowersCredit,
+      }),
+      isError: false,
+    });
+    await mount(
+      <RecapsTab recaps={[]} progress={{ chapter: 0, finished: false }} previousBooks={previous} />,
+    );
+    expect(screen.queryByText(/Community notes from/)).toBeNull();
+    await press('The Two Towers');
+    expect(screen.getByText('Nearly all of it.')).toBeTruthy();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
+  });
+
   it('shows a quiet note plus the meta link when the work has no recap at all', async () => {
     mockUseMetaWork.mockReturnValue({ data: fetched({}), isError: false });
     await mount(
@@ -540,6 +565,26 @@ describe('previous books (Characters tab)', () => {
     expect(screen.queryByText('Sneaky.')).toBeNull();
     await press('Gollum');
     expect(screen.getByText('Sneaky.')).toBeTruthy();
+  });
+
+  it("credits an earlier book's cast to that book's own work", async () => {
+    mockUseMetaWork.mockReturnValue({
+      data: fetched({
+        characters: [{ id: 'gollum', name: 'Gollum', role: 'minor', reveal: { chapter: 4 } }],
+        attribution: twoTowersCredit,
+      }),
+      isError: false,
+    });
+    await mount(
+      <CharactersTab
+        characters={[]}
+        progress={{ chapter: 0, finished: false }}
+        previousBooks={previous}
+      />,
+    );
+    await press('The Two Towers');
+    expect(screen.getByText('Gollum')).toBeTruthy();
+    expect(screen.getByText(/Community notes from/)).toBeTruthy();
   });
 
   it('shows a quiet note when the earlier book has no cast', async () => {

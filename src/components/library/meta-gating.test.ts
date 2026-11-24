@@ -4,7 +4,6 @@ import {
   chapterNumberAt,
   chapterStartsOf,
   characterIsVisible,
-  charactersCredit,
   communityCredit,
   listeningProgressFor,
   matchableById,
@@ -321,16 +320,6 @@ describe('communityCredit', () => {
     expect(communityCredit(mixed, 'characters')).toBe(attribution);
     expect(communityCredit(undefined, 'characters')).toBeUndefined();
   });
-
-  // server#218: the earlier books' characters below a generated list are the community's.
-  it("credits the earlier books' community characters under a generated list", () => {
-    const generated = { attribution, generated: { characters: true } };
-    expect(charactersCredit(generated, { list: true, previous: false })).toBeUndefined();
-    expect(charactersCredit(generated, { list: true, previous: true })).toBe(attribution);
-    expect(charactersCredit({ attribution }, { list: true, previous: false })).toBe(attribution);
-    expect(charactersCredit({ attribution }, { list: false, previous: true })).toBe(attribution);
-    expect(charactersCredit({ attribution }, { list: false, previous: false })).toBeUndefined();
-  });
 });
 
 // Bridge Phase 1e: the recap list and the whole-book summary each carry their own source.
@@ -382,20 +371,23 @@ describe('recapMarks', () => {
     expect(recapMarks({ recaps: false }, both)).toEqual(none);
   });
 
-  // server#218: the earlier books' recaps below are the community's.
-  it("credits the earlier books' recaps when every part of this book's was generated", () => {
+  // server#218: the earlier books' recaps below are the community's, each crediting its
+  // own work in its row, so they move the chips onto the parts but add no credit here.
+  it("marks each generated part above the earlier books' recaps, without this work's credit", () => {
     expect(recapMarks({ recaps: true, recap_summary: true }, { ...both, previous: true })).toEqual({
       panel: false,
       list: true,
       summary: true,
-      credit: true,
+      credit: false,
     });
     expect(recapMarks({ recaps: true }, { list: false, summary: false, previous: true })).toEqual({
-      panel: false,
-      list: false,
-      summary: false,
-      credit: true,
+      ...none,
+      credit: false,
     });
+    // A community summary of this book's keeps its credit beside them.
+    expect(recapMarks({ recaps: true, recap_summary: false }, { ...both, previous: true })).toEqual(
+      { panel: false, list: true, summary: false, credit: true },
+    );
   });
 
   it('only counts the parts the panel shows', () => {

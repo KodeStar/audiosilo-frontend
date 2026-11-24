@@ -1774,9 +1774,10 @@ recap, by `work.generated`'s dimension, a Recaps panel places it per part (`reca
 and the About card under its eyebrow for a generated description) and never the community's
 CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
-generated, and every `Attribution` beside characters (or a lone list recap) reads through it,
-but the book page's Characters panel reads **`charactersCredit(work, {list, previous})`**: the
-earlier books' community characters below a generated list still take the credit (server#218).
+generated, and every `Attribution` beside characters (or a lone list recap) reads through it.
+The book page's earlier books (`PreviousBooksSection`) are other works: each opened row credits
+its own work's `attribution` (its `source_url` is that work's page), never the current work's,
+which is absent when the current work's content was all generated (server#218).
 A Recaps panel reads
 **`recapMarks(generated, shown)`** instead (Bridge 1e): the whole-book summary's source is
 `generated.recap_summary` (absent on an older server, whose `recaps` then stands for both),
@@ -1785,8 +1786,8 @@ summary only with its generated list, so a shown list it flags is generated), so
 summary beside a generated list keeps its credit and each part wears its own chip when they
 differ (one chip heads the panel when every shown part was generated; a part's chip sits under
 the list's heading or above the summary). The book page passes `shown.previous` (its previous
-books, the community's): such a panel keeps the credit, and its generated parts take their own
-chips instead of one heading the panel (server#218).
+books, the community's): its generated parts then take their own chips instead of one heading
+the panel, and its `credit` stays this work's own parts' (server#218).
 
 **Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on
