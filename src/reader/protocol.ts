@@ -24,7 +24,9 @@ import type { ReaderReadalongMap } from './readalong-map';
  * Reader -> host: `ready`, `opened` (title, flattened TOC, whether the book reads right to
  * left), `progress` (on every move; marked `relayout` after a relayout, which is no move),
  * `loading` (a section is being laid out), `error`, `escape` (Escape pressed in the book,
- * which the host's own keys never see), `csp` (a blocked load, logged); read-along:
+ * which the host's own keys never see), `centreTap` (a tap in the middle of the page, no
+ * link, sentence, selection or swipe: the screen shows or hides its top bar, fe#246), `csp`
+ * (a blocked load, logged); read-along:
  * `seek {t}` (a sentence was tapped: play from its start), `following {value}` (the reader
  * follows the narration, or stopped because the reader turned away) and
  * `readalong {state, unresolved}` (`ok` once a map is in with a sentence in this book's
@@ -104,6 +106,7 @@ export type ReaderMessage =
   | { type: 'loading'; value: boolean }
   | { type: 'error'; code: ReaderErrorCode; message: string }
   | { type: 'escape' }
+  | { type: 'centreTap' }
   | { type: 'csp'; directive: string; blocked: string }
   | { type: 'seek'; t: number }
   | { type: 'following'; value: boolean }
@@ -169,6 +172,8 @@ export function parseReaderMessage(data: unknown): ReaderMessage | null {
     }
     case 'escape':
       return { type: 'escape' };
+    case 'centreTap':
+      return { type: 'centreTap' };
     case 'csp':
       return {
         type: 'csp',

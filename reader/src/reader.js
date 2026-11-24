@@ -31,6 +31,7 @@ import { ChunkError, createAssembly, createTextAssembly, TooLargeError } from '.
 import { BookError, openEpub } from './epub-open.js';
 import { createReadalong } from './readalong.js';
 import { guardRender, watchRelayouts } from './render-guard.js';
+import { frameViewportX, watchTaps } from './taps.js';
 
 void View; // registers <foliate-view>
 
@@ -469,7 +470,20 @@ function onSectionLoad(e) {
   if (!doc) return;
   doc.addEventListener('keydown', onKey);
   doc.addEventListener('securitypolicyviolation', reportCsp);
+  watchTaps(doc, { onTap: sendTap, viewportX: frameViewportX, width: readerWidth });
 }
+
+// ---- the centre tap (fe#246) ---------------------------------------------------------
+
+const readerWidth = () => window.innerWidth;
+
+/** A tap in the middle of the page: the host shows or hides its top bar. */
+function sendTap() {
+  if (opened) send({ type: 'centreTap' });
+}
+
+// The page's margins around a section lie in this document, not the section's.
+watchTaps(document, { onTap: sendTap, viewportX: (e) => e.clientX, width: readerWidth });
 
 const KEY_MOVES = {
   ArrowLeft: () => view.goLeft(),
