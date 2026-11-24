@@ -56,9 +56,13 @@ export function createPageScroll() {
     },
     origin: () => origin,
   };
-  /** The origin view's ref (a callback ref). */
+  /** The origin view's ref (a callback ref). A new origin is a new page (the tablet's mounted
+   * again after the desktop's, which has a scroller of its own): it starts at its top, so the
+   * last page's offset is dropped, or its list would draw the rows far below what shows. */
   const setOrigin = (view: ViewInstance | null) => {
+    const fresh = view !== null && view !== origin;
     origin = view;
+    if (fresh && state.y !== 0) set({ y: 0 });
   };
   const props = {
     scrollEventThrottle: 16,

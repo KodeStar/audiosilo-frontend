@@ -187,6 +187,27 @@ describe('PlayerView', () => {
     expect(mockPage!.get().y).toBe(300);
   });
 
+  it("tablet: a page mounted again (after the desktop's) starts at its top", async () => {
+    mockLayout = 'tablet';
+    mockPage = null;
+    await mount(<PlayerView onClose={jest.fn()} />);
+    await fireEvent.scroll(screen.getByTestId('player-page'), {
+      nativeEvent: { contentOffset: { x: 0, y: 3000 } },
+    });
+    // Turned to a desktop's width (its own scroller) and back: a new page, at offset 0.
+    const widen = (from: string, width: number) =>
+      act(async () => {
+        fireEvent(screen.getByTestId(from), 'layout', {
+          nativeEvent: { layout: { width, height: 900, x: 0, y: 0 } },
+        });
+      });
+    await widen('player-tablet', 1200);
+    expect(screen.getByTestId('player-desktop')).toBeTruthy();
+    await widen('player-desktop', 800);
+    expect(screen.getByTestId('player-page')).toBeTruthy();
+    expect(mockPage!.get().y).toBe(0);
+  });
+
   it('desktop: a companion column, and Up next stays in the drawer', async () => {
     mockLayout = 'desktop';
     await mount(<PlayerView onClose={jest.fn()} />);
