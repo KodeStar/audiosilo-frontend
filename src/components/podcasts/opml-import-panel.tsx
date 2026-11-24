@@ -110,7 +110,7 @@ export function OpmlImportPanel({
   const choose = () =>
     void pickOpml().then(
       (file) => {
-        if (file && isDeviceOnline()) opml.start(file);
+        if (file && isDeviceOnline() !== false) opml.start(file);
       },
       () => opml.unreadable(),
     );

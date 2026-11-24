@@ -51,7 +51,7 @@ export async function dropFromQueue(
   // The app with no network refuses a write unsent (`ApiClient.send`), so none is asked
   // (fe#358). Offline, the read waits for the network, so a drop whose read waited is sent
   // once it is back; the web's removes wait for the network the same way, so it asks them.
-  if (Platform.OS !== 'web' && !isDeviceOnline()) return;
+  if (Platform.OS !== 'web' && isDeviceOnline() === false) return;
   // A failed read must not keep the book queued (fe#155): the cached queue still knows the
   // stored entries, and with no read at all each book goes by its own path (removes are
   // exact and idempotent, so a book that was never queued costs one quiet request).

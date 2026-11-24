@@ -5,7 +5,13 @@ import { contrast } from '@/components/series/spine-colors';
 import { contentKey } from '@/lib/content-key';
 import type { DriftRecord } from '@/playback/drift';
 
-import { groupSessions, type ListeningSpan, localDayStart, toSpan } from '@/lib/listening-sessions';
+import {
+  waitingSessions,
+  groupSessions,
+  type ListeningSpan,
+  localDayStart,
+  toSpan,
+} from '@/lib/listening-sessions';
 
 import {
   barColor,
@@ -15,7 +21,6 @@ import {
   matchDrifts,
   MIN_BAR_WIDTH,
   spanRange,
-  waitingSessions,
 } from './diary-model';
 import type { Sourced } from './merge-model';
 

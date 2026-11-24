@@ -1,7 +1,9 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onlineManager, QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // `useLibrariesAll` across two servers whose lists both failed: a server's own Retry
@@ -28,6 +30,7 @@ jest.mock('@/api/provider', () => ({
 }));
 jest.mock('@/api/reachability', () => ({ noteFailure: jest.fn() }));
 jest.mock('@/playback/progress-sync', () => ({
+  ...jest.requireActual('@/playback/progress-sync'),
   bookPlace: jest.fn(async () => null),
   saveProgress: jest.fn(async () => {}),
   getDeviceId: jest.fn(async () => 'dev-1'),
@@ -35,7 +38,12 @@ jest.mock('@/playback/progress-sync', () => ({
 
 /* eslint-disable import/first */
 import { ApiError } from '@/api/client';
-import { useAllLibraryBooks, useAllProgressAll, useLibrariesAll } from '@/api/hooks';
+import {
+  useAllLibraryBooks,
+  useAllProgressAll,
+  useLibrariesAll,
+  useProgressLookup,
+} from '@/api/hooks';
 /* eslint-enable import/first */
 
 notifyQueriesSynchronously();
@@ -169,5 +177,54 @@ it("names the server that refused the sign-in, and keeps another server's error"
     expect(result.current.refused).toEqual(['a']);
   } finally {
     qc.clear();
+  }
+});
+
+it('shows a newer local place in both lists and lookups only for its own connection', async () => {
+  const row = {
+    library_id: 1,
+    path: 'A',
+    position: 10,
+    duration: 100,
+    finished: false,
+    version: 1,
+    playback_speed: 1,
+    device_id: 'server',
+    updated_at: '2026-03-01T00:00:00Z',
+  };
+  for (const api of mockApis) api.client.allProgress.mockResolvedValue([row]);
+  const local = {
+    ...row,
+    connectionId: 'a',
+    libraryId: 1,
+    position: 40,
+    updated_at: '2026-03-02T00:00:00Z',
+  };
+  await AsyncStorage.setItem(
+    PROGRESS_MIRROR_KEY,
+    JSON.stringify({
+      'a:1:A': local,
+      'other:1:hidden': { ...local, path: 'hidden', connectionId: 'other' },
+    }),
+  );
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+  );
+  try {
+    const { result } = await renderHook(
+      () => ({ all: useAllProgressAll(), lookup: useProgressLookup() }),
+      { wrapper },
+    );
+    await waitFor(() => expect(result.current.lookup.progressOf('a', 1, 'A')?.position).toBe(40));
+    expect(result.current.all.progress.map((p) => [p.connectionId, p.position])).toEqual([
+      ['a', 40],
+      ['b', 10],
+    ]);
+    expect(result.current.lookup.progressOf('b', 1, 'A')?.position).toBe(10);
+    expect(result.current.lookup.progressOf('other', 1, 'hidden')).toBeUndefined();
+  } finally {
+    qc.clear();
+    await AsyncStorage.removeItem(PROGRESS_MIRROR_KEY);
   }
 });

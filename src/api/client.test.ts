@@ -1,8 +1,12 @@
 import { Platform } from 'react-native';
 
 // The device's network as the system reports it (`isDeviceOnline`); a test turns it off.
-let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ isDeviceOnline: () => mockDeviceOnline }));
+let mockDeviceOnline: boolean | undefined = true;
+const mockNetworkAnswered = jest.fn();
+jest.mock('@/lib/device-online', () => ({
+  deviceNetworkAnswered: () => mockNetworkAnswered(),
+  isDeviceOnline: () => mockDeviceOnline,
+}));
 
 /* eslint-disable import/first */
 import {
@@ -1097,6 +1101,7 @@ describe('ApiClient', () => {
   it('fails a request at once, unsent, while the app has no network', async () => {
     const fetchMock = installFetch(() => ({ status: 201, body: {} }));
     const onAnswer = jest.fn();
+    mockNetworkAnswered.mockClear();
     mockDeviceOnline = false;
     const c = new ApiClient('https://h', 'tok', undefined, undefined, onAnswer);
     const got = await c.addBookmark(1, 'a/b', 12).catch((e: unknown) => e);
@@ -1104,10 +1109,12 @@ describe('ApiClient', () => {
     expect(got).toBeInstanceOf(TypeError); // reachability reads it as no answer
     expect(fetchMock).not.toHaveBeenCalled();
     expect(onAnswer).not.toHaveBeenCalled();
-    // The network back (or unknown, which counts as online): sent as ever.
-    mockDeviceOnline = true;
+    expect(mockNetworkAnswered).not.toHaveBeenCalled();
+    // Unknown permits a real request, and the answer confirms a network.
+    mockDeviceOnline = undefined;
     await expect(c.addBookmark(1, 'a/b', 12)).resolves.toBeDefined();
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(mockNetworkAnswered).toHaveBeenCalledTimes(1);
   });
 
   it('leaves the web to the browser (its fetch fails at once offline)', async () => {

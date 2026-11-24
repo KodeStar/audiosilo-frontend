@@ -41,7 +41,6 @@ import type { PlayerModule } from '@/modules/registry';
 import { flushQueue } from '@/playback/progress-sync';
 import { flushReadingQueue } from '@/reader/reading-progress';
 import { usePlayer } from '@/playback/store';
-import { useWithLocalPlaces } from '@/playback/use-local-places';
 import { useActiveProfile, useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
 
@@ -100,7 +99,7 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
   const defaultCid = useSession((s) => s.defaultConnectionId);
   const user = useSession((s) => s.user);
   const {
-    progress: listed,
+    progress,
     isLoading,
     offline: progressOffline,
     error,
@@ -109,9 +108,6 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
     failed: progressFailed,
     retry: retryProgress,
   } = useAllProgressAll();
-  // Each book where Resume plays it, as the player has it (fe#211): this device's own newer
-  // place over the server's older row (an offline run the list has not heard of yet).
-  const progress = useWithLocalPlaces(listed);
   const deviceOnline = useDeviceOnline();
   const recent = useRecentAll();
   const { favourites } = useFavouritesAll();

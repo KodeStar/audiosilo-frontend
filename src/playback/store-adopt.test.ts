@@ -111,10 +111,12 @@ jest.mock('@/api/provider', () => ({
 }));
 jest.mock('@/lib/network', () => ({ canAutoDownload: jest.fn(async () => false) }));
 /** The device's network (`isDeviceOnline`): online unless a test says otherwise. */
-const mockDeviceOnline = jest.fn(() => true);
+const mockDeviceOnline = jest.fn((): boolean | undefined => true);
+const mockFirstNetwork = jest.fn<Promise<boolean | undefined>, []>();
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   isDeviceOnline: () => mockDeviceOnline(),
+  waitForDeviceOnline: () => mockFirstNetwork(),
 }));
 
 const fakeClient = {
@@ -1112,6 +1114,27 @@ describe('adoptLoaded', () => {
         await usePlayer.getState().playBook('c1', 2, { ...manifest.book, duration: 180 }, withB3);
       };
       afterEach(() => mockDeviceOnline.mockReturnValue(true));
+
+      it('waits for the first network reading before choosing files for a cold resume', async () => {
+        mockDeviceOnline.mockReturnValue(undefined);
+        let answer!: (online: boolean) => void;
+        mockFirstNetwork.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              answer = resolve;
+            }),
+        );
+        const start = startCold();
+        await flushMicrotasks();
+        expect(mockFirstNetwork).toHaveBeenCalled();
+        answer(false);
+        await start;
+        expect(usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url)).toEqual([
+          'file:///d/1.mp3',
+          'file:///d/2.mp3',
+        ]);
+        await usePlayer.getState().pause();
+      });
 
       it("offline, plays the download's own copy and pauses at its end, never finishing (D3, fe#185)", async () => {
         mockDeviceOnline.mockReturnValue(false);

@@ -107,11 +107,12 @@ async function seriesAhead(
   from: Current,
   max: number,
   nextBook: boolean,
+  currentPlan: () => boolean,
 ): Promise<AheadBook[]> {
   const out: AheadBook[] = [];
   const seen = new Set([contentKeyOf(from)]);
   let at = { libraryId: from.libraryId, path: from.path };
-  while (out.length < max) {
+  while (out.length < max && currentPlan()) {
     let next: AheadBook | null = null;
     if (nextBook) {
       const { libraryId, path } = at;
@@ -169,7 +170,11 @@ let tooBig: { registry: string; keys: Set<string> } = { registry: '', keys: new 
  * give the list shape, which has no files), unless something changed while it waited.
  * Resolves what the downloads store did with it (`declined` too when the network rule no
  * longer lets it start). */
-async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOutcome> {
+async function startOne(
+  client: ApiClient,
+  book: AheadBook,
+  current: () => boolean,
+): Promise<DownloadOutcome> {
   const { connectionId: cid, libraryId, path } = book;
   // A fresh answer, as the store's own download asks (`chaptersQuery` alone trusts a
   // cached one for 30 minutes): the files downloaded are the ones the server has now.
@@ -180,7 +185,7 @@ async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOut
   // The reads of a plan can wait for the network (a query is held while the device has
   // none), and the one that comes back may be mobile data: the network rule is asked again
   // before anything starts. The network's change plans again, with the rule as it is then.
-  if ((await networkGate()) !== 'allowed') return 'declined';
+  if ((await networkGate()) !== 'allowed' || !current()) return 'declined';
   // Not an errored one either: keep-ahead never retries a failure on its own. The store
   // applies the automatic rules (declined this session, the reserve).
   if (useDownloads.getState().entries[contentKeyOf(book)]) return 'exists';
@@ -189,7 +194,7 @@ async function startOne(client: ApiClient, book: AheadBook): Promise<DownloadOut
 
 /** Plan once and act on it. Never throws: a server that can't be reached simply plans
  * nothing this time (no reachability report: this is a background nicety). */
-export async function runKeepAhead(): Promise<void> {
+export async function runKeepAhead(active = () => true): Promise<void> {
   const count = useSettings.getState().keepAhead;
   const downloads = useDownloads.getState();
   const np = usePlayer.getState().nowPlaying;
@@ -199,7 +204,12 @@ export async function runKeepAhead(): Promise<void> {
   if (count === 0) return publish('off');
   // Until the registry has loaded, everything looks missing: wait for it.
   if (!downloads.supported || !downloads.hydrated) return publish('idle');
+  const bookAtStart = currentSignature();
+  const settingsAtStart = settingsSignature();
+  const currentPlan = () =>
+    active() && currentSignature() === bookAtStart && settingsSignature() === settingsAtStart;
   const network = await networkGate();
+  if (!currentPlan()) return;
   if (network === 'never') return publish('never');
   // An episode has no next books to keep ready (Bridge Phase 2d-1; fe#166 D4: keep-ahead
   // stays for books).
@@ -214,22 +224,33 @@ export async function runKeepAhead(): Promise<void> {
   if (!client) return publish('idle');
   try {
     const caps = await fetchCapabilities(current.connectionId, client);
+    if (!currentPlan()) return;
     const [queue, finished] = await Promise.all([
       caps.queue ? queueAhead(client, current.connectionId) : [],
       finishedKeys(client, current.connectionId),
     ]);
+    if (!currentPlan()) return;
     // The series only fills what the queue leaves.
     const fromQueue = aheadWindow({ count, current, queue, series: [], finished });
     const series =
       fromQueue.length < count
-        ? await seriesAhead(client, current.connectionId, current, count, !!caps.next_book)
+        ? await seriesAhead(
+            client,
+            current.connectionId,
+            current,
+            count,
+            !!caps.next_book,
+            currentPlan,
+          )
         : [];
+    if (!currentPlan()) return;
     const window = aheadWindow({ count, current, queue, series, finished });
     const storage = await engine.storageEstimate();
     // A book the downloads store turns away is planned again at once without it (so the
     // status doesn't stay "working" on a book that never starts, and the room it was
     // given goes to the next): each pass marks at least one more, so this ends.
     for (let pass = 0; pass <= window.length; pass++) {
+      if (!currentPlan()) return;
       if (tooBig.registry !== registrySignature()) tooBig = { registry: '', keys: new Set() };
       const entries = useDownloads.getState().entries;
       const plan = planKeepAhead({
@@ -250,9 +271,10 @@ export async function runKeepAhead(): Promise<void> {
       publish(plan.status, plan.slots);
       let turnedAway = false;
       for (const book of plan.start) {
+        if (!currentPlan()) return;
         let outcome: DownloadOutcome;
         try {
-          outcome = await startOne(client, book);
+          outcome = await startOne(client, book, currentPlan);
         } catch {
           continue; // This book's item didn't load: the next plan tries again.
         }
@@ -266,7 +288,7 @@ export async function runKeepAhead(): Promise<void> {
       if (!turnedAway) break;
     }
   } catch {
-    publish('idle');
+    if (currentPlan()) publish('idle');
   }
 }
 
@@ -300,6 +322,7 @@ export const startKeepAhead = sharedStart(runKeepAheadController);
 
 function runKeepAheadController(): () => void {
   let timer: ReturnType<typeof setTimeout> | null = null;
+  let active = true;
   let running = false;
   let again = false;
 
@@ -310,10 +333,10 @@ function runKeepAheadController(): () => void {
     }
     running = true;
     try {
-      await runKeepAhead();
+      await runKeepAhead(() => active);
     } finally {
       running = false;
-      if (again) {
+      if (active && again) {
         again = false;
         schedule();
       }
@@ -385,6 +408,7 @@ function runKeepAheadController(): () => void {
   schedule();
 
   return () => {
+    active = false;
     if (timer) clearTimeout(timer);
     for (const off of unsubs) off();
   };

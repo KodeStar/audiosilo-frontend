@@ -7,6 +7,7 @@ import {
   type Query,
   type QueryClient,
   type QueryKey,
+  type UseQueryResult,
   queryOptions,
   skipToken,
   useInfiniteQuery,
@@ -69,6 +70,7 @@ import {
   writeMirror,
   writeMirrors,
 } from '@/playback/progress-sync';
+import { useWithLocalPlaces } from '@/playback/use-local-places';
 import { spanRecovered } from '@/playback/span-recovery';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
@@ -4113,13 +4115,8 @@ export function useAllProgressAll({
   refetchOnMount?: boolean;
 } = {}) {
   const apis = useApis();
-  return useQueries({
-    queries: apis.map(({ connection, client }) => ({
-      ...allProgressQuery(connection.id, client),
-      enabled,
-      refetchOnMount,
-    })),
-    combine: (results) => ({
+  const combine = useCallback(
+    (results: UseQueryResult<Progress[]>[]) => ({
       // Newest first across all connections (no cross-connection merge yet).
       progress: results
         .flatMap((r, i) =>
@@ -4131,6 +4128,7 @@ export function useAllProgressAll({
         )
         .sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1)),
       isLoading: results.some((r) => r.isLoading),
+      loading: results.flatMap((r, i) => (r.isLoading ? [apis[i].connection.id] : [])),
       offline: anyHeld(results),
       error: fanOutError(results),
       unreadError: firstUnread(results),
@@ -4146,7 +4144,18 @@ export function useAllProgressAll({
         for (const r of results) if (r.isError) void r.refetch();
       },
     }),
+    [apis],
+  );
+  const listed = useQueries({
+    queries: apis.map(({ connection, client }) => ({
+      ...allProgressQuery(connection.id, client),
+      enabled,
+      refetchOnMount,
+    })),
+    combine,
   });
+  const progress = useWithLocalPlaces(listed.progress);
+  return { ...listed, progress };
 }
 
 /** Where a book's saved progress is found: by (connection, library, path). */
@@ -4170,8 +4179,8 @@ function progressIndex(rows: readonly Progress[]): Map<string, Progress> {
 /**
  * The listener's saved progress on every connection, as a lookup by (connection,
  * library, path): what marks a spine finished, the book you're on and a tile's progress
- * bar. One fetch per connection, shared with Home and the palette; the lookup keeps its
- * identity until a list changes, and each list is indexed once.
+ * bar. Home and the palette share the fetch for each connection. The index changes
+ * when the listed rows or their displayed places change.
  */
 export function useProgressLookup(): {
   progressOf: SavedProgressOf;
@@ -4180,29 +4189,15 @@ export function useProgressLookup(): {
    * wait on another that is slow or unreachable). */
   loadingOf: (connectionId: string) => boolean;
 } {
-  const apis = useApis();
-  const ids = apis.map((a) => a.connection.id).join('\n');
-  const combine = useCallback(
-    (results: { data?: Progress[]; isLoading: boolean }[]) => {
-      const cids = ids.split('\n');
-      const byCid = new Map(cids.map((cid, i) => [cid, results[i]?.data]));
-      const progressOf: SavedProgressOf = (cid, lib, path) => {
-        const rows = byCid.get(cid);
-        return rows ? progressIndex(rows).get(`${lib}\n${path}`) : undefined;
-      };
-      const loading = new Set(cids.filter((_, i) => results[i]?.isLoading));
-      return {
-        progressOf,
-        isLoading: loading.size > 0,
-        loadingOf: (cid: string) => loading.has(cid),
-      };
-    },
-    [ids],
-  );
-  return useQueries({
-    queries: apis.map(({ connection, client }) => allProgressQuery(connection.id, client)),
-    combine,
-  });
+  const { progress, loading, isLoading } = useAllProgressAll();
+  const progressOf = useMemo(() => {
+    const byBook = new Map(
+      progress.map((p) => [contentKey(p.connectionId, p.library_id, p.path), p]),
+    );
+    return (cid: string, lib: number, path: string) => byBook.get(contentKey(cid, lib, path));
+  }, [progress]);
+  const loadingOf = useCallback((cid: string) => loading.includes(cid), [loading]);
+  return { progressOf, loadingOf, isLoading };
 }
 
 /**

@@ -1,9 +1,25 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 import { createStore } from 'zustand';
 
 import { driveAppState } from '@/testing/app-state';
 
 import { quietOffScreen } from './visible-store';
+
+let mockVisible = true;
+let mockVisibilityChange: () => void;
+jest.mock('expo', () => ({
+  ...jest.requireActual('expo'),
+  requireOptionalNativeModule: (name: string) =>
+    name === 'AudiosiloActivityVisibility'
+      ? {
+          isVisible: () => mockVisible,
+          addListener: (_event: string, listener: () => void) => {
+            mockVisibilityChange = listener;
+          },
+        }
+      : jest.requireActual('expo').requireOptionalNativeModule(name),
+}));
 
 const app = driveAppState();
 
@@ -30,6 +46,27 @@ async function mounted<U>(selector: (s: Clock) => U) {
 afterEach(() => appGoes('active'));
 
 describe('quietOffScreen', () => {
+  it('keeps ticking while Android is paused and reveals a held tick on activity start', async () => {
+    const os = Platform.OS;
+    Platform.OS = 'android';
+    try {
+      const { hook, set } = await mounted((s) => s.seconds);
+      await appGoes('background');
+      await set({ seconds: 1 });
+      expect(hook.result.current).toBe(1);
+      mockVisible = false;
+      await act(async () => mockVisibilityChange());
+      await set({ seconds: 2 });
+      expect(hook.result.current).toBe(1);
+      mockVisible = true;
+      await act(async () => mockVisibilityChange());
+      expect(hook.result.current).toBe(2);
+    } finally {
+      Platform.OS = os;
+      mockVisible = true;
+    }
+  });
+
   it('shows every change while the app is in front', async () => {
     const { hook, set, renders } = await mounted((s) => s.seconds);
     await set({ seconds: 1 });

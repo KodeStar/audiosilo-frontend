@@ -7,8 +7,12 @@ jest.mock('@/api/provider', () =>
   require('@/testing/api-provider-mock').apiProviderMock({}),
 );
 // The device's network and its server's reachability; a test turns either off.
-let mockDeviceOnline = true;
-jest.mock('@/lib/device-online', () => ({ isDeviceOnline: () => mockDeviceOnline }));
+let mockDeviceOnline: boolean | undefined = true;
+const mockFirstNetwork = jest.fn<Promise<boolean | undefined>, []>();
+jest.mock('@/lib/device-online', () => ({
+  isDeviceOnline: () => mockDeviceOnline,
+  waitForDeviceOnline: () => mockFirstNetwork(),
+}));
 let mockReachable = true;
 jest.mock('@/api/reachability', () => ({ isReachable: () => mockReachable }));
 const mockPlayBook = jest.fn();
@@ -378,6 +382,32 @@ describe('startBookInPlace', () => {
       expect(mockReadEarly).not.toHaveBeenCalled();
     } finally {
       mockReachable = true;
+    }
+  });
+
+  it('chooses the manifest on a cold offline car start and abandons the wait if another book starts', async () => {
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    mockDeviceOnline = undefined;
+    try {
+      mockFirstNetwork.mockResolvedValueOnce(false);
+      await expect(startBookInPlace(target)).resolves.toBe(true);
+      expect(mockPlayBook.mock.calls[0][2].title).toBe('From the download');
+      expect(mockReadEarly).not.toHaveBeenCalled();
+      expect(mockItem).not.toHaveBeenCalled();
+      let answer!: (online: boolean) => void;
+      mockFirstNetwork.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const waiting = startBookInPlace(target);
+      await startBookInPlace({ ...target, path: 'Other' });
+      answer(true);
+      await expect(waiting).resolves.toBe(false);
+      expect(mockPlayBook).toHaveBeenCalledTimes(2);
+    } finally {
+      mockDeviceOnline = true;
     }
   });
 

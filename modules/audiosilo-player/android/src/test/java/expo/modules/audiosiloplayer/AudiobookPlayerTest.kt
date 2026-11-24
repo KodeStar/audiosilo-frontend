@@ -1,5 +1,6 @@
 package expo.modules.audiosiloplayer
 
+import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import java.lang.reflect.Proxy
@@ -20,15 +21,29 @@ class AudiobookPlayerTest {
     var error: PlaybackException? = null
     var items = 1
     val calls = ArrayList<String>()
+    var queue = listOf(MediaItem.Builder().setMediaId("old").build())
 
     val player: Player = Proxy.newProxyInstance(
       Player::class.java.classLoader,
       arrayOf(Player::class.java),
-    ) { _, method, _ ->
+    ) { _, method, args ->
       when (method.name) {
         "getPlaybackState" -> state
         "getPlayerError" -> error
         "getMediaItemCount" -> items
+        "stop" -> {
+          calls.add("stop")
+          state = Player.STATE_IDLE
+          Unit
+        }
+        "getMediaItemAt" -> queue[args!![0] as Int]
+        "setMediaItems" -> {
+          calls.add("set")
+          queue = (args!![0] as List<*>).filterIsInstance<MediaItem>()
+          items = queue.size
+          Unit
+        }
+        "setPlaylistMetadata" -> Unit
         "prepare" -> {
           calls.add("prepare")
           state = Player.STATE_BUFFERING
@@ -102,5 +117,26 @@ class AudiobookPlayerTest {
     assertFalse(player.failed)
     assertEquals(Player.STATE_IDLE, player.playbackState)
     assertSame(error, player.playerError)
+  }
+
+  @Test fun aCarQueueReleasesTheOldExtractorsBeforeTheSetAndPreparesAgain() {
+    val engine = Engine()
+    val player = AudiobookPlayer(engine.player, Hooks)
+    val next = mutableListOf(MediaItem.Builder().setMediaId("next").build())
+    player.setMediaItems(next, 0, 7000L)
+    assertEquals(listOf("stop", "set", "prepare"), engine.calls)
+    assertEquals(next, engine.queue)
+  }
+
+  @Test fun anIdleResumptionNeedsNoStopAndAnAbsorbedSetDoesNothing() {
+    val engine = Engine()
+    val player = AudiobookPlayer(engine.player, Hooks)
+    player.absorbIdenticalSet = true
+    player.setMediaItems(engine.queue.toMutableList(), 0, 0L)
+    assertTrue(engine.calls.isEmpty())
+    engine.items = 0
+    engine.state = Player.STATE_IDLE
+    player.setMediaItems(engine.queue.toMutableList(), 0, 0L)
+    assertEquals(listOf("set"), engine.calls)
   }
 }

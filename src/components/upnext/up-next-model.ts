@@ -1,6 +1,7 @@
 import type { BookRef, NextBook, Progress, QueueEntry } from '@/api/types';
 import { sameConnection } from '@/lib/connection-id';
 import type { ShortcutKey } from '@/lib/keyboard';
+import type { PlacedProgress } from '@/playback/progress-sync';
 import { percentHeard } from '@/lib/progress-view';
 import { railPositionLabel } from '@/lib/series-position';
 import { entryHolds } from '@/playback/up-next-resolver';
@@ -176,7 +177,12 @@ export type Suggestion =
   | { kind: 'next'; ref: BookRef; series: string }
   /** `coverVersion`: the progress row's `cover_version` (the cover URL's cache buster),
    * when its server sends one. */
-  | { kind: 'progress'; ref: BookRef; percent: number; coverVersion?: string }
+  | {
+      kind: 'progress';
+      ref: BookRef;
+      place: Pick<PlacedProgress, 'position' | 'duration' | 'file'>;
+      coverVersion?: string;
+    }
   | { kind: 'ghost'; title: string; position: string; workId: string };
 
 /** Whether `a` and `b` name one book: the same path, or one a part path (a disc folder, a
@@ -209,8 +215,8 @@ export function pickSuggestions({
   queued: readonly QueueEntry[];
   /** This server's saved progress, newest first. */
   inProgress: readonly Pick<
-    Progress,
-    'library_id' | 'path' | 'position' | 'duration' | 'finished' | 'cover_version'
+    PlacedProgress,
+    'library_id' | 'path' | 'position' | 'duration' | 'finished' | 'cover_version' | 'file'
   >[];
   limit?: number;
 }): Suggestion[] {
@@ -246,11 +252,10 @@ export function pickSuggestions({
   for (const p of inProgress) {
     if (out.length >= room) break;
     if (p.finished || p.position <= 0 || taken(p)) continue;
-    const state = entryState(p);
     out.push({
       kind: 'progress',
       ref: { library_id: p.library_id, path: p.path },
-      percent: state.kind === 'progress' ? state.percent : 0,
+      place: { position: p.position, duration: p.duration, file: p.file },
       coverVersion: p.cover_version,
     });
     seen.add(entryKey(p));

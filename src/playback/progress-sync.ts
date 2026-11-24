@@ -12,7 +12,7 @@ import {
   stopsReplay,
 } from '@/api/rate-limit';
 import { isReachable, noteFailure, noteSuccess } from '@/api/reachability';
-import type { Progress } from '@/api/types';
+import type { ChaptersResponse, Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
 import {
   identityMovePending,
@@ -722,6 +722,19 @@ export function positionOn(
     offset += f.duration;
   }
   return place.position;
+}
+
+/** A saved place on the timeline shown by Home and Up next. Once chapters are
+ * known both its file position and the total come from the same edition. */
+export function savedTimeline(
+  place: Pick<PlacedProgress, 'position' | 'duration' | 'file'> | undefined,
+  chapters: ChaptersResponse | undefined,
+  bookDuration?: number,
+): { position: number; total: number } {
+  return {
+    position: place ? positionOn(place, chapters?.files) : 0,
+    total: chapters?.duration || place?.duration || bookDuration || 0,
+  };
 }
 
 /** A stored save (the mirror's, or one waiting in the offline queue) as a `Progress`. */

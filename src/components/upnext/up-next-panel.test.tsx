@@ -13,6 +13,15 @@ jest.mock('react-native-gesture-handler', () => ({
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('@/api/hooks', () => ({
+  useChapters: () => ({
+    data: {
+      duration: 101,
+      files: [
+        { rel_path: 'a', duration: 50, seq: 0 },
+        { rel_path: 'b', duration: 51, seq: 1 },
+      ],
+    },
+  }),
   useSavedProgress: () => undefined,
   useBook: (_lib: number, path: string) => ({ data: { title: `Title of ${path}` } }),
   useKnownBook: (_lib: number, path: string) => ({ title: `Title of ${path}` }),
@@ -188,7 +197,11 @@ describe('UpNextPanel', () => {
         data={data({
           suggestions: [
             { kind: 'next', ref: { library_id: 1, path: 'S/2' }, series: 'Saga' },
-            { kind: 'progress', ref: { library_id: 1, path: 'P' }, percent: 40 },
+            {
+              kind: 'progress',
+              ref: { library_id: 1, path: 'P' },
+              place: { position: 55, duration: 100, file: { path: 'b', pos: 5 } },
+            },
             { kind: 'ghost', title: 'Book Three', position: '3', workId: 'w3' },
           ],
         })}
@@ -196,12 +209,12 @@ describe('UpNextPanel', () => {
     );
     expect(screen.getByText('Continue the series and more')).toBeTruthy();
     expect(screen.getByText('Next in Saga')).toBeTruthy();
-    expect(screen.getByText('40% · continue')).toBeTruthy();
+    expect(screen.getByText('54% · continue')).toBeTruthy();
     await fireEvent.press(screen.getByRole('button', { name: 'Add Title of S/2 to Up next' }));
     expect(mockQueue).toHaveBeenCalledWith(1, 'S/2');
     // No book is loaded, so there is no library to open the series in.
     expect(screen.getByText("Book Three isn't on Home Library")).toBeTruthy();
-    await fireEvent.press(screen.getByRole('button', { name: 'Title of P, 40% · continue' }));
+    await fireEvent.press(screen.getByRole('button', { name: 'Title of P, 54% · continue' }));
     expect(onNavigate).toHaveBeenCalled();
     expect(mockPush).toHaveBeenCalled();
   });

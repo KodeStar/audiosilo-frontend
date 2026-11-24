@@ -1,4 +1,5 @@
 import type { Book, ChaptersResponse, Progress } from '@/api/types';
+import * as deviceNetwork from '@/lib/device-online';
 
 import type { ResumeLookup } from './progress-sync';
 import type { PlaybackService, PlaybackSnapshot, PlaybackState, SwapOutcome } from './types';
@@ -3291,6 +3292,7 @@ describe('plays a downloaded book whose connection is gone', () => {
   // timeout, past the car's 10 s wait, and the book loaded paused.
   it("waits on its server's place only briefly, and not at all when it is unreachable", async () => {
     seedDownloaded('c1');
+    const online = jest.spyOn(deviceNetwork, 'isDeviceOnline').mockReturnValue(true);
     try {
       await usePlayer.getState().playBook('c1', 2, makeBook(), undefined);
       expect(mockLoadInitialProgress).toHaveBeenLastCalledWith(
@@ -3310,6 +3312,7 @@ describe('plays a downloaded book whose connection is gone', () => {
         DOWNLOADED_PLACE_WAIT_MS,
       );
     } finally {
+      online.mockRestore();
       useReachability.setState({ online: {} });
     }
   });

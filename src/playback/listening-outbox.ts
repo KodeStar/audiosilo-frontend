@@ -475,6 +475,40 @@ export async function outboxEvents(connectionId?: string): Promise<OutboxEntry[]
     : queue.filter((e) => e.connectionId === connectionId);
 }
 
+/** The history views may show a recent span left on disk before its owner is
+ * known to have gone away. Only preview offline listening another document kept.
+ * Recovery alone can close it, and its queued event supersedes the preview. */
+export type WaitingListen = { connectionId: string; event: ListeningSpanEvent };
+
+export async function waitingListens(): Promise<WaitingListen[]> {
+  const [queue, spans] = await Promise.all([
+    outboxEvents(),
+    Platform.OS === 'web' ? readSpans() : [],
+  ]);
+  const waiting = queue.flatMap(({ connectionId, event }): WaitingListen[] =>
+    event?.kind === 'listen' ? [{ connectionId, event }] : [],
+  );
+  const candidates = spans.filter(
+    (s) => s.owner !== tabId && !looksReachable(s.connectionId) && spanHeard(s),
+  );
+  if (!candidates.length) return waiting;
+  const locks = await queryWebLocks();
+  const key = (cid: string, id: string) => `${cid}\n${id}`;
+  const ids = new Set(waiting.map(({ connectionId, event }) => key(connectionId, event.id)));
+  for (const span of candidates) {
+    if (span.owner && locks?.has(spanOwnerLock(span.owner))) continue;
+    const event = spanToEvent(
+      span,
+      span.id ?? `stored-${span.startedAt}-${span.libraryId}-${span.path}`,
+    );
+    const id = key(span.connectionId, event.id);
+    if (ids.has(id)) continue;
+    waiting.push({ connectionId: span.connectionId, event });
+    ids.add(id);
+  }
+  return waiting;
+}
+
 async function removeEvents(ids: Set<string>): Promise<void> {
   if (ids.size === 0) return;
   await withOutboxLock(async () => {

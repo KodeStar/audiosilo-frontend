@@ -1,6 +1,15 @@
+import { requireOptionalNativeModule } from 'expo';
+import { Platform } from 'react-native';
 import { createStore, type StoreApi, type UseBoundStore, useStore } from 'zustand';
 
 import { isOffScreen, onAppStateEdge } from './app-activity';
+
+/** Android's AppState goes to background on pause, including a still-visible activity.
+ * Use start/stop for redraws while keeping the save and polling policies on AppState. */
+type ActivityVisibility = {
+  addListener(event: 'onVisibilityChange', listener: () => void): { remove(): void };
+  isVisible(): boolean;
+};
 
 /**
  * A store's React hook that does not redraw for a TICK while the app is off screen.
@@ -35,6 +44,20 @@ export function quietOffScreen<S extends object, K extends keyof S>(
   // What is shown: a store of its own, holding the same state object as the live one.
   const shown = createStore<S>()(() => store.getState());
   const show = (next: S) => shown.setState(next, true);
+  const activity =
+    Platform.OS === 'android'
+      ? requireOptionalNativeModule<ActivityVisibility>('AudiosiloActivityVisibility')
+      : null;
+  let hidden = activity ? !activity.isVisible() : isOffScreen();
+  const visibilityChanged = (offScreen: boolean) => {
+    hidden = offScreen;
+    if (!hidden) show(store.getState());
+  };
+  if (activity) {
+    activity.addListener('onVisibilityChange', () => visibilityChanged(!activity.isVisible()));
+  } else {
+    onAppStateEdge(isOffScreen, visibilityChanged);
+  }
   const onlyATick = (live: S) => {
     const held = shown.getState();
     if (!isTick(held[field], live[field])) return false;
@@ -48,11 +71,8 @@ export function quietOffScreen<S extends object, K extends keyof S>(
   // and the older one after it.
   store.subscribe(() => {
     const live = store.getState();
-    if (isOffScreen() && onlyATick(live)) return;
+    if ((activity ? hidden : isOffScreen()) && onlyATick(live)) return;
     show(live);
-  });
-  onAppStateEdge(isOffScreen, (offScreen) => {
-    if (!offScreen) show(store.getState());
   });
   const useShown = <U>(selector?: (state: S) => U) =>
     useStore(shown, selector ?? (identity as (state: S) => U));

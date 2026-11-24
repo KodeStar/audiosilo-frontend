@@ -18,11 +18,12 @@ import {
   localDayStart,
   sessionMinutes,
   toSpan,
+  waitingSessions,
 } from '@/lib/listening-sessions';
 import { useUnreadQuery } from '@/lib/offline-state';
 import { useDayLabel, useToday } from '@/lib/use-day-label';
 import { cn } from '@/lib/utils';
-import { usePendingListens } from '@/playback/use-listening-sync';
+import { useWaitingListens } from '@/playback/use-listening-sync';
 import { tabularNums } from '@/theme/tabular-nums';
 
 /**
@@ -35,7 +36,7 @@ import { tabularNums } from '@/theme/tabular-nums';
  * read the sessions the Journal's Diary reads (`@/lib/listening-sessions`), so the two
  * agree. No speed or device: a history row carries neither.
  *
- * Sync v2: this device's listening still waiting in the outbox (`usePendingListens`, a
+ * Sync v2: this device's listening still waiting in the outbox (`useWaitingListens`, a
  * span played offline) shows among them as its own sessions, marked "Waiting to sync",
  * until the server's rows replace them.
  *
@@ -71,21 +72,27 @@ export function HistorySection({
   const dayLabel = useDayLabel(formatShortDay);
   const nameAt = useChapterNamer({ connectionId: cid, libraryId, path });
   const jumpTo = useJumpTo();
-  const waiting = usePendingListens(cid, libraryId, path);
-  const waitingSessions = useMemo(
+  const waiting = useWaitingListens();
+  const spans = useMemo(
     () =>
-      groupSessions(
-        waiting
-          .map((e) => {
-            const span = toSpan({ ...e, id: 0, connectionId: cid, connectionName: '' });
-            return span && { ...span, key: `waiting\n${e.id}` };
-          })
-          .filter((s): s is ListeningSpan => s !== null),
+      (history ?? [])
+        .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
+        .filter((s): s is ListeningSpan => s !== null),
+    [history, cid],
+  );
+  const pending = useMemo(
+    () =>
+      waitingSessions(
+        waiting.filter(
+          (w) =>
+            w.connectionId === cid && w.event.library_id === libraryId && w.event.path === path,
+        ),
+        spans,
       ),
-    [waiting, cid],
+    [waiting, cid, libraryId, path, spans],
   );
 
-  if ((!history || history.length === 0) && waitingSessions.length === 0) {
+  if ((!history || history.length === 0) && pending.length === 0) {
     if (!emptyLabel) return null;
     if (!history) {
       // Before the skeleton: a list held for the network never ends as one.
@@ -107,14 +114,9 @@ export function HistorySection({
   const jump = (position: number) =>
     onJump ? onJump(position) : jumpTo({ connectionId: cid, libraryId, path }, position);
   // One row per listening session (the server records a span per pause), as the Diary.
-  const synced = groupSessions(
-    (history ?? [])
-      .map((h) => toSpan({ ...h, connectionId: cid, connectionName: '' }))
-      .filter((s): s is ListeningSpan => s !== null),
-  );
   const sessions: (ListeningSession & { waiting?: true })[] = [
-    ...waitingSessions.map((s) => ({ ...s, waiting: true as const })),
-    ...synced,
+    ...pending,
+    ...groupSessions(spans),
   ].sort((a, b) => b.start - a.start);
 
   return (

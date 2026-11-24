@@ -14,7 +14,13 @@ jest.mock('expo-network', () => ({
 }));
 
 /* eslint-disable import/first */
-import { isDeviceOnline, useDeviceOnline, watchDeviceOnline } from './device-online';
+import {
+  deviceNetworkAnswered,
+  isDeviceOnline,
+  useDeviceOnline,
+  waitForDeviceOnline,
+  watchDeviceOnline,
+} from './device-online';
 /* eslint-enable import/first */
 
 const os = Platform.OS;
@@ -26,6 +32,47 @@ afterEach(() => {
 });
 
 describe('useDeviceOnline (app)', () => {
+  it('bounds the cold wait and leaves requests enabled after an iOS timeout without an event', async () => {
+    Platform.OS = 'ios';
+    jest.useFakeTimers();
+    let answer!: (s: object) => void;
+    mockProbe = new Promise((resolve) => {
+      answer = resolve;
+    });
+    const observed = jest.fn();
+    const stop = watchDeviceOnline(observed);
+    try {
+      expect(isDeviceOnline()).toBeUndefined();
+      const reading = waitForDeviceOnline();
+      await jest.advanceTimersByTimeAsync(750);
+      await expect(reading).resolves.toBeUndefined();
+      await jest.advanceTimersByTimeAsync(4250);
+      answer({ isConnected: false, type: 'NONE' });
+      await mockProbe;
+      expect(isDeviceOnline()).toBeUndefined();
+      expect(observed.mock.calls).toEqual([[true]]);
+      deviceNetworkAnswered();
+      expect(isDeviceOnline()).toBe(true);
+      mockListeners[0]({ isConnected: false, type: 'NONE' });
+      deviceNetworkAnswered();
+      expect(isDeviceOnline()).toBe(false);
+    } finally {
+      stop();
+      jest.useRealTimers();
+    }
+  });
+
+  it('returns a cold offline result to a headless caller and accepts a later HTTP answer over a probe', async () => {
+    mockState = { isConnected: false, type: 'NONE' };
+    await expect(waitForDeviceOnline()).resolves.toBe(false);
+    const stop = watchDeviceOnline(() => {});
+    await mockProbe;
+    expect(isDeviceOnline()).toBe(false);
+    deviceNetworkAnswered();
+    expect(isDeviceOnline()).toBe(true);
+    stop();
+  });
+
   it('follows the system network state', async () => {
     mockState = { isConnected: false, isInternetReachable: false };
     const { result } = await renderHook(() => useDeviceOnline());
