@@ -16,12 +16,7 @@ import { sameOrigin } from '@/lib/same-origin';
  * can't find gives the row no Try again (`rowFeedUrl`).
  */
 export function outlineFeeds(text: string): Map<number, string> {
-  const out = new Map<number, string>();
-  return walkOutlines(text, (index, url) => {
-    if (url) out.set(index, url);
-  })
-    ? out
-    : new Map();
+  return outlineEntries(text).feeds;
 }
 
 /** The longest title a row shows from its list (the server's `opml.MaxTitleBytes` bound
@@ -36,12 +31,22 @@ const MAX_TITLE_CHARS = 500;
  * can't read gives no titles (the rows show their address).
  */
 export function outlineTitles(text: string): Map<number, string> {
-  const out = new Map<number, string>();
-  return walkOutlines(text, (index, _url, title) => {
-    if (title) out.set(index, title);
-  })
-    ? out
-    : new Map();
+  return outlineEntries(text).titles;
+}
+
+/** A list's addresses (`outlineFeeds`) and names (`outlineTitles`) by `outline_index`,
+ * read in one walk; both empty when the markup can't be read. */
+export function outlineEntries(text: string): {
+  feeds: Map<number, string>;
+  titles: Map<number, string>;
+} {
+  const feeds = new Map<number, string>();
+  const titles = new Map<number, string>();
+  const read = walkOutlines(text, (index, url, title) => {
+    if (url) feeds.set(index, url);
+    if (title) titles.set(index, title);
+  });
+  return read ? { feeds, titles } : { feeds: new Map(), titles: new Map() };
 }
 
 /** Visits each counted outline (`outlineFeeds`) with its index, its `xmlUrl` and its
@@ -92,10 +97,11 @@ function walkOutlines(
 }
 
 /** A title on one line: control characters and runs of white space as one space, trimmed
- * and bounded. */
+ * and bounded in code points (never half an emoji's surrogate pair). */
 function oneLine(s: string): string {
   const line = s.replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim();
-  return line.length > MAX_TITLE_CHARS ? line.slice(0, MAX_TITLE_CHARS).trimEnd() : line;
+  const chars = Array.from(line);
+  return chars.length > MAX_TITLE_CHARS ? chars.slice(0, MAX_TITLE_CHARS).join('').trimEnd() : line;
 }
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };

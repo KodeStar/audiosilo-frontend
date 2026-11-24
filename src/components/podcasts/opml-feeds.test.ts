@@ -131,6 +131,9 @@ describe('outlineTitles', () => {
   it('bounds a long title, and gives none for markup it cannot read', () => {
     const long = 'x'.repeat(600);
     expect(outlineTitles(opml(`<outline title="${long}"/>`)).get(1)).toHaveLength(500);
+    // Counted in characters: an emoji at the bound is kept whole, never half a pair.
+    const emoji = outlineTitles(opml(`<outline title="${'x'.repeat(499)}\u{1F3A7}tail"/>`)).get(1);
+    expect(emoji).toBe(`${'x'.repeat(499)}\u{1F3A7}`);
     expect([...outlineTitles('<opml><body><outline title="A" <broken></body></opml>')]).toEqual([]);
   });
 });

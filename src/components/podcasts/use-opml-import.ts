@@ -12,7 +12,7 @@ import { onForeground } from '@/lib/when-active';
 import { mayActFor } from '@/stores/profiles';
 
 import { canRetryImportRow, followByUrlErrorKey, OPML_MAX_BYTES } from './find-shows-model';
-import { opmlText, outlineFeeds, outlineTitles, rowFeedUrl } from './opml-feeds';
+import { opmlText, outlineEntries, rowFeedUrl } from './opml-feeds';
 import type { PickedOpml } from './opml-pick';
 import { isQueuedRow, OpmlWaves, type WaveState } from './opml-waves';
 
@@ -56,10 +56,9 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   // The stable call alone: the mutation's result changes identity with its state.
   const { mutateAsync: followByUrl } = useFollowPodcastByUrl(connectionId);
   const [state, setState] = useState<WaveState | null>(null);
-  /** The list's feed addresses by `outline_index`, once its bytes are read. */
-  const [feeds, setFeeds] = useState<ReadonlyMap<number, string> | null>(null);
-  /** The list's own name for each row by `outline_index` (`outlineTitles`), once read. */
-  const [titles, setTitles] = useState<ReadonlyMap<number, string> | null>(null);
+  /** The list's feed addresses and names by `outline_index`, once its bytes are read. */
+  const [outline, setOutline] = useState<ReturnType<typeof outlineEntries> | null>(null);
+  const feeds = outline?.feeds ?? null;
   // The rows followed again by hand, with the list they belong to (`list`, one more for
   // each new list or none): a follow answered after another list was picked must not land
   // on that list's row at the same place.
@@ -98,8 +97,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const reset = useCallback((why: OpmlLocalProblem | null) => {
     setState(null);
     setProblem(why);
-    setFeeds(null);
-    setTitles(null);
+    setOutline(null);
     setRetryState((r) => ({ list: r.list + 1, rows: {} }));
   }, []);
 
@@ -167,8 +165,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
       void opmlText(file.body).then(
         (text) => {
           if (waves.current !== run) return;
-          setFeeds(outlineFeeds(text));
-          setTitles(outlineTitles(text));
+          setOutline(outlineEntries(text));
         },
         () => undefined,
       );
@@ -237,7 +234,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     stop: useCallback(() => waves.current?.stop(), []),
     retry: useCallback(() => waves.current?.retry(), []),
     /** Each row's name in the list, by `outline_index` (`outlineTitles`). */
-    titles,
+    titles: outline?.titles ?? null,
     /** The rows followed again by hand, by `outline_index` (`withRetries`). */
     retries,
     /** Whether retrying the same address can help and the list holds its address. */
