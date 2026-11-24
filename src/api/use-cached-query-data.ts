@@ -1,10 +1,4 @@
-import {
-  hashKey,
-  notifyManager,
-  type QueryClient,
-  type QueryKey,
-  type QueryState,
-} from '@tanstack/react-query';
+import { hashKey, notifyManager, type QueryKey, type QueryState } from '@tanstack/react-query';
 import { useCallback, useSyncExternalStore } from 'react';
 
 import { queryClient } from './provider';
@@ -18,25 +12,25 @@ const noSubscribe = () => () => {};
  * component renders never updates this one mid-render). No key (`false`, `null`,
  * `undefined`) or no entry: `pick` reads `undefined`, and with no key nothing listens.
  * `pick` answers a value or a reference the cache keeps, so an unchanged entry reads the
- * same. `client` is the app's own unless the caller has another (its context's).
+ * same.
  */
 export function useCachedQueryState<R>(
   queryKey: QueryKey | false | null | undefined,
   pick: (state: QueryState | undefined) => R,
-  client: QueryClient = queryClient,
 ): R {
   const hash = queryKey ? hashKey(queryKey) : undefined;
   const subscribe = useCallback(
     (onChange: () => void) => {
       const notify = notifyManager.batchCalls(onChange);
-      return client.getQueryCache().subscribe((e) => {
+      return queryClient.getQueryCache().subscribe((e) => {
         if (e.query.queryHash === hash) notify();
       });
     },
-    [client, hash],
+    [hash],
   );
   // By the hash the listener follows (what `getQueryData` looks up, without hashing again).
-  const read = () => pick(hash === undefined ? undefined : client.getQueryCache().get(hash)?.state);
+  const read = () =>
+    pick(hash === undefined ? undefined : queryClient.getQueryCache().get(hash)?.state);
   return useSyncExternalStore(hash ? subscribe : noSubscribe, read, read);
 }
 

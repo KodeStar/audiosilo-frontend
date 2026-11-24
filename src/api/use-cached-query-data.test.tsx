@@ -1,4 +1,3 @@
-import { QueryClient } from '@tanstack/react-query';
 import { act, renderHook } from '@testing-library/react-native';
 
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
@@ -50,19 +49,16 @@ describe('useCachedQueryData', () => {
 });
 
 describe('useCachedQueryState', () => {
-  it("reads what it picks from another client's entry, and follows it", async () => {
-    const other = new QueryClient();
-    other.setQueryData(KEY, 'first');
+  it('reads what it picks from the entry, and follows it', async () => {
+    queryClient.setQueryData(KEY, 'first');
     const { result } = await renderHook(() =>
-      useCachedQueryState(KEY, (s) => s?.dataUpdatedAt ?? 0, other),
+      useCachedQueryState(KEY, (s) => s?.dataUpdatedAt ?? 0),
     );
     const first = result.current;
     expect(first).toBeGreaterThan(0);
-    // The app's own client holds no such entry: the other one was read.
-    expect(queryClient.getQueryData(KEY)).toBeUndefined();
     jest.spyOn(Date, 'now').mockReturnValue(first + 5_000);
     try {
-      await act(async () => void other.setQueryData(KEY, 'second'));
+      await act(async () => void queryClient.setQueryData(KEY, 'second'));
     } finally {
       jest.restoreAllMocks();
     }

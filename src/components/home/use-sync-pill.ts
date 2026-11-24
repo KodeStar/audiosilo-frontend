@@ -1,4 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useIsFocused } from 'expo-router';
 import { useEffect, useState } from 'react';
 
@@ -82,7 +81,6 @@ function useProgressFetchedAt(cid: string | undefined): number {
   return useCachedQueryState(
     cid ? qk.allProgress(cid) : undefined,
     (state) => state?.dataUpdatedAt ?? 0,
-    useQueryClient(),
   );
 }
 
