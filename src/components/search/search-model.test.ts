@@ -4,6 +4,7 @@ import {
   alsoOnServers,
   type CharacterBook,
   characterBooksToLoad,
+  characterCredits,
   fold,
   hueSlot,
   listeningIn,
@@ -245,7 +246,9 @@ describe('matchCharacters (spoiler safety)', () => {
     expect(m.hits).toHaveLength(2);
     expect(m.total).toBe(4);
     expect(m.hidden).toBe(1);
-    expect(m.attributions).toEqual([{ ...calibans.attribution, bookTitle: "Caliban's War" }]);
+    expect(characterCredits(m.hits)).toEqual([
+      { ...calibans.attribution, bookTitle: "Caliban's War" },
+    ]);
   });
 
   // Each work's credit links its own page, so two books' alike credits stay apart.
@@ -261,10 +264,12 @@ describe('matchCharacters (spoiler safety)', () => {
       { ...leviathan, attribution: credit('https://meta.example/work?id=leviathan') },
     ];
     const m = matchCharacters(books, 'j');
-    expect(m.attributions.map((a) => [a.bookTitle, a.source_url])).toEqual([
+    expect(characterCredits(m.hits).map((a) => [a.bookTitle, a.source_url])).toEqual([
       ["Caliban's War", 'https://meta.example/work?id=calibans'],
       ['Leviathan Wakes', 'https://meta.example/work?id=leviathan'],
     ]);
+    // Only the rows on screen are credited (Search's preview shows the first few).
+    expect(characterCredits(m.hits.slice(0, 1)).map((a) => a.bookTitle)).toEqual(["Caliban's War"]);
   });
 
   it('finds nothing for an empty query', () => {
@@ -272,7 +277,6 @@ describe('matchCharacters (spoiler safety)', () => {
       hits: [],
       total: 0,
       hidden: 0,
-      attributions: [],
     });
   });
 });

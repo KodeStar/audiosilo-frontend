@@ -11,7 +11,7 @@ import { roleLabelKey } from '@/components/library/book-meta';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { gridMetrics } from '@/components/library/cover-layout';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
-import { CreditSourceLink } from '@/components/player/companion/companion-pieces';
+import { CaptionLink } from '@/components/player/companion/companion-pieces';
 import { PersonChip } from '@/components/series/person-chip';
 import { SeriesCard } from '@/components/series/series-card';
 import type { ProgressLookup } from '@/components/series/series-model';
@@ -34,6 +34,7 @@ import { HiddenStrip } from './hidden-strip';
 import { NameToken } from './name-token';
 import {
   alsoOnServers,
+  characterCredits,
   type CharacterHit,
   type NamedHit,
   type PersonHit,
@@ -196,29 +197,51 @@ export function SearchResultsView({
                 {items.map((c) => (
                   <CharacterRow key={c.key} hit={c} query={query} onOpened={onOpened} />
                 ))}
+                <CharacterCredits hits={items} />
               </View>
             )}
           </Preview>
           {r.characters.hidden > 0 ? (
             <HiddenStrip label={t('search.hiddenCharacters', { count: r.characters.hidden })} />
           ) : null}
-          {r.characters.attributions.map((a, _, all) => (
-            <CreditSourceLink
-              key={`${a.credit}|${a.license}|${a.source_url}`}
-              // Several sources read alike: each names the book it credits.
-              text={[all.length > 1 ? a.bookTitle : '', a.credit, a.license]
-                .filter(Boolean)
-                .join(' · ')}
-              sourceUrl={a.source_url}
-              className="self-start"
-              textClassName="text-subtle-foreground"
-            />
-          ))}
         </Group>
       ) : null}
       <GroupError state={r.charactersState} message={t('search.charactersFailed')} />
     </View>
   );
+}
+
+/** The credits of the character rows on screen, each linking its work's page and its
+ * licence; several name the book each credits, since they read alike. */
+function CharacterCredits({ hits }: { hits: readonly CharacterHit[] }) {
+  const { t } = useTranslation();
+  const credits = characterCredits(hits);
+  return credits.map((a) => (
+    <View
+      key={`${a.credit}|${a.license}|${a.source_url}`}
+      className="flex-row flex-wrap items-center gap-x-1.5"
+    >
+      <CaptionLink
+        text={[credits.length > 1 ? a.bookTitle : '', a.credit].filter(Boolean).join(' · ')}
+        url={a.source_url}
+        label={(credit) => t('player.companion.creditSource', { credit })}
+        textClassName="text-subtle-foreground"
+      />
+      {a.license ? (
+        <>
+          <Text variant="caption" className="text-subtle-foreground">
+            ·
+          </Text>
+          <CaptionLink
+            text={a.license}
+            url={a.license_url}
+            label={(licence) => t('player.companion.licence', { licence })}
+            textClassName="text-subtle-foreground"
+          />
+        </>
+      ) : null}
+    </View>
+  ));
 }
 
 /** A results group: a heading with its count (and a quiet sub line), then the body. */
