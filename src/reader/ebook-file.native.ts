@@ -172,7 +172,7 @@ export async function localEbook({
   const here = existingEbook({ connectionId, libraryId, path, size, saved });
   if (here) {
     assertReadable(here.size);
-    if (here.uri !== saved) await markOpened(cacheDir(connectionId, libraryId, path));
+    if (here.uri !== saved) void markOpened(cacheDir(connectionId, libraryId, path));
     return here;
   }
   // Too large for the reader, or for the room left: said before a byte is fetched. The
