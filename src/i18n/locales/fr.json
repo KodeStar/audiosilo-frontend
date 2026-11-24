@@ -211,6 +211,7 @@
     "connections": {
       "manage": "Gérer {{name}}",
       "signedOut": "Connexion terminée",
+      "serverReset": "Serveur réinitialisé",
       "remove": "Supprimer {{name}}",
       "add": "Ajouter un serveur",
       "removeConfirm": {
