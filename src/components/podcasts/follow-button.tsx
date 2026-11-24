@@ -29,6 +29,15 @@ function followErrorKey(e: unknown): ParseKeys {
   }
 }
 
+/** Whether this listener may follow and unfollow shows on `connectionId`'s server: it can
+ * follow (`podcasts`: the module on and its Bridge online), and the account is neither a
+ * kid's nor the demo's. */
+export function useMayFollow(connectionId: string): boolean {
+  const can = useCapability('podcasts', connectionId) === true;
+  const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
+  return can && !isKidAccount(user) && !user?.is_demo;
+}
+
 /**
  * Follow or unfollow a show (Bridge Phase 2d-1, the Podcasts module's write). A button
  * only while the server can follow (`podcasts`: the module on and its Bridge online) for
@@ -47,14 +56,13 @@ export function FollowButton({
   onGone?: () => void;
 }) {
   const { t } = useTranslation();
-  const can = useCapability('podcasts', connectionId) === true;
-  const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
+  const mayFollow = useMayFollow(connectionId);
   const follow = useFollowPodcast(connectionId);
   const unfollow = useUnfollowPodcast(connectionId);
   const [confirming, setConfirming] = useState(false);
   const busy = follow.isPending || unfollow.isPending;
 
-  if (!can || isKidAccount(user) || user?.is_demo) {
+  if (!mayFollow) {
     return show.following ? (
       <Badge variant="secondary" testID="podcast-following-badge">
         <Text>{t('podcasts.follow.following')}</Text>
