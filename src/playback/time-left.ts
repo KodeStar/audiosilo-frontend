@@ -45,9 +45,9 @@ export function timeLeft(position: number, total: number, speed: number): TimeLe
 }
 
 /** Whole seconds of a time left: to the nearest second, as `formatDuration` rounds it. The
- * app's one rounding rule for a time left, so the seek row's countdown ("-1:00") and its
- * words ("1m left in the chapter") agree at a minute's edge (fe#197), and the elapsed clock
- * (whole seconds down) plus the countdown add up to the length `formatDuration` gives. */
+ * app's one rounding rule for a time left, so a countdown ("-1:00": the seek row's, the
+ * chapters list's current row) and its words ("1m left in the chapter") agree at a
+ * minute's edge (fe#197). */
 export function wholeSecondsLeft(seconds: number): number {
   return seconds > 0 ? Math.round(seconds) : 0;
 }
