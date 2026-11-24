@@ -3902,6 +3902,39 @@ describe('failures, retry and the session decline mark', () => {
     expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg', '4.mp3']);
   });
 
+  it('a retry deletes a kept file the book no longer lists, and no listed one (fe#354)', async () => {
+    // A failed attempt kept all three files; the server's list since lost 01.
+    const entry = downloadedEntry({ status: 'error', failure: { kind: 'network', kept: 1 } });
+    entry.manifest.book = book;
+    entry.manifest.files = [0, 1, 2].map((i) => ({
+      relPath: `A/Book/0${i}.mp3`,
+      localUri: `file:///dl/${i}.mp3`,
+    }));
+    useDownloads.setState({ entries: { [key]: entry } });
+    const shrunk = makeBook({
+      files: (book.files ?? [])
+        .filter((f) => f.rel_path !== 'A/Book/01.mp3')
+        .map((f, i) => ({ ...f, seq: i })),
+    });
+    mockEngine.fileExists.mockResolvedValue(true);
+    mockEngine.downloadFile.mockImplementation(
+      async (_c, _l, _p, name: string) => `file:///dl/${name}`,
+    );
+
+    useDownloads.getState().download('c1', 2, shrunk);
+    await settle();
+
+    const done = useDownloads.getState().entries[key];
+    expect(done?.status).toBe('downloaded');
+    expect(done?.manifest.files.map((f) => [f.relPath, f.localUri])).toEqual([
+      ['A/Book/00.mp3', 'file:///dl/0.mp3'],
+      ['A/Book/02.mp3', 'file:///dl/2.mp3'],
+    ]);
+    // 01's file goes with it; the kept ones stay where they are.
+    expect(mockEngine.removeFile.mock.calls.map((c) => c[3])).toEqual(['1.mp3']);
+    expect(mockEngine.downloadFile.mock.calls.map((c) => c[3])).toEqual(['cover.jpg']);
+  });
+
   it('a retry that fails on a new file keeps the kept files of the paths it never reached', async () => {
     const entry = downloadedEntry({ status: 'error', failure: { kind: 'network', kept: 1 } });
     entry.manifest.book = book;

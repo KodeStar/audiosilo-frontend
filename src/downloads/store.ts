@@ -2273,9 +2273,10 @@ function savedIndex(f: DownloadedFile, k: number): number {
  * by, so a server list that gained, lost or reordered a file fetches only the files that are
  * new. Each file the retry still has to fetch gets a name no kept file holds: its index when
  * that is free, else the next free number past the list (`storedIndex` reads either). `kept`
- * is the earlier file for a path, `nameFor` the name to fetch a path into, and `notReached`
+ * is the earlier file for a path, `nameFor` the name to fetch a path into, `notReached`
  * the kept files of the paths not handled yet (listed while the retry runs, and kept by a
- * failure).
+ * failure), and `unlisted` the earlier files of paths the book no longer lists, which the
+ * retry deletes (fe#354): no manifest names them again, so nothing else would.
  */
 function retryPlan(
   earlier: readonly DownloadedFile[],
@@ -2284,6 +2285,7 @@ function retryPlan(
   kept: (path: string) => DownloadedFile | undefined;
   nameFor: (index: number, path: string) => string;
   notReached: (handled: ReadonlySet<string>) => DownloadedFile[];
+  unlisted: DownloadedFile[];
 } {
   const listed = new Set(paths);
   const byPath = new Map<string, DownloadedFile>();
@@ -2307,6 +2309,12 @@ function retryPlan(
       return name;
     },
     notReached: (handled) => [...byPath.values()].filter((f) => !handled.has(f.relPath)),
+    // Never a name a kept file is under.
+    unlisted: earlier.filter(
+      (f) =>
+        !listed.has(f.relPath) &&
+        ![...byPath.values()].some((k) => nameOf(k.localUri) === nameOf(f.localUri)),
+    ),
   };
 }
 
@@ -2392,6 +2400,11 @@ async function runOne(key: string) {
       earlier,
       specs.map((s) => s.path),
     );
+    for (const gone of plan.unlisted) {
+      await engine
+        .removeFile?.(connectionId, libraryId, path, nameOf(gone.localUri))
+        .catch(() => {});
+    }
     // The ebook (Bridge Phase 3b-2) is one more step after the audio, and its size counts in
     // the total: 100% is the whole download, and the bytes kept include it. So is the
     // read-along map the book will likely take (its size counts once it is in, fe#193).
