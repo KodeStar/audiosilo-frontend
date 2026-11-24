@@ -73,12 +73,11 @@ export function inlineRows(
   height: number,
 ): [number, number] {
   const clamp = (n: number) => Math.min(count, Math.max(0, n));
-  if (top === null) {
-    return [0, clamp(Math.ceil((2 * height) / rowHeight / INLINE_STEP) * INLINE_STEP)];
-  }
-  const first = Math.floor((y - height - top) / rowHeight / INLINE_STEP) * INLINE_STEP;
-  const last = Math.ceil((y + 2 * height - top) / rowHeight / INLINE_STEP) * INLINE_STEP;
-  return [clamp(first), Math.max(clamp(first), clamp(last))];
+  // Not measured yet: as if the list started at the top of the visible part.
+  const at = y - (top ?? y);
+  const first = Math.floor((at - height) / rowHeight / INLINE_STEP) * INLINE_STEP;
+  const last = Math.ceil((at + 2 * height) / rowHeight / INLINE_STEP) * INLINE_STEP;
+  return [clamp(first), clamp(last)];
 }
 
 /**
@@ -122,22 +121,18 @@ function PageRows({
       done();
     });
   }, [page]);
-  useEffect(() => {
-    let seen = page.get().layout;
-    return page.subscribe(() => {
-      const now = page.get().layout;
-      if (now === seen) return;
-      seen = now;
-      measure();
-    });
-  }, [page, measure]);
-  const rowsKey = () => {
+  const layoutOf = () => page.get().layout;
+  const layout = useSyncExternalStore(page.subscribe, layoutOf, layoutOf);
+  useEffect(() => measure(), [layout, measure]);
+  const rows = () => {
     const { y, height } = page.get();
-    return inlineRows(count, rowHeight, top, y, height || windowHeight).join(':');
+    return inlineRows(count, rowHeight, top, y, height || windowHeight);
   };
-  const [first, last] = useSyncExternalStore(page.subscribe, rowsKey, rowsKey)
-    .split(':')
-    .map(Number);
+  // Each a number, so a scroll within a step re-renders nothing.
+  const firstOf = () => rows()[0];
+  const lastOf = () => rows()[1];
+  const first = useSyncExternalStore(page.subscribe, firstOf, firstOf);
+  const last = useSyncExternalStore(page.subscribe, lastOf, lastOf);
   const drawn: ReactNode[] = [];
   for (let i = first; i < last; i++) drawn.push(render(i));
   return (
