@@ -1,15 +1,15 @@
-import { skipToken, useQueries } from '@tanstack/react-query';
+import { useQueries } from '@tanstack/react-query';
 import { useMemo } from 'react';
 
 import {
   anyCapability,
   bookMetaQuery,
   chaptersQuery,
-  qk,
   useAllProgressAll,
   useCapabilitiesAllRead,
   useLibrariesAll,
 } from '@/api/hooks';
+import { authorsQuery, narratorsQuery, seriesListQuery } from '@/api/startup-reads';
 import { useApiRegistry } from '@/api/provider';
 import type { RefusedServer } from '@/api/server-read-error';
 import type { BookMeta, PeopleList, SeriesCount } from '@/api/types';
@@ -89,22 +89,17 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
       // Counted in every series a book is in where the server can (as useSeriesList).
       const memberships = caps[source.connectionId]?.series_memberships === true;
       const { connectionId: cid, libraryId: lib } = source;
+      const api = on ? client : null;
+      const spec =
+        kind === 'authors'
+          ? authorsQuery(cid, api, lib)
+          : kind === 'narrators'
+            ? narratorsQuery(cid, api, lib)
+            : seriesListQuery(cid, api, lib, memberships);
       return {
-        queryKey:
-          kind === 'authors'
-            ? qk.authors(cid, lib)
-            : kind === 'narrators'
-              ? qk.narrators(cid, lib)
-              : qk.seriesList(cid, lib, memberships),
-        queryFn:
-          on && client
-            ? ({ signal }: { signal: AbortSignal }) =>
-                kind === 'authors'
-                  ? client.authors(lib, signal)
-                  : kind === 'narrators'
-                    ? client.narrators(lib, signal)
-                    : client.seriesList(lib, { memberships }, signal)
-            : skipToken,
+        queryKey: spec.queryKey,
+        queryFn: spec.queryFn,
+        meta: spec.meta,
         enabled,
         staleTime: BROWSE_STALE_MS,
       };

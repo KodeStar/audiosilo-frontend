@@ -1,16 +1,18 @@
-import type { FetchQueryOptions, QueryClient, QueryKey } from '@tanstack/react-query';
+import type { QueryClient, QueryKey } from '@tanstack/react-query';
 
 import type { ApiConnection } from '@/api/provider';
+import { qk } from '@/api/query-keys';
 import {
-  allProgressQuery,
-  favouritesQuery,
   librariesQuery,
-  recentQuery,
   serverInfoQuery,
-} from '@/api/hooks';
+  startupReads,
+  type StartupRead,
+} from '@/api/startup-reads';
+import type { Library, ServerInfo } from '@/api/types';
 import { parseLibraryMode } from '@/components/library/library-modes';
-import { wholeLibraryQuery } from '@/components/library/books/use-whole-library';
+import { isPodcastLibrary } from '@/lib/library-kind';
 import type { LibrarySelection } from '@/stores/library-selection';
+import { profileConnections } from '@/stores/profiles';
 
 /**
  * Web: the first screen's answers asked for before it mounts, on a start with none kept
@@ -31,7 +33,11 @@ import type { LibrarySelection } from '@/stores/library-selection';
 export const STARTUP_WAIT_MS = 200;
 
 /** One answer the first screen reads: its cache key, and how to ask for it. */
-export type StartupQuery = { queryKey: QueryKey; ask: (client: QueryClient) => Promise<void> };
+export type StartupQuery = {
+  queryKey: QueryKey;
+  enabled?: (client: QueryClient) => boolean;
+  ask: (client: QueryClient) => Promise<void>;
+};
 
 /** The page a load opens on, as far as its first answers go. */
 export type StartPage = 'home' | 'library' | 'other';
@@ -45,36 +51,87 @@ export function startPage(pathname: string, mode?: string | null): StartPage {
   return 'other';
 }
 
-/** A query spec as a `StartupQuery`. */
-function asked<TQueryFnData, TError, TData, TQueryKey extends QueryKey>(
-  spec: FetchQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
+/** A dependent read joins the shell's in-flight read. It can start while the gate is
+ * waiting, provided the connection is still visible and the answer allows it. */
+function afterAnswer<T>(
+  read: StartupRead,
+  dependency: { queryKey: QueryKey; ask: (qc: QueryClient) => Promise<void> },
+  allows: (data: T) => boolean,
+  current: () => boolean,
 ): StartupQuery {
-  return { queryKey: spec.queryKey, ask: (qc) => qc.prefetchQuery(spec) };
+  const permitted = (qc: QueryClient) => {
+    const data = qc.getQueryData<T>(dependency.queryKey);
+    return data === undefined ? undefined : allows(data);
+  };
+  return {
+    queryKey: read.queryKey,
+    enabled: (qc) => permitted(qc) !== false,
+    ask: async (qc) => {
+      if (permitted(qc) === undefined) await dependency.ask(qc);
+      if (phase === 'waiting' && permitted(qc) && current()) await read.ask(qc);
+    },
+  };
 }
 
-/**
- * The answers `page` paints from, for the person's connections (`apis`): every server's
- * flags, libraries and progress (the shell, the tiles' progress), and Home's Recently added
- * and favourites, or the selected library's first page of books (the grid).
- */
+/** Build the first page's reads from the same marked options its components observe. */
 export function startupQueries(
   page: StartPage,
   apis: readonly ApiConnection[],
   selection: LibrarySelection | null,
+  defaultCid: string | null,
+  queueCid: string | undefined,
 ): StartupQuery[] {
   const out: StartupQuery[] = [];
   for (const { connection, client } of apis) {
     const cid = connection.id;
-    out.push(asked(serverInfoQuery(cid, client)));
-    out.push(asked(librariesQuery(cid, client)));
-    if (page === 'other') continue;
-    out.push(asked(allProgressQuery(cid, client)));
-    if (page === 'home') {
-      out.push(asked(recentQuery(cid, client)));
-      out.push(asked(favouritesQuery(cid, client)));
-    } else if (selection?.connectionId === cid) {
-      const spec = wholeLibraryQuery(cid, client, selection.libraryId);
-      out.push({ queryKey: spec.queryKey, ask: (qc) => qc.prefetchInfiniteQuery(spec) });
+    const selected = selection?.connectionId === cid ? selection.libraryId : 0;
+    const current = () =>
+      profileConnections().some(
+        (c) => c.id === cid && c.token === connection.token && !c.needsReconnect,
+      );
+    for (const read of startupReads(cid, client, selected)) {
+      const meta = read.meta;
+      if (!meta?.page) continue;
+      if (
+        meta.page === 'homeAndLibrary'
+          ? page === 'other'
+          : meta.page !== 'shell' && meta.page !== page
+      )
+        continue;
+      if (
+        (meta.owner === 'default' && defaultCid !== cid) ||
+        (meta.owner === 'queue' && queueCid !== cid)
+      )
+        continue;
+      if (meta.capability) {
+        const flag = meta.capability;
+        out.push(
+          afterAnswer<ServerInfo>(
+            read,
+            {
+              queryKey: qk.server(cid),
+              ask: (qc) => qc.prefetchQuery(serverInfoQuery(cid, client)),
+            },
+            (info) => info.capabilities?.[flag] === true,
+            current,
+          ),
+        );
+      } else if (meta.page === 'library') {
+        if (!selected) continue;
+        out.push(
+          afterAnswer<Library[]>(
+            read,
+            {
+              queryKey: qk.libraries(cid),
+              ask: (qc) => qc.prefetchQuery(librariesQuery(cid, client)),
+            },
+            (libs) => libs.some((lib) => lib.id === selected && !isPodcastLibrary(lib)),
+            current,
+          ),
+        );
+      } else {
+        out.push(read);
+      }
     }
   }
   return out;
@@ -99,7 +156,9 @@ export function startStartupQueries(
   queries: () => readonly StartupQuery[],
 ): void {
   if (phase !== 'idle') return;
-  const missing = queries().filter((q) => client.getQueryData(q.queryKey) === undefined);
+  const missing = queries().filter(
+    (q) => client.getQueryData(q.queryKey) === undefined && q.enabled?.(client) !== false,
+  );
   if (missing.length === 0) {
     phase = 'done';
     return;
@@ -118,8 +177,8 @@ export function subscribeStartupQueries(l: () => void): () => void {
   return () => listeners.delete(l);
 }
 
-/** Whether nothing is being waited for (before the start, or after it). */
-export const startupQueriesSettled = (): boolean => phase !== 'waiting';
+/** The anchored app layout may mount its screens once this load has spent its wait. */
+export const startupQueriesComplete = (): boolean => phase === 'done';
 
 /** Tests: back to a page load's start. */
 export function resetStartupQueries(): void {

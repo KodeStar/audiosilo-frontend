@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 const SCOPE = 'https://h/web/';
 const READER = `${SCOPE}reader.html`;
-const SHELL = 'audiosilo-shell-v1';
+const SHELL = 'audiosilo-shell-build-test';
 
 type Handler = (event: unknown) => void;
 type FakeRequest = { url: string; method: string; mode: string; destination: string };
@@ -26,6 +26,7 @@ class FakeResponse {
   get status() {
     return this.init.status ?? 200;
   }
+  type = 'basic';
   headers = { get: () => null };
   async text() {
     return this.body;
@@ -83,7 +84,16 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
       public init: unknown = {},
     ) {}
   }
-  const source = readFileSync(join(__dirname, '../../public/sw.js'), 'utf8');
+  const source = readFileSync(join(__dirname, '../../public/sw.js'), 'utf8').replace(
+    '/* precache manifest */ null',
+    JSON.stringify({
+      id: 'test',
+      start: [ENTRY.slice(SCOPE.length)],
+      routes: [],
+      fonts: [],
+      catalogs: {},
+    }),
+  );
   new Function('self', 'caches', 'fetch', 'Response', 'Request', source)(
     self,
     caches,
@@ -101,8 +111,9 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
       waitUntil: (p: Promise<unknown>) => waits.push(p),
       respondWith: (p: Promise<FakeResponse>) => (response = p),
     });
+    const answer = await response;
     await Promise.all(waits);
-    return response ? await response : undefined;
+    return answer;
   };
   const navigate = (url: string, destination = 'document') =>
     dispatch('fetch', {
@@ -112,7 +123,7 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
   return { dispatch, navigate, cached, net, fetch };
 }
 
-// The shell names one build chunk, which the install precaches with it (`precacheBuild`).
+// The shell names one build chunk, which the install precaches with it.
 const ENTRY = `${SCOPE}_expo/static/js/web/entry-abc.js`;
 const SHELL_HTML = '<script src="/web/_expo/static/js/web/entry-abc.js"></script>';
 const SHELL_ONLY = { [SCOPE]: SHELL_HTML, [ENTRY]: '' };
