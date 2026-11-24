@@ -294,6 +294,7 @@ describe('statusJob and generateOffer', () => {
       { characters: C, recaps: C, generated: { description: true } },
       'covered',
     ],
+    // Also a generated file the community masks: it never reaches /meta, so no mark.
     ['community characters only', { characters: C }, 'generate'],
     ['community recaps only', { recaps: C }, 'generate'],
     [
@@ -325,9 +326,6 @@ describe('statusJob and generateOffer', () => {
       { characters: C, generated: { recaps: true, recap_summary: true } },
       'generate',
     ],
-    // A generated file the community masks never reaches /meta: no generated mark, so
-    // Generate (as the console's has.local without has.community reads it).
-    ['community characters, masked generated characters', { characters: C }, 'generate'],
   ] as const)('%s', (_label, content, offer) => {
     expect(generateOffer({ ...base, content })).toBe(offer);
   });

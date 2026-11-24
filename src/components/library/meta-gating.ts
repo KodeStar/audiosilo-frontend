@@ -113,9 +113,11 @@ export function communityCredit(
 /** Where a Recaps panel's "Generated on this server" chips go and whether it carries the
  * community's credit (see `recapMarks`). */
 export type RecapMarks = {
-  /** Every part shown was generated here: one chip heads the panel. */
+  /** Every part shown was generated here, and no earlier books follow: one chip heads the
+   * panel. */
   panel: boolean;
-  /** The parts disagree: a chip on the generated list, or on the generated summary. */
+  /** The parts disagree, or the earlier books' community recaps follow (`previous`): a
+   * chip on the generated list, or on the generated summary. */
   list: boolean;
   summary: boolean;
   /** Some part of this book's shown is the community's: the panel ends with its CC BY-SA

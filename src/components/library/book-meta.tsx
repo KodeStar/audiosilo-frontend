@@ -767,8 +767,9 @@ export function BookMetaRecapsTab({
    * shows its placeholder. */
   coverFor?: CommunityCoverFor;
   /** Which part wears its own "Generated on this server" chip when the summary and the
-   * list came from different places (`recapMarks`, whose `summary` already implies
-   * `summaryVisible`); one heading the panel is the caller's. */
+   * list came from different places, or the earlier books' community recaps follow
+   * (`recapMarks`, whose `summary` already implies `summaryVisible`); one heading the
+   * panel is the caller's. */
   generatedParts?: Pick<RecapMarks, 'list' | 'summary'>;
 }) {
   const { t } = useTranslation();
