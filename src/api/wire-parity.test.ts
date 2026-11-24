@@ -39,7 +39,9 @@ const ENVELOPES: Record<string, string> = {
   'fs-pending': 'T.Listing',
   books: 'T.BookPage',
   'books-page': 'T.BookPage',
-  authors: 'T.PeopleResponse',
+  // PeopleResponse leaves both lists optional only to serve /narrators too: /authors
+  // always sends its list and the count, so a drop of either fails here.
+  authors: "Required<Pick<T.PeopleResponse, 'authors' | 'unknown'>>",
   series: 'T.SeriesListResponse',
   search: 'T.BooksResponse',
   'search-copies': 'T.BooksResponse',
@@ -189,7 +191,7 @@ function walk(
     return;
   }
   if (typeof shape === 'string') {
-    if (!(shape in SCALAR)) throw new Error(`${at}: unknown shape ${shape}`);
+    if (!Object.hasOwn(SCALAR, shape)) throw new Error(`${at}: unknown shape ${shape}`);
     if (!variants.some((m) => fitsKind(checker, shape, m))) {
       out.errors.push(`${at}: the server sends ${shape}, the type is ${name()}`);
     }
@@ -373,6 +375,7 @@ describe('the parity check itself', () => {
       'string[] | number[]',
       '({ a: string; value: { x: string; data: number[] } } | { b: boolean; id: number; value: { y: number; data: string[] } })[]',
       '({ left: number; shared: { value: string } } | { right: number; shared: { value: boolean } })[]',
+      "{ kind: 'a'; x: number } | { kind: 'b'; y: string; z: number }",
     ],
     extra,
   );
@@ -415,6 +418,18 @@ describe('the parity check itself', () => {
         '$.i.y: required in the type, the server does not send it',
       ],
       unknown: ['$.d[].y', '$.i.w', '$.z'],
+    });
+  });
+
+  it('checks a single answer against a later union member, and reports its drift', () => {
+    const type = types[4];
+    expect(compare(checker, { kind: 'string', y: 'string', z: 'number' }, type)).toEqual({
+      errors: [],
+      unknown: [],
+    });
+    expect(compare(checker, { kind: 'string', y: 'number', z: 'number' }, type)).toEqual({
+      errors: ['$.y: the server sends number, the type is string'],
+      unknown: [],
     });
   });
 
