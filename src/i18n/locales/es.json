@@ -3286,13 +3286,17 @@
     "contents": "Contenido",
     "smaller": "Texto más pequeño",
     "larger": "Texto más grande",
+    "settings": "Ajustes de lectura",
     "theme": {
-      "label": "Colores de la página: {{theme}}",
       "heading": "Colores de la página",
       "follow": "Como la app",
       "light": "Claro",
       "dark": "Oscuro",
       "black": "Negro"
+    },
+    "topBar": {
+      "heading": "Barra superior",
+      "autoHide": "Ocultar al leer"
     },
     "previous": "Página anterior",
     "next": "Página siguiente",

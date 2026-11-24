@@ -2,8 +2,10 @@ import { setItem } from '@/lib/storage';
 
 import {
   FONT_SCALES,
+  loadAutoHide,
   loadFontScale,
   loadReaderTheme,
+  saveAutoHide,
   saveFontScale,
   saveReaderTheme,
   stepFontScale,
@@ -36,5 +38,17 @@ describe('the saved reader theme (fe#246)', () => {
     expect(await loadReaderTheme()).toBe('follow');
     await saveReaderTheme('black');
     expect(await loadReaderTheme()).toBe('black');
+  });
+});
+
+describe('the saved top bar auto-hide (fe#246)', () => {
+  it('is on when none (or an unreadable one) is saved, and what was saved after', async () => {
+    expect(await loadAutoHide()).toBe(true);
+    await setItem('audiosilo.readerAutoHide', 'no');
+    expect(await loadAutoHide()).toBe(true);
+    await saveAutoHide(false);
+    expect(await loadAutoHide()).toBe(false);
+    await saveAutoHide(true);
+    expect(await loadAutoHide()).toBe(true);
   });
 });

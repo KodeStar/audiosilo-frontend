@@ -130,6 +130,8 @@ jest.mock('react-native-reanimated', () => {
         'FadeInDown',
         'SlideInDown',
         'SlideOutDown',
+        'SlideInUp',
+        'SlideOutUp',
         'LinearTransition',
       ].map((n) => {
         const builder: Record<string, unknown> = {};

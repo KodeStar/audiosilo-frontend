@@ -3286,13 +3286,17 @@
     "contents": "Table des matières",
     "smaller": "Texte plus petit",
     "larger": "Texte plus grand",
+    "settings": "Réglages de lecture",
     "theme": {
-      "label": "Couleurs de la page : {{theme}}",
       "heading": "Couleurs de la page",
       "follow": "Comme l'app",
       "light": "Clair",
       "dark": "Sombre",
       "black": "Noir"
+    },
+    "topBar": {
+      "heading": "Barre du haut",
+      "autoHide": "Masquer pendant la lecture"
     },
     "previous": "Page précédente",
     "next": "Page suivante",

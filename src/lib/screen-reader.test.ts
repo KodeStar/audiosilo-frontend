@@ -1,4 +1,7 @@
+import { act, renderHook } from '@testing-library/react-native';
 import { AccessibilityInfo } from 'react-native';
+
+import { useScreenReader } from './screen-reader';
 
 describe('screen reader state', () => {
   it('follows the system: its first answer, then each change', async () => {
@@ -24,5 +27,27 @@ describe('screen reader state', () => {
       expect(screenReaderOn()).toBe(false);
       expect(AccessibilityInfo.addEventListener).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('useScreenReader', () => {
+  it('re-renders a component as it is turned on and off', async () => {
+    let listener: ((on: boolean) => void) | undefined;
+    jest.spyOn(AccessibilityInfo, 'isScreenReaderEnabled').mockResolvedValue(false);
+    jest.spyOn(AccessibilityInfo, 'addEventListener').mockImplementation(((
+      _event: string,
+      handler: (on: boolean) => void,
+    ) => {
+      listener = handler;
+      return { remove: jest.fn() };
+    }) as never);
+    // This file's own copy of the module (the test above isolates its own): its first
+    // subscriber starts the watch.
+    const { result } = await renderHook(() => useScreenReader());
+    expect(result.current).toBe(false);
+    await act(async () => listener?.(true));
+    expect(result.current).toBe(true);
+    await act(async () => listener?.(false));
+    expect(result.current).toBe(false);
   });
 });

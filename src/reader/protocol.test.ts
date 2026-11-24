@@ -31,6 +31,8 @@ describe('parseReaderMessage', () => {
       message: 'TypeError',
     });
     expect(parseReaderMessage({ type: 'escape', key: 'x' })).toEqual({ type: 'escape' });
+    // A tap in the middle of the page (fe#246): nothing else of it is passed on.
+    expect(parseReaderMessage({ type: 'centreTap', x: 500 })).toEqual({ type: 'centreTap' });
     expect(parseReaderMessage({ type: 'opened', title: 'Ali', toc: [], rtl: true })).toEqual({
       type: 'opened',
       title: 'Ali',

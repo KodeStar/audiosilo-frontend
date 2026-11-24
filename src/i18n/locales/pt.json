@@ -3286,13 +3286,17 @@
     "contents": "Índice",
     "smaller": "Texto mais pequeno",
     "larger": "Texto maior",
+    "settings": "Definições de leitura",
     "theme": {
-      "label": "Cores da página: {{theme}}",
       "heading": "Cores da página",
       "follow": "Como a app",
       "light": "Claro",
       "dark": "Escuro",
       "black": "Preto"
+    },
+    "topBar": {
+      "heading": "Barra superior",
+      "autoHide": "Ocultar durante a leitura"
     },
     "previous": "Página anterior",
     "next": "Página seguinte",

@@ -1416,6 +1416,37 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   chosen shows at once on every surface mounted (`themeWatchers`). The host
   only ever gets hex colours and a scheme (`ReaderTheme`, `readerThemeOf`): black is the dark
   scheme on `#000000`, so the reader's dark rules and read-along highlight apply unchanged.
+- **Immersive mode** (fe#246, `reader-chrome.ts`): the full-screen reader's top bar hides
+  `CHROME_HIDE_MS` (4 s) after it shows or was last pressed, or at the first page turn the
+  reader made (never the narration's while it follows); a tap in the middle half of the page
+  shows it again, and a second hides it. The rules are pure (`mayHide`, `nextChrome`,
+  `settleChrome`) under `useReaderChrome`. It never hides with the setting off (the reader
+  menu's "Hide while reading", `loadAutoHide`, per device, default on), a screen reader on
+  (`useScreenReader`, `src/lib/screen-reader.ts`), no book on the page, or the reader menu,
+  the contents or (web) the keyboard's focus on the screen's own controls (the bar, the page
+  edges, the cards; never the book's frame), so a keyboard user tabbing out of the book
+  brings the hidden bar back. While it can hide, the bar lies over the page (in the apps an
+  `Animated.View`, a slide that reduce motion drops), so showing it never lays the book out
+  again. On the web, which cannot tell a screen reader is on, the hidden bar stays mounted,
+  only slid off the top (a CSS transform, never `display:none`, `aria-hidden` or `inert`): a
+  virtual cursor still reaches Close and Contents, any focus arriving in it shows and holds
+  it (`focusHoldsBar`), and it comes before the book in the DOM, so Close is the first Tab
+  stop and Shift+Tab out of the book lands on it. The room above the page is the page's
+  colour and holds its largest top inset per window size (`useHeldTopInset`, each size its
+  own, keyed by the insets' own
+  `useSafeAreaFrame`, which comes with them), since the status bar (hidden with the bar in
+  the apps, expo-status-bar, and only while the reader is the screen on top: Reconnect's
+  sign-in opens over it) going would shrink it on Android. The Android navigation bar stays (no
+  `expo-navigation-bar`). The centre tap is the reader document's `centreTap`
+  (`reader/src/taps.js`): a click in the page's middle half (a section's click placed by its
+  frame, which scrolls sideways under the page), never one a link took (foliate prevents it;
+  it is judged a tick later), a selection, a swipe or a modified click. A read-along sentence
+  tap counts too (it seeks and leaves the click alone): with a map in, nearly every tap lands
+  on a sentence. It is a `click` on the section's document, the path the read-along's
+  sentence tap proved on iOS. In the apps, until a centre tap has arrived in this run of the
+  app (`centreTapArrived`), a page turn shows the bar for the wait instead of hiding it
+  (`turnShows`), so a WebView that never delivers one cannot strand the reader without it.
+  The companion's Text tab has no top bar and ignores it.
 - **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
   session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
   message goes: `ready` runs the host's `onReady`, sends what waited, then the read-along side's
