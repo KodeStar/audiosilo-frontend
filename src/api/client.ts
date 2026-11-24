@@ -1540,7 +1540,9 @@ export class ApiClient {
     try {
       await this.request<void>('DELETE', `/podcasts/requests/${id}`);
     } catch (e) {
-      if (!(e instanceof ApiError && e.status === 404 && e.fromServer)) throw e;
+      const gone =
+        e instanceof ApiError && e.status === 404 && e.fromServer && e.code === 'request_not_found';
+      if (!gone) throw e;
     }
   }
   /** Ask a followed show to check its feed now (202, the poll; an open poll is returned

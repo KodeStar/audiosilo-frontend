@@ -3386,6 +3386,9 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     // The server's own 404: the request is gone, as dismissed. A proxy's 404 is not.
     refuse(404, 'request_not_found');
     await expect(client().dismissPodcastRequest(81)).resolves.toBeUndefined();
+    // Any other 404 of the server's says nothing of the request.
+    refuse(404, 'not_found');
+    expect((await failure(client().dismissPodcastRequest(81))).status).toBe(404);
     installAnswers(() => ({ status: 404, body: 'Not Found' }));
     expect((await failure(client().dismissPodcastRequest(81))).status).toBe(404);
   });
