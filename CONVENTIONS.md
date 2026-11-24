@@ -5681,9 +5681,12 @@ under their empty state).
   shared with the reader's contents). Inline on a tablet the page scrolls it, so a list past
   `INLINE_ALL_UP_TO` rows draws only the rows near the page's visible part (`PageRows`, fed the
   page's scroll by `usePageScroll`, `page-scroll.ts`), never a virtual list nested in the page.
-  On iOS and Android only: with VoiceOver or TalkBack on (`useScreenReader`), and always on the
-  web (which can't tell a screen reader is on; a virtual cursor and find-in-page reach only drawn
-  rows), it draws every row, so a swipe never skips a spacer. A page mounted again (the tablet's after the desktop's) starts its scroll at 0.
+  That window is iOS and Android only, and off with VoiceOver or TalkBack on (`useScreenReader`):
+  then, and always on the web (which can't tell a screen reader is on; a virtual cursor and
+  find-in-page reach only drawn rows), it draws every row, so a swipe never skips a spacer. Focus
+  moved in order (Tab, Full Keyboard Access, Switch Control) is not detected and skips the rows
+  not drawn. The list measures its place in the page in a layout effect (before the paint). A
+  page mounted again (the tablet's after the desktop's) starts its scroll at 0.
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
   only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
   writes on the way still counts; a seek never does), reading the chapter at Who's who's own

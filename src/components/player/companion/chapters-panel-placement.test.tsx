@@ -198,8 +198,8 @@ describe('ChaptersPanel inline in the page', () => {
     await fireEvent(screen.getByTestId('chapters-page-rows'), 'layout', WINDOW);
     await scrollTo(listTop + 300 * ROW);
     expect(screen.getByText('Chapter 301')).toBeTruthy();
-    // Something above the list grew by 200 rows' height: the web reports no layout for
-    // the list, which only moved, but the page's content size changed.
+    // Something above the list grew by 200 rows' height: the list, which only moved, gets no
+    // layout event of its own, but the page's content size changed.
     listTop += 200 * ROW;
     await act(async () => page.props.onContentSizeChange());
     expect(screen.getByText('Chapter 101')).toBeTruthy();

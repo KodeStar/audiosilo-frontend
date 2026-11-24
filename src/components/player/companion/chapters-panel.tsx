@@ -57,7 +57,8 @@ const LIST_PAD_BOTTOM = 12;
 /** Inline, a list of up to this many rows draws them all; a longer one draws only the rows
  * near the visible part of the page (`PageRows`). */
 const INLINE_ALL_UP_TO = 100;
-/** The drawn rows move in steps of this many, so a scroll redraws the list once a step. */
+/** The drawn rows move in steps of this many, so a scroll redraws the list once a step at
+ * each end. */
 const INLINE_STEP = 20;
 
 /**
@@ -86,11 +87,12 @@ export function inlineRows(
  * room is held, but only the rows near the visible part of the page are drawn
  * (`inlineRows`), so a book of a thousand chapters scrolls as one of ten. The page scrolls
  * the list (a nested virtual list would never know its viewport), so the list follows the
- * page's scroll (`usePageScroll`) and measures where it sits in it. A keyboard moving past
- * the drawn rows scrolls the page, which draws the next ones. iOS and Android only: with
- * VoiceOver or TalkBack on, and always on the web (which can't tell a screen reader is on),
- * the list draws every row instead (`ChaptersPanel`), so a swipe or a virtual cursor never
- * waits on the page's scroll or a measurement, nor skips a spacer to a row far down.
+ * page's scroll (`usePageScroll`) and measures where it sits in it. Used on iOS and Android
+ * only, and not with VoiceOver or TalkBack on: then, and always on the web (which can't
+ * tell a screen reader is on), the list draws every row instead (`ChaptersPanel`), so a
+ * swipe or a virtual cursor never waits on the page's scroll or a measurement, nor skips a
+ * spacer to a row far down. Focus that moves in order (Tab, iOS's Full Keyboard Access,
+ * Switch Control) is not detected and still skips the spacer below the drawn rows.
  */
 function PageRows({
   page,
