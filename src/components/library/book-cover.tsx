@@ -54,8 +54,8 @@ export type BookCoverProps = {
   connectionId: string;
   libraryId: number;
   path: string;
-  /** `Book.cover_version` when known (a progress, favourite, folder or household row
-   * carries its book's too; absent on older servers). */
+  /** `Book.cover_version` when known (a progress, favourite or household row carries
+   * its book's too; absent on older servers). */
   coverVersion?: string;
   /** Drawn width in points; the cover is square. */
   width: number;

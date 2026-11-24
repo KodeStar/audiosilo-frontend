@@ -38,12 +38,9 @@ beforeEach(() => {
 });
 
 describe('ProgressTile cover version', () => {
-  it("takes the progress row's own cover_version, before its book has loaded", async () => {
+  it("keeps the row's own cover_version before and after its book loads", async () => {
     await render(<ProgressTile item={item({ cover_version: 'row1' })} width={120} />);
     expect(handed()).toBe('row1');
-  });
-
-  it("keeps the row's version over its book's, so the URL doesn't change as the book loads", async () => {
     mockBook = { title: 'Book', cover_version: 'book1' };
     await render(<ProgressTile item={item({ cover_version: 'row1' })} width={120} />);
     expect(handed()).toBe('row1');

@@ -420,7 +420,8 @@ export type FsEntry = {
   series_index_end?: number;
   duration?: number;
   /** The book's `Book.cover_version` (the cover URL's cache buster) on an indexed book
-   * entry; absent otherwise and on older servers. */
+   * entry; absent otherwise and on older servers. Mirrored for wire parity: the player's
+   * folder rows draw no cover. */
   cover_version?: string;
   /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
    * An admin-console concern - the player browses read-only - but mirrored for completeness. */

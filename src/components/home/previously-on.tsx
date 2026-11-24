@@ -182,7 +182,7 @@ function PreviouslyOnBody({ at, saved }: { at: BookAt; saved?: SourcedProgress }
               connectionId={connectionId}
               libraryId={libraryId}
               path={path}
-              coverVersion={book?.cover_version}
+              coverVersion={saved.cover_version ?? book?.cover_version}
               width={96}
               title={title}
               author={book?.author}

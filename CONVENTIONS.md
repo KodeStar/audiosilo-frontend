@@ -1801,8 +1801,8 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `coverUrl(lib, path, {size, version})` (`cover_sizes`; `size` bounds the longer side;
 `version` is the book's `cover_version`, sent as `v=` purely as a cache buster; a
 `/me/progress` row, a `Favourite`, an `FsEntry` and a `HouseListeningRow` carry their book's
-too (server#215); a progress row's cover (Home's tiles and Now card, See all, the
-palette, the car) takes the row's own before its `/item`'s, so the URL does not change as
+too (server#215; the `FsEntry`'s is mirrored only, folder rows draw no cover); a progress
+row's cover (Home's tiles, Now and Previously on cards, See all, the palette, the car) takes the row's own before its `/item`'s, so the URL does not change as
 the book loads);
 `bookMeta(..., {includePrevious, hideSpoilers})` and `useBookMeta(..., opts)`
 (`meta_bundle`; each variant has its own `qk.bookMeta` key; `nextBook` and an
