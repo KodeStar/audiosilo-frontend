@@ -22,23 +22,24 @@ export function getLocale(): string {
 /** The last language's answer: the device's locales are read once per UI language, and again
  * once the app is back in front (the region can change in the device's settings meanwhile). */
 let regional: { language: string; tag: string } | null = null;
-/** The mounted `useLocale` readers, told once the app is back in front. */
+/** The mounted `useLocale` readers, told when the UI language changes and once the app is back
+ * in front: one listener on each for them all. */
 const readers = new Set<() => void>();
+const tellReaders = () => {
+  for (const onChange of readers) onChange();
+};
+i18next.on('languageChanged', tellReaders);
 AppState.addEventListener('change', (state) => {
   if (state !== 'active') return;
   regional = null;
-  for (const onChange of readers) onChange();
+  tellReaders();
 });
 
 /** Renders `onChange`'s reader again when the UI language changes or the app comes back in
  * front (the device's region may have changed). */
 function subscribeLocale(onChange: () => void): () => void {
-  i18next.on('languageChanged', onChange);
   readers.add(onChange);
-  return () => {
-    i18next.off('languageChanged', onChange);
-    readers.delete(onChange);
-  };
+  return () => readers.delete(onChange);
 }
 
 /** `getLocale()` for a render: a memoized caller's words follow a language switch, and a
