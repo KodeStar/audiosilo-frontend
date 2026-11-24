@@ -2296,6 +2296,7 @@ function retryPlan(
     held.set(savedIndex(f, k), f.relPath);
   });
   let spare = Math.max(paths.length, ...[...held.keys()].map((i) => i + 1));
+  const keptNames = new Set([...byPath.values()].map((f) => nameOf(f.localUri)));
   return {
     kept: (path) => byPath.get(path),
     nameFor: (index, path) => {
@@ -2309,11 +2310,7 @@ function retryPlan(
     },
     notReached: (handled) => [...byPath.values()].filter((f) => !handled.has(f.relPath)),
     // Never a name a kept file is under.
-    unlisted: earlier.filter(
-      (f) =>
-        !listed.has(f.relPath) &&
-        ![...byPath.values()].some((k) => nameOf(k.localUri) === nameOf(f.localUri)),
-    ),
+    unlisted: earlier.filter((f) => !listed.has(f.relPath) && !keptNames.has(nameOf(f.localUri))),
   };
 }
 
