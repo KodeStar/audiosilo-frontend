@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react';
+import { Platform } from 'react-native';
 
 /**
  * The reader's top bar in immersive mode (fe#246): it hides once the reader has rested on the
@@ -7,6 +8,11 @@ import { useEffect, useReducer } from 'react';
  * again after the same wait. It never hides while it cannot (`mayHide`): auto-hide turned off,
  * a screen reader on, no book on the page (opening, or a failure said), or a menu or sheet
  * from it open.
+ *
+ * In the apps, until a centre tap has reached this run of the app (`centreTapArrived`), a
+ * page turn shows the bar for the wait instead (`turnShows`): the centre tap is a click in
+ * the reader's WebView, and a WebView that never delivered one would otherwise leave the
+ * reader with no way back to the bar. The first centre tap turns that off for good.
  *
  * The rules are pure (`mayHide`, `nextChrome`, `settleChrome`, `chromeTimerRuns`) and
  * `useReaderChrome` runs them with the timer.
@@ -44,15 +50,22 @@ export function mayHide(hold: ChromeHold): boolean {
 
 const show = (state: ChromeState): ChromeState => ({ hidden: false, epoch: state.epoch + 1 });
 
-/** The bar after `event`, where `canHide` is `mayHide` of what holds it now. */
-export function nextChrome(state: ChromeState, event: ChromeEvent, canHide: boolean): ChromeState {
+/** The bar after `event`, where `canHide` is `mayHide` of what holds it now and `turnShows`
+ * whether a page turn shows the bar (with a fresh wait) rather than hiding it. */
+export function nextChrome(
+  state: ChromeState,
+  event: ChromeEvent,
+  canHide: boolean,
+  turnShows = false,
+): ChromeState {
+  const hide = canHide && !state.hidden ? { ...state, hidden: true } : state;
   switch (event) {
     case 'timeout':
+      return hide;
     case 'pageTurn':
-      return canHide && !state.hidden ? { ...state, hidden: true } : state;
+      return turnShows && canHide ? show(state) : hide;
     case 'centreTap':
-      if (state.hidden) return show(state);
-      return canHide ? { ...state, hidden: true } : state;
+      return state.hidden ? show(state) : hide;
     case 'touch':
       return show(state);
   }
@@ -69,9 +82,27 @@ export function chromeTimerRuns(state: ChromeState, canHide: boolean): boolean {
   return !state.hidden && canHide;
 }
 
-type ChromeAction = { event: ChromeEvent; canHide: boolean };
+/** Whether a centre tap has reached this run of the app. */
+let centreTapSeen = false;
+
+/** A centre tap arrived: the reader's taps reach the app, so a page turn may hide the bar. */
+export function centreTapArrived(): void {
+  centreTapSeen = true;
+}
+
+/** For tests: no centre tap has arrived yet. */
+export function resetCentreTapForTests(): void {
+  centreTapSeen = false;
+}
+
+/** Whether a page turn shows the bar: in the apps, until a centre tap has arrived. */
+export function turnShows(): boolean {
+  return Platform.OS !== 'web' && !centreTapSeen;
+}
+
+type ChromeAction = { event: ChromeEvent; canHide: boolean; turnShows?: boolean };
 const reduceChrome = (state: ChromeState, action: ChromeAction) =>
-  nextChrome(state, action.event, action.canHide);
+  nextChrome(state, action.event, action.canHide, action.turnShows);
 
 /**
  * The top bar's state on the reader screen (`nextChrome` with its timer): whether it shows,
@@ -102,8 +133,11 @@ export function useReaderChrome(hold: ChromeHold): {
   return {
     // A hold that came while hidden was settled above, before this render commits.
     shown: !state.hidden,
-    pageTurned: () => dispatch({ event: 'pageTurn', canHide }),
-    centreTapped: () => dispatch({ event: 'centreTap', canHide }),
+    pageTurned: () => dispatch({ event: 'pageTurn', canHide, turnShows: turnShows() }),
+    centreTapped: () => {
+      centreTapArrived();
+      dispatch({ event: 'centreTap', canHide });
+    },
     touched: () => dispatch({ event: 'touch', canHide }),
   };
 }

@@ -158,6 +158,7 @@ jest.mock('./reading-progress', () => ({
 /* eslint-disable import/first */
 import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
+import { centreTapArrived, resetCentreTapForTests } from './reader-chrome';
 import { focusStaysIn, keyboardFocus, ReaderScreen, tocOpeningIndex } from './reader-screen';
 import { loadAutoHide, loadReaderTheme, saveAutoHide, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
@@ -228,6 +229,9 @@ const answered = (kept: ReadingProgress, seen = false) =>
 
 describe('ReaderScreen', () => {
   beforeEach(() => {
+    // The reader's taps reach this app (a page turn hides the bar), but for the test of the
+    // fallback that waits for the first.
+    centreTapArrived();
     mockHasLocalEbook.mockReset().mockResolvedValue(true);
     jest.clearAllMocks();
     mockHost = null;
@@ -568,6 +572,24 @@ describe('ReaderScreen', () => {
       expect(statusBarHidden()).toBe(false);
       // A second tap puts it away again.
       await say({ type: 'centreTap' });
+      expect(bar()).toBeNull();
+    });
+
+    it('in the app, shows the bar at each page turn until a centre tap has arrived', async () => {
+      resetCentreTapForTests();
+      await mount();
+      await opened();
+      await turn();
+      expect(bar()).toBeTruthy();
+      expect(statusBarHidden()).toBe(false);
+      await say({ type: 'progress', cfi: CFI_A, fraction: 0.2, sectionLabel: '' });
+      expect(bar()).toBeTruthy();
+      // The first centre tap: taps reach the app, so the next turn hides the bar as usual.
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeNull();
+      await say({ type: 'centreTap' });
+      expect(bar()).toBeTruthy();
+      await turn();
       expect(bar()).toBeNull();
     });
 

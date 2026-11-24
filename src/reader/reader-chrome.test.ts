@@ -1,13 +1,17 @@
 import { act, renderHook } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import {
   CHROME_HIDE_MS,
   CHROME_START,
+  centreTapArrived,
   type ChromeHold,
   chromeTimerRuns,
   mayHide,
   nextChrome,
+  resetCentreTapForTests,
   settleChrome,
+  turnShows,
   useReaderChrome,
 } from './reader-chrome';
 
@@ -47,6 +51,34 @@ describe('nextChrome', () => {
   it('starts the wait again at a touch on the bar', () => {
     expect(nextChrome(CHROME_START, 'touch', true)).toEqual({ hidden: false, epoch: 1 });
   });
+
+  it('shows the bar with a fresh wait at a page turn that shows it (`turnShows`)', () => {
+    expect(nextChrome(hidden, 'pageTurn', true, true)).toEqual({ hidden: false, epoch: 1 });
+    expect(nextChrome(CHROME_START, 'pageTurn', true, true)).toEqual({ hidden: false, epoch: 1 });
+    // Held: nothing to show or restart.
+    expect(nextChrome(CHROME_START, 'pageTurn', false, true)).toBe(CHROME_START);
+    // Only a page turn: the wait still hides it.
+    expect(nextChrome(CHROME_START, 'timeout', true, true)).toEqual(hidden);
+  });
+});
+
+describe('turnShows', () => {
+  afterEach(() => centreTapArrived());
+
+  it('in the apps, until the first centre tap arrives; never on the web', () => {
+    resetCentreTapForTests();
+    expect(turnShows()).toBe(true);
+    centreTapArrived();
+    expect(turnShows()).toBe(false);
+    resetCentreTapForTests();
+    const prevOS = Platform.OS;
+    try {
+      Platform.OS = 'web';
+      expect(turnShows()).toBe(false);
+    } finally {
+      Platform.OS = prevOS;
+    }
+  });
 });
 
 describe('settleChrome', () => {
@@ -66,7 +98,10 @@ describe('chromeTimerRuns', () => {
 });
 
 describe('useReaderChrome', () => {
-  beforeEach(() => jest.useFakeTimers());
+  beforeEach(() => {
+    jest.useFakeTimers();
+    centreTapArrived();
+  });
   afterEach(() => jest.useRealTimers());
 
   const mount = (hold: ChromeHold) =>
@@ -93,6 +128,25 @@ describe('useReaderChrome', () => {
 
   it('hides at the first page turn, before the wait runs out', async () => {
     const { result } = await mount(READING);
+    await act(async () => result.current.pageTurned());
+    expect(result.current.shown).toBe(false);
+  });
+
+  it('in the app, shows the bar at a page turn until a centre tap has arrived', async () => {
+    resetCentreTapForTests();
+    const { result } = await mount(READING);
+    await act(async () => {
+      jest.advanceTimersByTime(CHROME_HIDE_MS);
+    });
+    expect(result.current.shown).toBe(false);
+    await act(async () => result.current.pageTurned());
+    expect(result.current.shown).toBe(true);
+    // Shown for the wait, then away again.
+    await act(async () => {
+      jest.advanceTimersByTime(CHROME_HIDE_MS);
+    });
+    expect(result.current.shown).toBe(false);
+    await act(async () => result.current.centreTapped());
     await act(async () => result.current.pageTurned());
     expect(result.current.shown).toBe(false);
   });

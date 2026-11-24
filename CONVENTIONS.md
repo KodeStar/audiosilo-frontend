@@ -1429,8 +1429,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   sign-in opens over it) going would shrink it on Android. The Android navigation bar stays (no
   `expo-navigation-bar`). The centre tap is the reader document's `centreTap`
   (`reader/src/taps.js`): a click in the page's middle half (a section's click placed by its
-  frame, which scrolls sideways under the page), never one a link or a read-along sentence
-  took (both prevent it; it is judged a tick later), a selection, a swipe or a modified click.
+  frame, which scrolls sideways under the page), never one a link took (foliate prevents it;
+  it is judged a tick later), a selection, a swipe or a modified click. A read-along sentence
+  tap counts too (it seeks and leaves the click alone): with a map in, nearly every tap lands
+  on a sentence. It is a `click` on the section's document, the path the read-along's
+  sentence tap proved on iOS. In the apps, until a centre tap has arrived in this run of the
+  app (`centreTapArrived`), a page turn shows the bar for the wait instead of hiding it
+  (`turnShows`), so a WebView that never delivers one cannot strand the reader without it.
   The companion's Text tab has no top bar and ignores it.
 - **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
   session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
