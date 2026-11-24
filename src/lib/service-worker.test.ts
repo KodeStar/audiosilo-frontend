@@ -76,8 +76,9 @@ function load(site: Record<string, string>, headers: Record<string, Record<strin
   vm.runInContext(SW_SOURCE, ctx);
   const sw = ctx as unknown as {
     precacheBuild: (fresh?: boolean) => Promise<void>;
-    cacheFirst: (r: Request) => Promise<Response>;
+    cacheFirst: (r: Request | FetchedAs) => Promise<Response>;
     staleWhileRevalidate: (r: Request | FetchedAs) => Promise<Response>;
+    serveAsset: (r: Request | FetchedAs, url: URL) => Promise<Response>;
   };
   const cached = () => [...(caches.get('audiosilo-shell-v1') ?? new Map()).keys()].sort();
   /** A page `handleNavigation` cached while online. */
@@ -211,7 +212,7 @@ describe('service worker: precacheBuild', () => {
     expect(t.cached()).toContain(font('a'));
     expect(t.fetched).not.toContain('https://cdn.test/other.woff2');
     t.offline.add(font('a'));
-    const served = await t.sw.staleWhileRevalidate(new Request(font('a')));
+    const served = await t.sw.cacheFirst(new Request(font('a')));
     expect(await served.text()).toBe('font-bytes');
     // A font two builds old goes, like the build's chunks.
     Object.assign(t.site, withFont('b'));
@@ -236,11 +237,12 @@ describe('service worker: precacheBuild', () => {
       destination,
       headers: new Headers({ Origin: 'https://box.test' }),
     });
-    const served = await t.sw.staleWhileRevalidate(page('font'));
+    const served = await t.sw.cacheFirst(page('font'));
     expect(served.status).toBe(200);
     expect(await served.text()).toBe('font-bytes');
     // Anything else keeps to Vary: an Origin-varied answer is never served to another origin.
     expect((await t.sw.staleWhileRevalidate(page('image'))).status).toBe(504);
+    await expect(t.sw.cacheFirst(page('image'))).rejects.toThrow('offline');
   });
 
   it('never fetches again at the precache a font the page cached under its own request (fe#177)', async () => {
@@ -249,7 +251,7 @@ describe('service worker: precacheBuild', () => {
     site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.p1.ttf" as="font">`;
     const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
     // The page drew its text in it before the worker's precache ran.
-    await t.sw.staleWhileRevalidate({
+    await t.sw.cacheFirst({
       url: font,
       destination: 'font',
       headers: new Headers({ Origin: 'https://box.test' }),
@@ -310,6 +312,37 @@ describe('service worker: precacheBuild', () => {
     t.offline.add(SCOPE);
     await t.sw.precacheBuild(true);
     expect(t.cached()).toEqual([]);
+  });
+});
+
+describe('service worker: serveAsset', () => {
+  const asked = (url: string, destination: string): FetchedAs => ({
+    url,
+    destination,
+    headers: new Headers({ Origin: 'https://box.test' }),
+  });
+
+  // fe#358: a font is named by its content too, so once cached it is never read again (it
+  // was read behind every load, twice: its preload and its @font-face).
+  it('serves a cached font with no request, as a build file', async () => {
+    const font = 'https://box.test/web/assets/fonts/Figtree_400.f1.ttf';
+    const t = load({ [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
+    expect(await (await t.sw.serveAsset(asked(font, 'font'), new URL(font))).text()).toBe(
+      'font-bytes',
+    );
+    expect(t.fetched).toEqual([font]);
+    t.fetched.length = 0;
+    const again = await t.sw.serveAsset(asked(font, 'font'), new URL(font));
+    expect(await again.text()).toBe('font-bytes');
+    expect(t.fetched).toEqual([]);
+  });
+
+  it('reads anything else again behind its cached copy', async () => {
+    const icon = 'https://box.test/web/icons/icon-192.png';
+    const t = load({ [icon]: 'png' });
+    expect(await (await t.sw.serveAsset(asked(icon, 'image'), new URL(icon))).text()).toBe('png');
+    await t.sw.serveAsset(asked(icon, 'image'), new URL(icon));
+    expect(t.fetched).toEqual([icon, icon]);
   });
 });
 

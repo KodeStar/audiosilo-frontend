@@ -381,6 +381,12 @@ function ghostRelease(date: string | undefined, now: Date): Pick<EntryFields, 'o
   return releaseIsFuture(date, now) ? { outDate: date } : { year: yearOf(date) };
 }
 
+/** Every recording the server placed at a rail work (server#241): its pick (`local`) first,
+ * then the others (`local_others`). */
+export function workRefs(w: BookMetaSeriesWork): BookRef[] {
+  return [...(w.local ? [w.local] : []), ...(w.local_others ?? [])];
+}
+
 function sameAuthor(work: BookMetaSeriesWork, book: Book): boolean {
   const names = work.authors.map((a) => looseKey(a.name)).filter(Boolean);
   const author = looseKey(book.author);
@@ -437,14 +443,13 @@ export function railEntries(
   // a book console-matched to one work but placed by the server at another (its ASIN's) is
   // never on two entries: the server's placement wins.
   const placed = new Set(
-    view.works.flatMap((w) =>
-      [...(w.local ? [w.local] : []), ...(w.local_others ?? [])].map((r) =>
-        keyOf(r.library_id, r.path),
-      ),
-    ),
+    view.works.flatMap((w) => workRefs(w).map((r) => keyOf(r.library_id, r.path))),
   );
   const used = new Set<string>();
-  const free = (b: Book) => !used.has(bookKey(b)) && !placed.has(bookKey(b));
+  const free = (b: Book) => {
+    const k = bookKey(b);
+    return !used.has(k) && !placed.has(k);
+  };
   const out: SeriesEntry[] = [];
   const now = src.now ?? new Date();
   const sorted = sortSeriesBooks(books);
@@ -642,9 +647,7 @@ export function pickRail(
     opts.ownedKeys.has(contentKey(opts.connectionId, r.library_id, r.path));
   let best: { rail: BookMetaSeries; placed: number } | undefined;
   for (const s of rails) {
-    const placed = s.works.filter(
-      (w) => (w.local && owns(w.local)) || w.local_others?.some(owns),
-    ).length;
+    const placed = s.works.filter((w) => workRefs(w).some(owns)).length;
     if (placed > 0 && (!best || placed > best.placed)) best = { rail: s, placed };
   }
   return best?.rail;

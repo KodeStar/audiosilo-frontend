@@ -86,6 +86,7 @@ import {
 } from './client';
 import { type RefusedServer, refusedServer, ServerReadError } from './server-read-error';
 import { resolveClient } from './connection-clients';
+import { isFavouriteOf } from './favourite-match';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteFailure, useReachability } from './reachability';
 import type {
@@ -856,7 +857,7 @@ export function useCapabilitiesAllRead(): {
 
 /** Whether a query failed with nothing known: an error, held for the network, or asked
  * again after a failure (a fetch with no data puts the query back to pending and clears its
- * error, so only the count of its failures still says it failed, as `useKnownBook` reads). */
+ * error, so only the count of its failures still says it failed). `useKnownBook` reads it too. */
 function failedRead(r: {
   data?: unknown;
   isError: boolean;
@@ -1222,12 +1223,9 @@ export function useKnownBook(
   const query = useBook(libraryId, path, connectionId, opts);
   // A down server's own failure can be a timeout away.
   const serverDown = useReachability((s) => s.online[cid] === false);
-  // A failed item asked again has no error while it waits (a fetch without data resets it),
-  // so the count of its failures says it failed. `isPaused`, not `fetchStatus`: a refetch
-  // alone redraws no row.
-  const stuck =
-    query.data === undefined &&
-    (query.isError || query.isPaused || query.errorUpdateCount > 0 || serverDown);
+  // A failed item asked again still failed (`failedRead`). `isPaused`, not `fetchStatus`: a
+  // refetch alone redraws no row.
+  const stuck = failedRead(query) || (query.data === undefined && serverDown);
   return useMemo(
     () => query.data ?? (stuck ? listedBook(cid, libraryId, path) : undefined),
     [query.data, stuck, cid, libraryId, path],
@@ -1546,6 +1544,26 @@ export function useBookProgress(
 }
 
 /**
+ * The server's progress row for a book, kept in the progress mirror when the book is
+ * downloaded (keep-newest, so a newer save of this device's own stays; a failed write keeps
+ * nothing, and the next read keeps it). `fetchBookProgress`'s server half, and what a
+ * download that starts asks for the place it opens at offline. Rejects as the GET does.
+ */
+export async function fetchServerProgress(
+  api: ApiClient,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  signal: AbortSignal,
+): Promise<Progress | null> {
+  const progress = await api.getProgress(libraryId, path, signal);
+  if (progress && isKeptOffline(connectionId, libraryId, path)) {
+    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
+  }
+  return progress;
+}
+
+/**
  * The `useBookProgress` fetch, extracted so the fallback policy is unit-testable.
  *
  * Ask the server, and answer with the place Resume plays from (`bookPlace`: the server's
@@ -1585,7 +1603,7 @@ export async function fetchBookProgress(
   const recovered = spanRecovered();
   let progress: Progress | null;
   try {
-    progress = await api.getProgress(libraryId, path, signal);
+    progress = await fetchServerProgress(api, connectionId, libraryId, path, signal);
   } catch (e) {
     // A cancelled query must stay cancelled - only a real failure falls back.
     if (signal.aborted) throw e;
@@ -1594,9 +1612,6 @@ export async function fetchBookProgress(
     noteFailure(connectionId, e);
     await recovered;
     return await bookPlace(undefined, connectionId, libraryId, path);
-  }
-  if (progress && isKeptOffline(connectionId, libraryId, path)) {
-    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
   }
   await recovered;
   // A local read that fails leaves the server's answer: it is still where the server is.
@@ -1983,6 +1998,10 @@ export type ToggleFavouriteVars = {
   pendingBook?: boolean;
 };
 
+/** The connections whose current run of favourite toggles began with their list unread
+ * (`useToggleFavourite`): the list it leaves is the toggles' own, never an answer. */
+const favouritesUnreadRun = new Set<string>();
+
 /** Toggle a path's favourite state. Optimistically updates the shared favourites
  * list so the heart and shelf react instantly, then reconciles via invalidation
  * (which fills in server-derived fields like is_book/title for a fresh add).
@@ -2034,10 +2053,11 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
     onMutate: async ({ libraryId, path, on, pendingBook }) => {
       await qc.cancelQueries({ queryKey: qk.favourites(cid) });
       const prev = qc.getQueryData<Favourite[]>(qk.favourites(cid));
+      if (!prev) favouritesUnreadRun.add(cid);
       qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
         const list = cur ?? [];
-        if (!on) return list.filter((f) => !(f.library_id === libraryId && f.path === path));
-        if (list.some((f) => f.library_id === libraryId && f.path === path)) return list;
+        if (!on) return list.filter((f) => !isFavouriteOf(f, libraryId, path));
+        if (list.some((f) => isFavouriteOf(f, libraryId, path))) return list;
         // Minimal optimistic stub; onSettled refetch fills in is_book/title/etc.
         const stub: Favourite = {
           library_id: libraryId,
@@ -2058,10 +2078,11 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
       // An optimistic removal can already have unmounted the button that sent it.
       onFailure?.();
       if (!ctx) return;
-      if (!ctx.prev && qc.isMutating({ mutationKey }) === 1) {
-        // Nothing was read before the toggle (the list waits for the network, or failed):
-        // the optimistic list is no answer, and kept it would show the heart as saved
-        // until the list is next read. Back to unread.
+      if (favouritesUnreadRun.has(cid) && qc.isMutating({ mutationKey }) === 1) {
+        // Nothing was read before the run's first toggle (the list waits for the network, or
+        // failed): the optimistic list is no answer, and kept it would show the heart as
+        // saved, or no favourites at all, until the list is next read. Back to unread. A
+        // later toggle's snapshot is an earlier one's optimistic list, so the run decides.
         void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
         return;
       }
@@ -2069,7 +2090,7 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
       // mutation's onMutate runs before it waits its turn, so its snapshot can hold another
       // toggle's optimistic edit, one that has failed since too. The last one to settle
       // reads the list.
-      const same = (f: Favourite) => f.library_id === libraryId && f.path === path;
+      const same = (f: Favourite) => isFavouriteOf(f, libraryId, path);
       const at = ctx.prev?.findIndex(same) ?? -1;
       const before = at >= 0 ? ctx.prev?.[at] : undefined;
       qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
@@ -2081,10 +2102,11 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
     },
     // This mutation still counts itself here; a later toggle queued behind it reads
     // the list when it settles.
-    onSettled: () =>
-      qc.isMutating({ mutationKey }) === 1
-        ? qc.invalidateQueries({ queryKey: qk.favourites(cid) })
-        : undefined,
+    onSettled: () => {
+      if (qc.isMutating({ mutationKey }) !== 1) return undefined;
+      favouritesUnreadRun.delete(cid);
+      return qc.invalidateQueries({ queryKey: qk.favourites(cid) });
+    },
   });
 }
 

@@ -3,15 +3,15 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { apiErrorKind } from '@/api/client';
-import { CapabilityError, useCapability, useFollowPodcast, useUnfollowPodcast } from '@/api/hooks';
+import { CapabilityError, useFollowPodcast, useUnfollowPodcast } from '@/api/hooks';
 import type { PodcastShow } from '@/api/types';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Text } from '@/components/ui/text';
 import { toast } from '@/components/ui/toast';
-import { isKidAccount } from '@/lib/account';
-import { useSession } from '@/stores/session';
+
+import { useAddShowsAccess } from './shows-actions';
 
 /** A refused follow or unfollow, in the listener's words (never the server's English). */
 function followErrorKey(e: unknown): ParseKeys {
@@ -47,14 +47,14 @@ export function FollowButton({
   onGone?: () => void;
 }) {
   const { t } = useTranslation();
-  const can = useCapability('podcasts', connectionId) === true;
-  const user = useSession((s) => s.connections.find((c) => c.id === connectionId)?.user);
+  // The same rule as adding shows: every way in ends in a follow.
+  const mayFollow = useAddShowsAccess(connectionId) === 'allowed';
   const follow = useFollowPodcast(connectionId);
   const unfollow = useUnfollowPodcast(connectionId);
   const [confirming, setConfirming] = useState(false);
   const busy = follow.isPending || unfollow.isPending;
 
-  if (!can || isKidAccount(user) || user?.is_demo) {
+  if (!mayFollow) {
     return show.following ? (
       <Badge variant="secondary" testID="podcast-following-badge">
         <Text>{t('podcasts.follow.following')}</Text>

@@ -259,6 +259,32 @@ describe('PodcastShowScreen', () => {
     expect(screen.queryByTestId('podcast-last-check-failed')).toBeNull();
   });
 
+  // fe#358: "Follow it again" is only for a follower who may follow; anyone else reads the
+  // failed check.
+  it.each([
+    ['does not follow the show', {}, { following: false }],
+    ["is a kid's account", { member_kind: 'kid' }, {}],
+    ['is the demo', { is_demo: true }, {}],
+  ])('says only that the check failed to a listener who %s', async (_who, user, over) => {
+    signIn(user);
+    mockShows = [
+      podcastShow({
+        private: true,
+        ...over,
+        status: {
+          last_checked: null,
+          last_success: null,
+          next_check: null,
+          error: { code: 'feed_secret_missing', message: 'secret gone' },
+          secret_missing: true,
+        },
+      }),
+    ];
+    await mountWithPortal(<PodcastShowScreen />);
+    expect(screen.queryByTestId('podcast-secret-missing')).toBeNull();
+    expect(screen.getByTestId('podcast-last-check-failed')).toBeTruthy();
+  });
+
   it('keeps the failed check while the server does not flag a missing address (older servers)', async () => {
     mockShows = [
       podcastShow({

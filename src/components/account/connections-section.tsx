@@ -139,15 +139,18 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
         {connections.map((c) => {
           const name = serverDisplayName(c, savedConnections);
           const manage = t('account.connections.manage', { name });
+          // Why it needs signing in again: a server rebuilt from scratch is no sign-out.
+          const badge =
+            c.needsReconnect === 'server-reset'
+              ? t('account.connections.serverReset')
+              : t('account.connections.signedOut');
           return (
             <RowSurface key={c.id} className="flex-row items-center gap-1 pr-1">
               <AnimatedPressable
                 onPress={() => router.push(accountHref(c.id))}
                 accessibilityRole="button"
                 // The label stands for the row's text, so it carries the badge too.
-                accessibilityLabel={
-                  c.needsReconnect ? `${manage}, ${t('account.connections.signedOut')}` : manage
-                }
+                accessibilityLabel={c.needsReconnect ? `${manage}, ${badge}` : manage}
                 className="flex-1 flex-row items-center gap-3 rounded-xl px-3 py-3"
               >
                 <Icon name="server" size={18} color={themed.mutedForeground} />
@@ -160,7 +163,7 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
                   </Text>
                   {c.needsReconnect ? (
                     <Badge variant="warning" className="self-start">
-                      <Text>{t('account.connections.signedOut')}</Text>
+                      <Text>{badge}</Text>
                     </Badge>
                   ) : null}
                 </View>

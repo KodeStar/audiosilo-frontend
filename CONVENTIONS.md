@@ -167,8 +167,8 @@ can never log anyone out (`{ authReset, cacheReset }`):
   is registered under its build's name (`sw.js?build=`, the entry's and the shared chunk's:
   `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
   keeps the compiled code of scripts a worker caches while installing, which is most of a warm
-  start's speed. The build's hashed files (`_expo/static/`) are served cache-first and never
-  rewritten. Every POST, PUT, PATCH and DELETE is routed around the worker at install
+  start's speed. The build's hashed files (`_expo/static/`) and its fonts (hashed names too)
+  are served cache-first and never rewritten (`serveAsset`). Every POST, PUT, PATCH and DELETE is routed around the worker at install
   (`addRoutes`, the Static Routing API; elsewhere the fetch handler's early return): in Chrome
   a keepalive POST sent as a controlled page goes away (the listening span on pagehide) went
   to the worker first and its network fallback died with the page (v2.5.1 PLAYER-14).
@@ -233,7 +233,9 @@ component again (fe#280: a row's menu kept offering Download after the episode p
 episode not available). Read the cache at render through a subscription: a query hook, or
 `useCachedQueryData(key)` (`src/api/use-cached-query-data.ts`: cache only, no fetch, no
 observer, one cache listener per reader, notified in React Query's batches; `false` for no key
-reads nothing; a test of it sets `notifyQueriesSynchronously()`). `getQueryData` stays fine in
+reads nothing; a test of it sets `notifyQueriesSynchronously()`), or `useCachedQueryState(key,
+pick)` beside it for another part of the entry's state (its `dataUpdatedAt`); both read the
+app's `queryClient`, never a context one. `getQueryData` stays fine in
 callbacks, effects and framework-free code. One render read is held on purpose: the Cast
 button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
 cache collects them with only the docked player showing. Jest builds the app's code with the

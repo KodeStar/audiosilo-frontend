@@ -9,7 +9,7 @@ import { InsetRow } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
 import { bookTitle } from '@/lib/paths';
-import { percentOf, type SavedProgressView } from '@/lib/progress-view';
+import { listenedWords, type SavedProgressView } from '@/lib/progress-view';
 import { useLibraryName } from '@/stores/library-names';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -31,11 +31,7 @@ export function recordingLabel(t: TFunction, r: Pick<RecordingFacts, 'book' | 'p
 /** "Kids · Abridged · 10h 3m · 40% listened": where it is (`where`, the name of a library
  * other than the page's), what it is, its length and how far the listener is. */
 export function recordingCaption(t: TFunction, r: RecordingFacts, where?: string): string {
-  const state = r.finished
-    ? t('covers.finished')
-    : r.started
-      ? t('covers.listened', { percent: percentOf(r.fraction) })
-      : '';
+  const state = listenedWords(t, r);
   return [
     where ?? '',
     r.book?.abridged ? t('book.meta.abridged') : '',

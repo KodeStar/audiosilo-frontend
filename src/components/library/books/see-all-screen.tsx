@@ -15,6 +15,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { GhostCovers } from '@/components/ui/ghost-art';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { contentKey } from '@/lib/content-key';
+import { useLocale } from '@/i18n/locale';
 import { formatRelative } from '@/lib/format';
 import { useUnreadAll } from '@/lib/offline-state';
 import { bookTitle } from '@/lib/paths';
@@ -152,7 +153,8 @@ function FinishedTile({
   server?: string;
   width: number;
 }) {
-  const { t, i18n } = useTranslation();
+  const { t } = useTranslation();
+  const locale = useLocale();
   // Said in the current language and minute, as a book tile's "added" words (fe#162).
   const now = useMinuteClock();
   const book = useProgressBook({
@@ -170,7 +172,7 @@ function FinishedTile({
       author={book?.author}
       coverVersion={p.cover_version ?? book?.cover_version}
       caption={t('library.books.finishedWhen', {
-        when: formatRelative(p.finished_at ?? p.updated_at, i18n.language || 'en', now),
+        when: formatRelative(p.finished_at ?? p.updated_at, locale, now),
       })}
       finished
       server={server}

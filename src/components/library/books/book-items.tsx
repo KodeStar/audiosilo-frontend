@@ -6,10 +6,11 @@ import { useBookTimeLeft } from '@/components/player/use-time-left';
 import { Icon } from '@/components/ui/icon';
 import { ProgressBar } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
+import { useLocale } from '@/i18n/locale';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
-import { percentHeard, percentOf, progressFractionRemaining } from '@/lib/progress-view';
+import { listenedWords, percentOf, savedProgressView } from '@/lib/progress-view';
 import { useMinuteClock } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -44,9 +45,9 @@ export function tileCaption(
  * language and minute of its first render (fe#162). Ticks only for Recently added, on
  * the clock every tile shares. */
 function useTileClock(sort: BooksSort | undefined) {
-  const { i18n } = useTranslation();
+  const locale = useLocale();
   const now = useMinuteClock(sort === 'recent');
-  return { locale: i18n.language || 'en', now };
+  return { locale, now };
 }
 
 /** A book of the listener's library as a cover tile (which marks its own progress).
@@ -121,7 +122,8 @@ function ProgressCell({
       </Text>
     );
   }
-  const { fraction } = progressFractionRemaining(progress!.position, book.duration);
+  // The phone line's rule (`savedProgressView`): the row's own length, else the book's.
+  const { fraction } = savedProgressView(progress, book.duration);
   return (
     <View className="gap-1">
       <ProgressBar fraction={fraction} />
@@ -203,18 +205,11 @@ export function BookListRow({
     seriesIndex: book.series_index,
     seriesIndexEnd: book.series_index_end,
   });
-  const status = bookStatus(progress);
   // Without columns the subtitle carries the length and the state.
   const phoneLine = [
     byline,
     formatDuration(book.duration),
-    status === 'finished'
-      ? t('covers.finished')
-      : status === 'progress'
-        ? t('covers.listened', {
-            percent: percentHeard(progress!.position, book.duration, false),
-          })
-        : '',
+    listenedWords(t, savedProgressView(progress, book.duration)),
   ]
     .filter(Boolean)
     .join(' · ');

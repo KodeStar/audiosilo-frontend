@@ -1,13 +1,15 @@
 import { getLocales } from 'expo-localization';
 import i18next from 'i18next';
+import { AppState } from 'react-native';
+import { useSyncExternalStore } from 'react';
 
 /**
  * Active BCP-47 locale for `Intl.*` formatting: the UI language from the i18next singleton,
  * with the device's region when the device names one for that language ("en-GB" for
  * English on a British phone), so dates and numbers read the listener's way ("12 Nov 2026",
  * not "Nov 12, 2026"; fe#204). Lives apart from `./index` (which binds react-i18next) so
- * locale-only consumers like `src/lib/format.ts` don't pull React into their dependency
- * graph.
+ * locale-only consumers like `src/lib/format.ts` don't pull react-i18next into their
+ * dependency graph.
  */
 export function getLocale(): string {
   const language = i18next.language || 'en';
@@ -17,8 +19,34 @@ export function getLocale(): string {
   return regional.tag;
 }
 
-/** The last language's answer: the device's locales are read once per UI language. */
+/** The last language's answer: the device's locales are read once per UI language, and again
+ * once the app is back in front (the region can change in the device's settings meanwhile). */
 let regional: { language: string; tag: string } | null = null;
+/** The mounted `useLocale` readers, told when the UI language changes and once the app is back
+ * in front: one listener on each for them all. */
+const readers = new Set<() => void>();
+const tellReaders = () => {
+  for (const onChange of readers) onChange();
+};
+i18next.on('languageChanged', tellReaders);
+AppState.addEventListener('change', (state) => {
+  if (state !== 'active') return;
+  regional = null;
+  tellReaders();
+});
+
+/** Renders `onChange`'s reader again when the UI language changes or the app comes back in
+ * front (the device's region may have changed). */
+function subscribeLocale(onChange: () => void): () => void {
+  readers.add(onChange);
+  return () => readers.delete(onChange);
+}
+
+/** `getLocale()` for a render: a memoized caller's words follow a language switch, and a
+ * region changed in the device's settings while the app was away (fe#358). */
+export function useLocale(): string {
+  return useSyncExternalStore(subscribeLocale, getLocale, getLocale);
+}
 
 function deviceLocales(): { languageTag: string; languageCode: string | null }[] {
   try {

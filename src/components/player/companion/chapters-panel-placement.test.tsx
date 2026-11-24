@@ -40,6 +40,34 @@ function open(rows: number) {
   });
 }
 
+describe('ChaptersPanel countdown', () => {
+  // fe#197: the current row counts down as the seek row does (`wholeSecondsLeft`), so
+  // 59.6 s left reads "-1:00" in both, never "-0:59" here beside "-1:00" there.
+  it("rounds the current chapter's time left as the seek row does", async () => {
+    const chapters: Chapter[] = [0, 1].map((i) => ({
+      index: i,
+      title: `Chapter ${i + 1}`,
+      file_index: 0,
+      file_path: 'A/B/01.mp3',
+      start: i * 100.6,
+      end: (i + 1) * 100.6,
+      book_offset: i * 100.6,
+    }));
+    player.reset();
+    player.usePlayer.setState({
+      nowPlaying: {
+        connectionId: 'home',
+        libraryId: 1,
+        path: 'A/B',
+        queue: { chapters, total: 201.2 },
+      },
+      bookPosition: 41,
+    });
+    await render(<ChaptersPanel />);
+    expect(screen.getByText('-1:00')).toBeTruthy();
+  });
+});
+
 describe('ChaptersPanel placement', () => {
   const scrollToOffset = jest.spyOn(FlatList.prototype, 'scrollToOffset');
   beforeEach(() => scrollToOffset.mockClear());

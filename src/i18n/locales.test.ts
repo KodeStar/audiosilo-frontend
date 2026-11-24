@@ -86,11 +86,39 @@ describe('locales', () => {
   });
 
   // pt is European Portuguese (fe#160, Q7): ficheiro, transferir, ecrã and guardar, never the
-  // Brazilian arquivo, baixar (for a download), tela or salvar.
+  // Brazilian arquivo, baixar (for a download), tela or salvar; no você in a sentence, a
+  // gerund for a running state (A carregar, never Carregando), ligação for a connection or
+  // a link, a app, partilhar, registo, por isso, subscrever, num, demasiado. The You tab
+  // keeps its name (Você).
   it('words pt in European Portuguese', () => {
-    const brazilian =
-      /\barquivos?\b|\bbaix(ad[oa]s?|e|ando)\b|\btelas?\b|\bsalv(ar|[oa]s?|ando)\b/i;
+    const brazilian = new RegExp(
+      '(?<!\\p{L})(' +
+        [
+          'arquivos?',
+          'baix(ad[oa]s?|e|ando)',
+          'telas?',
+          'salv(ar|[oa]s?|ando)',
+          'vocês?',
+          'conex(ão|ões)',
+          'sendo',
+          '(aguard|carreg|prepar|adicion|pesquis|envi|esper|segu)(ando|indo)',
+          '(o|um|este|do|no|ao|outro) app',
+          'compartilh\\p{L}*',
+          'registro',
+          'então',
+          'assin(e|ar|ado|atura)',
+          'link',
+          'login',
+          'deu errado',
+          '(grande|longo) demais',
+          'em uma?',
+        ].join('|') +
+        ')(?!\\p{L})',
+      'iu',
+    );
+    const tabName = new Set(['nav.you', 'you.sections.label']);
     for (const [key, text] of leaves(pt)) {
+      if (tabName.has(key)) continue;
       expect([key, text]).toEqual([key, expect.not.stringMatching(brazilian)]);
     }
   });

@@ -7,6 +7,7 @@ import {
   isNormalSpeed,
   timeLeft,
   timeLeftLabel,
+  wholeSecondsLeft,
 } from './time-left';
 
 const t = i18n.t.bind(i18n);
@@ -104,6 +105,15 @@ describe('timeLeftLabel', () => {
   it('labels a time-left figure with the speed, or plainly at 1x', () => {
     expect(timeLeftLabel(t, 1.25)).toBe('left at 1.25×');
     expect(timeLeftLabel(t, 1)).toBe('left');
+  });
+});
+
+describe('wholeSecondsLeft', () => {
+  it('rounds to the nearest second, as formatDuration does, and never below 0', () => {
+    expect(wholeSecondsLeft(59.6)).toBe(60);
+    expect(wholeSecondsLeft(59.4)).toBe(59);
+    expect(wholeSecondsLeft(-3)).toBe(0);
+    expect(wholeSecondsLeft(Number.NaN)).toBe(0);
   });
 });
 
