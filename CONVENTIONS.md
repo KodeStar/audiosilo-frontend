@@ -1210,7 +1210,11 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   504) is `no_answer`, which never claims the list failed (the server may still be following
   it) and reads the shows and requests again, and a server 503 without a code is
   `server_timeout`. The rows are named from the bytes the page holds (`outlineTitles`): the
-  server's answer never echoes the list. A queued row is read live from the follow requests
+  server's answer never echoes the list. A name's web addresses are redacted as it is read, as the
+  server redacts a follow's title, before it is put on one line (`redactUrls` in
+  `feed-redact.ts`, a hand port of Go 1.26's `url.Parse`: keep it in step), and a name that
+  is only an address gives way to the show's folder or the row's redacted `feed`
+  (`importRowLabel`). A queued row is read live from the follow requests
   (`liveImportRows`), and `useOpmlImport` remembers each request it saw end, whichever
   section shows (`rememberEnded`, off the shared cache entry): one dismissed since (the
   requests list, another device) keeps its row as it ended (`withEndedRequests`), never

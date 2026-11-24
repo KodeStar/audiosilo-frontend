@@ -140,24 +140,44 @@ describe('outlineTitles', () => {
 
 describe('importRowLabel', () => {
   const row = { path: null, feed: 'https://feeds.example.com/...' };
+  // A row's name as the panel gets it: read from the list (`outlineTitles`).
+  const named = (title: string) =>
+    outlineTitles(opml(`<outline title="${title}" xmlUrl="https://x.example/feed"/>`)).get(1) ??
+    null;
 
   it('keeps a plain name as the list gave it', () => {
-    expect(importRowLabel({ ...row, path: 'Morning' }, 'Morning Brief')).toBe('Morning Brief');
+    expect(importRowLabel({ ...row, path: 'Morning' }, named('Morning Brief'))).toBe(
+      'Morning Brief',
+    );
   });
 
   it("shows the folder, else the server's label, for a name that is only an address", () => {
-    const title = 'https://feeds.example.com/rss.xml';
+    const title = named('https://feeds.example.com/rss.xml');
     expect(importRowLabel({ ...row, path: 'Daily News' }, title)).toBe('Daily News');
     expect(importRowLabel(row, title)).toBe('https://feeds.example.com/...');
     expect(importRowLabel({ path: null, feed: null }, title)).toBe('https://feeds.example.com/...');
+    // An address no host can be read from gives way too.
+    expect(importRowLabel({ ...row, path: 'Daily News' }, named('http:///x?key=1'))).toBe(
+      'Daily News',
+    );
   });
 
   it("never shows a private feed's token", () => {
-    const title = 'https://feeds.example.com/p/abc123?key=s3cr3t-token';
-    for (const r of [row, { path: null, feed: null }]) {
-      expect(importRowLabel(r, title)).not.toMatch(/s3cr3t|abc123|key=/);
+    const address = 'https://feeds.example.com/p/abc123?key=s3cr3t-token';
+    for (const title of [
+      address,
+      `Bonus (${address})`,
+      // A no-break space is part of an address to the server (Go's \S): never cut there.
+      'https://feeds.example.com/p/abc\u00a0def?key=s3cr3t-token',
+      'https://feeds.example.com/p/abc&#160;def?key=s3cr3t-token',
+    ]) {
+      for (const r of [row, { path: null, feed: null }]) {
+        expect(importRowLabel(r, named(title))).not.toMatch(/s3cr3t|abc|key=/);
+      }
     }
-    expect(importRowLabel(row, `Bonus (${title})`)).toBe('Bonus (https://feeds.example.com/...');
+    expect(importRowLabel(row, named(`Bonus (${address})`))).toBe(
+      'Bonus (https://feeds.example.com/...',
+    );
   });
 
   it('falls back to the folder, then the label, with no name', () => {

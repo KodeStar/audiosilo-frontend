@@ -28,7 +28,10 @@ const MAX_TITLE_CHARS = 500;
 
 /**
  * Each subscription's own name in an OPML list, by the import rows' `outline_index`
- * (fe#126): its `title` attribute, else its `text`, on one line. The server never echoes
+ * (fe#126): its `title` attribute, else its `text`, on one line, with any web address in it
+ * redacted as the server redacts a follow's title (`redactUrls`): the list is read on the
+ * device, so its name for a private feed may be that feed's address, token and all. The
+ * server never echoes
  * the list in its answer (a private feed's outline stays in memory), so a row's name is
  * read from the bytes the page still holds, counted as `outlineFeeds` counts. Markup it
  * can't read gives no titles (the rows show their address).
@@ -84,8 +87,8 @@ function walkOutlines(
       if (key === 'xmlns' && value) return false;
       if (key === 'xmlurl') url = decodeEntities(value).trim();
       // The server reads these two by their exact names.
-      else if (a[1] === 'title') title = oneLine(decodeEntities(value));
-      else if (a[1] === 'text') label = oneLine(decodeEntities(value));
+      else if (a[1] === 'title') title = nameOf(value);
+      else if (a[1] === 'text') label = nameOf(value);
     }
     attr.lastIndex = 0;
     const inTree =
@@ -97,6 +100,14 @@ function walkOutlines(
     if (!selfClosing) stack.push(name);
   }
   return true;
+}
+
+/** An outline's name as a row shows it: its web addresses redacted (`redactUrls`), then on
+ * one line, in the server's order (`bridge` redacts a follow's title before `textclean.Line`),
+ * so a space `oneLine` folds that Go's `\S` does not (a no-break space) can't cut an address
+ * short and leave its query behind. */
+function nameOf(value: string): string {
+  return oneLine(redactUrls(decodeEntities(value)));
 }
 
 /** A title on one line: control characters and runs of white space as one space, trimmed
@@ -133,17 +144,16 @@ export function rowFeedUrl(
   return sameOrigin(url, { origin: labelled }) ? url : null;
 }
 
-/** What an import row is called (fe#126): the list's own name for it, else its show's
- * folder, else the server's (redacted) label for its address. Any web address in the name
- * is redacted as the server redacts a follow's title (`redactUrls`), and a name that is
- * only an address gives way to the folder or the server's label: the list is read on the
- * device, so its name for a private feed may be that feed's address, token and all. */
+/** What an import row is called (fe#126): the list's own name for it (`outlineTitles`,
+ * its addresses already redacted), else its show's folder, else the server's (redacted)
+ * label for its address. A name that is only an address gives way to the folder or the
+ * server's label. */
 export function importRowLabel(
   row: Pick<OpmlImportRow, 'path' | 'feed'>,
   title: string | null,
 ): string | null {
-  if (title && !isWebAddress(title)) return redactUrls(title);
-  return row.path || row.feed || (title ? redactUrls(title) : null);
+  if (title && !isWebAddress(title)) return title;
+  return row.path || row.feed || title;
 }
 
 /** The text of a picked list's bytes (UTF-8, as the server reads it; Expo's runtime

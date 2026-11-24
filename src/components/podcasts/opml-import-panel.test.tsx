@@ -23,6 +23,7 @@ jest.mock('@/api/hooks', () => ({
 /* eslint-disable import/first */
 import { mocksChanged } from '@/testing/mock-hooks';
 
+import { outlineTitles } from './opml-feeds';
 import { OpmlImportPanel } from './opml-import-panel';
 import type { WaveState } from './opml-waves';
 import type { OpmlImport } from './use-opml-import';
@@ -226,10 +227,12 @@ describe('OpmlImportPanel', () => {
     await render(
       <OpmlImportPanel
         opml={importer({
-          titles: new Map([
-            [1, 'https://feeds.example.com/p/abc?key=s3cr3t'],
-            [2, 'Listen at https://feeds.example.com/p/abc?key=s3cr3t today'],
-          ]),
+          titles: outlineTitles(
+            `<opml><body>
+              <outline title="https://feeds.example.com/p/abc?key=s3cr3t"/>
+              <outline text="Listen at https://feeds.example.com/p/abc?key=s3cr3t today"/>
+            </body></opml>`,
+          ),
           state: state({ kind: 'done' }, [
             row(1, { private: true, feed: 'https://feeds.example.com/...' }),
             row(2, { private: true }),
