@@ -58,6 +58,31 @@ export function engineTicker(fn: () => void, ms: number, period: () => number = 
   };
 }
 
+/**
+ * A one-shot `setTimeout` that the engine's events drive too, for the same reason as
+ * `engineTicker`: `fn` runs once, `ms` after the call, from its timer or from the first
+ * engine event past that deadline, whichever comes first (the stall watchdog in `store.ts`,
+ * fe#158: with the screen off on Android its timer never fired). `cancel()` takes it off
+ * both, and it is off once it has run.
+ */
+export function engineTimeout(fn: () => void, ms: number): { cancel(): void } {
+  const deadline = Date.now() + ms;
+  const cancel = () => {
+    clearTimeout(timer);
+    timeouts.delete(due);
+  };
+  const fire = () => {
+    cancel();
+    fn();
+  };
+  const due = (now: number) => {
+    if (now >= deadline) fire();
+  };
+  const timer = setTimeout(fire, ms);
+  timeouts.add(due);
+  return { cancel };
+}
+
 /** How early a run may come and still count as due: a quarter of the period, at most
  * 100 ms. */
 function slackMs(ms: number) {
@@ -66,13 +91,17 @@ function slackMs(ms: number) {
 
 /** The running `engineTicker`s. */
 const consumers = new Set<(now: number) => void>();
+/** The pending `engineTimeout`s, checked before the tickers: the stall watchdog's error
+ * halts playback, and the save or the sleep timer must not run first on a stalled start. */
+const timeouts = new Set<(now: number) => void>();
 
 /** An engine event arrived (the store calls this on every snapshot it takes): run every
- * running `engineTicker` that is due. One stopped by an earlier one in this same pass
+ * running `engineTicker` that is due, and every `engineTimeout` past its deadline. One stopped by an earlier one in this same pass
  * does not run (the sleep timer's fire stops its fade, which must not restore the volume
  * before the pause lands). */
 export function engineTick() {
   const now = Date.now();
+  for (const due of [...timeouts]) due(now);
   for (const run of [...consumers]) {
     if (!consumers.has(run)) continue;
     // One consumer's throw must not starve the rest this pass, nor escape into the
