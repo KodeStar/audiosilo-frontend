@@ -12,10 +12,6 @@ import { type JobStatusView, jobStatusView, statusJob } from './bridge-model';
 import { JobStatusLayout } from './job-status-layout';
 import type { GenerateModel } from './use-generate';
 
-/** `statusJob` for a book the community covers: its failed job gives way to the covered
- * line (a stable `select`). */
-const statusJobCovered = (jobs: readonly BridgeJob[] | undefined) => statusJob(jobs, true);
-
 /** The status's one line under its title: the stage, the counts and the time left while
  * it runs; why it stopped while parked; the Bridge's error once it failed. */
 function statusLine(t: TFunction, view: JobStatusView): string {
@@ -74,18 +70,19 @@ export type JobStatusWords = {
  * left and Cancel while it runs; a short reason and "Open the console to fix it" while it
  * is parked (or when it tries again by itself, or that it carries on by itself:
  * `endsByItself`); the error and Try again once it failed.
- * Nothing without such a job (`statusJob`: a failed one gives way to the covered line, once
- * `model.covered`), nor for someone who may not generate here
+ * Nothing without such a job (`statusJob`), nor once the covered line shows (`model.covered`:
+ * no open job, and a failed one gives way to it), nor for someone who may not generate here
  * (`model.allowed`: the Bridge offline included, when the cached job could no longer move
  * and its buttons could send nothing). It reads the book's job list itself, polling while
  * its screen is focused (read here, so a poll or a blur re-renders only this).
  */
 export function GenerateStatus({ model, className }: { model: GenerateModel; className?: string }) {
   const { t } = useTranslation();
+  if (model.covered) return null;
   return (
     <BridgeJobStatus
       model={model}
-      select={model.covered ? statusJobCovered : statusJob}
+      select={statusJob}
       words={{
         title: t('bridge.status.title'),
         parkedTitle: t('bridge.status.parkedTitle'),
