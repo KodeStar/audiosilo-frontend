@@ -13,8 +13,8 @@ export type PageScrollState = {
   /** The page's visible height (0 until it is laid out). */
   height: number;
   /** Counts the page's relayouts and content size changes: a child placed against `origin`
-   * measures itself again when this moves, since the web reports no layout for a view that
-   * only moved (content above it grew). */
+   * measures itself again when this moves, since a view that only moved with an ancestor
+   * (content above it grew) gets no layout event of its own. */
   layout: number;
 };
 

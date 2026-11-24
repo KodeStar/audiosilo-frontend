@@ -87,9 +87,10 @@ export function inlineRows(
  * (`inlineRows`), so a book of a thousand chapters scrolls as one of ten. The page scrolls
  * the list (a nested virtual list would never know its viewport), so the list follows the
  * page's scroll (`usePageScroll`) and measures where it sits in it. A keyboard moving past
- * the drawn rows scrolls the page, which draws the next ones. With VoiceOver or TalkBack on
- * the list draws every row instead (`ChaptersPanel`): a swipe never waits on the page's
- * scroll or a measurement, nor skips a spacer to a row far down.
+ * the drawn rows scrolls the page, which draws the next ones. iOS and Android only: with
+ * VoiceOver or TalkBack on, and always on the web (which can't tell a screen reader is on),
+ * the list draws every row instead (`ChaptersPanel`), so a swipe or a virtual cursor never
+ * waits on the page's scroll or a measurement, nor skips a spacer to a row far down.
  */
 function PageRows({
   page,
@@ -232,7 +233,7 @@ const Row = memo(function Row({ index, label, state, side, height, wrap, onPress
  * whole-book timeline lists its files instead. `virtualized` (in a sheet, or as the
  * desktop column's own scroller) opens on the current chapter; inline in a scrolling
  * page it is a plain list, drawn only near the visible part of the page when it is long
- * (`PageRows`) and no screen reader is on.
+ * (`PageRows`), on iOS and Android with no screen reader on.
  */
 export function ChaptersPanel({
   virtualized = false,
@@ -319,7 +320,10 @@ export function ChaptersPanel({
   );
 
   if (!virtualized) {
-    if (page && !screenReader && labels.length > INLINE_ALL_UP_TO) {
+    // Windowed on iOS and Android only. The web can't tell a screen reader is on, and a
+    // browser's virtual cursor and find-in-page reach only the rows drawn, so there every row
+    // is drawn (a browser lays out a few hundred rows with ease).
+    if (Platform.OS !== 'web' && page && !screenReader && labels.length > INLINE_ALL_UP_TO) {
       return <PageRows page={page} count={labels.length} rowHeight={rowHeight} render={render} />;
     }
     return <View>{labels.map((_, i) => render(i))}</View>;

@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
-import { FlatList, type ViewInstance } from 'react-native';
+import { FlatList, Platform, type ViewInstance } from 'react-native';
 
 import type { Chapter } from '@/api/types';
 import { playerStoreMock } from '@/testing/player-store-mock';
@@ -212,6 +212,21 @@ describe('ChaptersPanel inline in the page', () => {
     await inPage();
     expect(screen.queryByTestId('chapters-page-rows')).toBeNull();
     expect(screen.getByText('Chapter 150')).toBeTruthy();
+  });
+
+  it('draws every row of a long list on the web', async () => {
+    // The web can't tell a screen reader is on, and a virtual cursor or find-in-page reaches
+    // only the rows drawn.
+    const os = Platform.OS;
+    Platform.OS = 'web';
+    try {
+      open(3, 150);
+      await inPage();
+      expect(screen.queryByTestId('chapters-page-rows')).toBeNull();
+      expect(screen.getByText('Chapter 150')).toBeTruthy();
+    } finally {
+      Platform.OS = os;
+    }
   });
 
   it('draws every row with no page around it', async () => {
