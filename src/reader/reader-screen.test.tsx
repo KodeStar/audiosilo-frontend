@@ -682,6 +682,50 @@ describe('ReaderScreen', () => {
     });
   });
 
+  describe("the web's hidden top bar (fe#246)", () => {
+    const turn = () => say({ type: 'progress', cfi: CFI_B, fraction: 0.3, sectionLabel: '' });
+    const topBar = () => screen.getByTestId('reader-top-bar');
+    const slidAway = () => /(^|\s)-translate-y-full(\s|$)/.test(String(topBar().props.className));
+    let prevOS: typeof Platform.OS;
+    beforeEach(() => {
+      prevOS = Platform.OS;
+      Platform.OS = 'web';
+    });
+    afterEach(() => {
+      Platform.OS = prevOS;
+    });
+
+    it('stays in the page while hidden, slid off the top, for a screen reader to reach', async () => {
+      await mount();
+      await opened();
+      expect(slidAway()).toBe(false);
+      await turn();
+      expect(slidAway()).toBe(true);
+      // Hidden from sight only: a virtual cursor still reaches Close and Contents.
+      expect(screen.getByLabelText('Close the reader')).toBeTruthy();
+      expect(screen.getByLabelText('Contents')).toBeTruthy();
+      await say({ type: 'centreTap' });
+      expect(slidAway()).toBe(false);
+    });
+
+    it('shows when focus arrives in it while hidden', async () => {
+      await mount();
+      await opened();
+      await turn();
+      expect(slidAway()).toBe(true);
+      await fireEvent(topBar(), 'focus');
+      expect(slidAway()).toBe(false);
+    });
+
+    it('comes before the book, so Close is the first Tab stop and Shift+Tab from the book meets it', async () => {
+      await mount();
+      await opened();
+      const tree = JSON.stringify(screen.toJSON());
+      expect(tree.indexOf('"reader-top-bar"')).toBeGreaterThan(-1);
+      expect(tree.indexOf('"reader-top-bar"')).toBeLessThan(tree.indexOf('"reader-page"'));
+    });
+  });
+
   describe("the web's keyboard focus on the screen's controls (fe#246)", () => {
     const element = (tagName: string, focusVisible: boolean) => ({
       tagName,

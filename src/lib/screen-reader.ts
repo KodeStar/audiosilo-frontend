@@ -6,7 +6,7 @@ import { AccessibilityInfo, Platform } from 'react-native';
  * outside React that times things for the listener (a toast's auto-dismiss), and for a
  * component that changes with it (`useScreenReader`: the reader's top bar never hides,
  * fe#246). The web can't tell: there it is always false, and what needs it pauses on hover
- * and focus instead.
+ * and focus instead (the reader's hidden bar stays reachable there).
  */
 let enabled = false;
 let watching = false;

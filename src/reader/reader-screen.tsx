@@ -156,7 +156,8 @@ const loadFailure = (e: unknown): ReaderFailure =>
  * seconds after it shows or at the first page turn, the status bar with it in the apps; a tap
  * in the middle of the page shows it again, as (web) the keyboard's focus on the screen's own
  * controls does. Off in the reader menu, and never with a screen reader on: the bar then
- * sits above the page.
+ * sits above the page. The web cannot tell a screen reader is on, so there the hidden bar
+ * stays in the page, slid off its top, ahead of the book in the focus order.
  */
 export function ReaderScreen({
   connectionId,
@@ -685,6 +686,25 @@ export function ReaderScreen({
         {...behind}
         accessibilityLabel={title}
       >
+        {immersive && Platform.OS === 'web' ? (
+          // The web's bar over the page stays in the page while hidden, only slid off the
+          // top: a screen reader's virtual cursor (the web cannot tell one is on) still
+          // reaches Close and Contents, and the keyboard meets it before the book, so
+          // Shift+Tab out of the book lands on it. Focus arriving in it shows it.
+          <View
+            testID="reader-top-bar"
+            className={cn(
+              'absolute left-0 right-0 top-0 z-10 bg-card transition-transform duration-200 motion-reduce:transition-none',
+              chrome.shown ? 'translate-y-0' : '-translate-y-full',
+            )}
+            style={{ paddingTop: topInset }}
+            onFocus={() => {
+              if (!chrome.shown) chrome.touched();
+            }}
+          >
+            {bar}
+          </View>
+        ) : null}
         {/* Immersive: the room above the page is the page's colour while the book shows,
             so with the bar hidden only the book is on screen. */}
         <View
@@ -773,9 +793,9 @@ export function ReaderScreen({
             ) : null}
           </View>
         </View>
-        {immersive && chrome.shown ? (
-          // Over the page, the room above it included; it slides away (no slide with reduce
-          // motion: it just goes).
+        {immersive && Platform.OS !== 'web' && chrome.shown ? (
+          // The apps' bar: over the page, the room above it included; it slides away (no
+          // slide with reduce motion: it just goes). A screen reader keeps it above the page.
           <Animated.View
             className="absolute left-0 right-0 top-0 bg-card"
             style={{ paddingTop: topInset }}

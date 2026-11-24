@@ -1421,9 +1421,13 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   the contents or (web) the keyboard's focus on the screen's own controls (the bar, the page
   edges, the cards; never the book's frame), so a keyboard user tabbing out of the book
   brings the hidden bar back. While it can hide, the bar lies over
-  the page (`Animated.View`, a slide that reduce motion drops), so showing it never lays the
-  book out again; the room above the page is the page's colour and holds its largest top
-  inset per window size (`useHeldTopInset`, each size its own, keyed by the insets' own
+  the page (in the apps an `Animated.View`, a slide that reduce motion drops), so showing it
+  never lays the book out again. On the web, which cannot tell a screen reader is on, the
+  hidden bar stays mounted, only slid off the top (a CSS transform, never `display:none`,
+  `aria-hidden` or `inert`): a virtual cursor still reaches Close and Contents, focus arriving
+  in it shows it, and it comes before the book in the DOM, so Close is the first Tab stop and
+  Shift+Tab out of the book lands on it. The room above the page is the page's colour and
+  holds its largest top inset per window size (`useHeldTopInset`, each size its own, keyed by the insets' own
   `useSafeAreaFrame`, which comes with them), since the status bar (hidden with the bar in
   the apps, expo-status-bar, and only while the reader is the screen on top: Reconnect's
   sign-in opens over it) going would shrink it on Android. The Android navigation bar stays (no
