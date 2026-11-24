@@ -43,3 +43,16 @@ export async function loadReaderTheme(): Promise<ReaderThemeChoice> {
 export async function saveReaderTheme(choice: ReaderThemeChoice): Promise<void> {
   await setItem(THEME_KEY, choice);
 }
+
+/** Whether the reader's top bar hides while reading (fe#246; per device, not synced). */
+const AUTO_HIDE_KEY = 'audiosilo.readerAutoHide';
+
+/** The saved choice, on when none (or an unreadable one) is saved. */
+export async function loadAutoHide(): Promise<boolean> {
+  const saved = await getItem<unknown>(AUTO_HIDE_KEY);
+  return saved !== false;
+}
+
+export async function saveAutoHide(on: boolean): Promise<void> {
+  await setItem(AUTO_HIDE_KEY, on);
+}

@@ -3293,6 +3293,10 @@
       "dark": "Dunkel",
       "black": "Schwarz"
     },
+    "topBar": {
+      "heading": "Obere Leiste",
+      "autoHide": "Beim Lesen ausblenden"
+    },
     "previous": "Vorherige Seite",
     "next": "Nächste Seite",
     "where": "{{percent}} % des Buchs",

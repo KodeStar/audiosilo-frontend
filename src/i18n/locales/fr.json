@@ -3293,6 +3293,10 @@
       "dark": "Sombre",
       "black": "Noir"
     },
+    "topBar": {
+      "heading": "Barre du haut",
+      "autoHide": "Masquer pendant la lecture"
+    },
     "previous": "Page précédente",
     "next": "Page suivante",
     "where": "{{percent}} % du livre",

@@ -11,7 +11,14 @@ import {
   View,
   type ScrollViewInstance,
 } from 'react-native';
+import Animated, {
+  ReduceMotion,
+  SlideInUp,
+  SlideOutUp,
+  useReducedMotion,
+} from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StatusBar } from 'expo-status-bar';
 
 import { ApiError, isSignedOutError } from '@/api/client';
 import { useBook, useCapability, useReadingPlace } from '@/api/hooks';
@@ -23,6 +30,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Icon } from '@/components/ui/icon';
@@ -36,6 +44,7 @@ import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
 import { bookTitle } from '@/lib/paths';
+import { useScreenReader } from '@/lib/screen-reader';
 import { scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
 import { usePageTitle } from '@/lib/use-page-title';
@@ -49,12 +58,15 @@ import { hasLocalEbook } from './ebook-file';
 import { useNarration } from './narration';
 import { FollowPill, followPillRoom, PageEdges, turnPage, usePageEdges } from './page-edge';
 import type { ReaderPlace, TocEntry } from './protocol';
+import { useReaderChrome } from './reader-chrome';
 import { ReaderHost } from './reader-host';
 import { type ReaderHostEvent, type ReaderHostHandle, ReaderStartError } from './reader-host-types';
 import {
   FONT_SCALES,
   READER_THEMES,
+  loadAutoHide,
   type ReaderThemeChoice,
+  saveAutoHide,
   saveFontScale,
   stepFontScale,
 } from './reader-settings';
@@ -137,6 +149,11 @@ const loadFailure = (e: unknown): ReaderFailure =>
  *
  * The EPUB, the read-along map and where the book opens are fetched at once (fe#164): the
  * host starts on the book while the place is looked up (`placeKnown`).
+ *
+ * Immersive mode (fe#246, `useReaderChrome`): the top bar lies over the page and hides a few
+ * seconds after it shows or at the first page turn, the status bar with it in the apps; a tap
+ * in the middle of the page shows it again. Off in the reader menu, and never with a screen
+ * reader on: the bar then sits above the page.
  */
 export function ReaderScreen({
   connectionId,
@@ -209,6 +226,40 @@ export function ReaderScreen({
     setFontScale(next);
     void saveFontScale(next);
   };
+  // Immersive mode (fe#246): the top bar hides while reading, unless turned off on this
+  // device (null until read) or a screen reader is on.
+  const [autoHide, setAutoHide] = useState<boolean | null>(null);
+  useEffect(() => {
+    let live = true;
+    void loadAutoHide().then((on) => {
+      if (live) setAutoHide(on);
+    });
+    return () => {
+      live = false;
+    };
+  }, []);
+  const chooseAutoHide = (on: boolean) => {
+    setAutoHide(on);
+    void saveAutoHide(on);
+  };
+  const screenReader = useScreenReader();
+  // The bar lies over the page while it can hide, so showing and hiding it never lays the
+  // book out again; else it sits above the page, as it always did. The book waits for the
+  // choice (`ready`), so it is never laid out twice for it.
+  const immersive = autoHide === true && !screenReader;
+  // The status bar hides with the top bar in the apps. In immersive mode the room above the
+  // page keeps the most it was for this window size, so the status bar going never lays the
+  // book out again either (an Android window's top inset drops to nothing with it); a
+  // rotation measures it afresh.
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const [heldTop, setHeldTop] = useState({ windowWidth, windowHeight, top: insets.top });
+  if (heldTop.windowWidth !== windowWidth || heldTop.windowHeight !== windowHeight) {
+    setHeldTop({ windowWidth, windowHeight, top: insets.top });
+  } else if (insets.top > heldTop.top) {
+    setHeldTop({ ...heldTop, top: insets.top });
+  }
+  const topInset = immersive ? heldTop.top : insets.top;
+  const reduced = useReducedMotion();
 
   const [opened, setOpened] = useState<{ title: string; toc: TocEntry[]; rtl: boolean } | null>(
     null,
@@ -342,6 +393,29 @@ export function ReaderScreen({
     [connectionId, libraryId, path],
   );
 
+  const noEbook = book !== undefined && (ebooks === false || !book.ebook);
+  // The book, or where it opens, could not be fetched: said, never a guessed start (one
+  // saved over a place read elsewhere would replace it).
+  const unfetched: ReaderFailure | null =
+    bookFailed && book === undefined
+      ? loadFailure(bookError)
+      : place.isError && !opening
+        ? loadFailure(place.error)
+        : null;
+  const shown: ReaderFailure | null = failure ?? (noEbook ? 'noEbook' : unfetched);
+  const show = shown === null && opened !== null;
+
+  // The top bar in immersive mode (fe#246): held on screen while a menu or the contents from
+  // it are open, or (the web) the keyboard's focus is in it.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [focusIn, setFocusIn] = useState(false);
+  const chrome = useReaderChrome({
+    autoHide: autoHide === true,
+    screenReader,
+    reading: show,
+    menuOpen: tocOpen || menuOpen || focusIn,
+  });
+
   const onMessage = (message: ReaderHostEvent) => {
     switch (message.type) {
       case 'opened':
@@ -366,7 +440,9 @@ export function ReaderScreen({
           return;
         }
         moved.current = true;
+        // The narration's page turns are not the reader's: the bar stays as it is.
         if (following.current) return;
+        chrome.pageTurned();
         scheduleSave(atNow.current);
         return;
       case 'loading':
@@ -383,6 +459,9 @@ export function ReaderScreen({
       case 'escape':
         // Escape pressed in the book: the frame keeps its keys from the shortcut below.
         if (!tocOpen) backOrHome();
+        return;
+      case 'centreTap':
+        chrome.centreTapped();
         return;
     }
   };
@@ -414,17 +493,6 @@ export function ReaderScreen({
     host.current?.goto({ href });
   });
 
-  const noEbook = book !== undefined && (ebooks === false || !book.ebook);
-  // The book, or where it opens, could not be fetched: said, never a guessed start (one
-  // saved over a place read elsewhere would replace it).
-  const unfetched: ReaderFailure | null =
-    bookFailed && book === undefined
-      ? loadFailure(bookError)
-      : place.isError && !opening
-        ? loadFailure(place.error)
-        : null;
-  const shown: ReaderFailure | null = failure ?? (noEbook ? 'noEbook' : unfetched);
-  const show = shown === null && opened !== null;
   const shortcuts = Platform.OS === 'web' && !tocOpen;
   // An RTL book's next page is on the left: the page edges and the arrows follow the book.
   const rtl = opened?.rtl === true;
@@ -485,7 +553,8 @@ export function ReaderScreen({
 
   // The host starts before the place is known (fe#164: the EPUB is fetched meanwhile), and
   // hands the book over once it is (`placeKnown`).
-  const ready = readable && api !== null && fontScale !== null && ebookSize !== undefined;
+  const ready =
+    readable && api !== null && fontScale !== null && autoHide !== null && ebookSize !== undefined;
   const edges = usePageEdges();
   // "Follow narration" (first) or "Back to narration" (after turning away), while the book
   // shows, plays, and its map is this ebook's.
@@ -499,11 +568,110 @@ export function ReaderScreen({
   const percent = current ? Math.round(current.fraction * 100) : null;
   const behind = useBehindModalProps();
 
+  // The top bar: close, the title and where the reader is, then the narration, the contents,
+  // the text size and the page colours.
+  const bar = (
+    <View
+      className="flex-row items-center gap-1 border-b border-border px-2 py-1.5"
+      // The web: it stays while the keyboard's focus is in it (not a click's, which stays on
+      // the button pressed).
+      {...(Platform.OS === 'web'
+        ? {
+            onFocus: (e: { nativeEvent: unknown }) => setFocusIn(keyboardFocus(e.nativeEvent)),
+            onBlur: () => setFocusIn(false),
+          }
+        : {})}
+    >
+      <Button
+        variant="ghost"
+        size="icon"
+        icon="close"
+        accessibilityLabel={t('reader.close')}
+        onPress={backOrHome}
+      />
+      <View className="min-w-0 flex-1 px-1">
+        <Text variant="label" numberOfLines={1}>
+          {title}
+        </Text>
+        <Text variant="caption" numberOfLines={1} style={tabularNums}>
+          {percent === null
+            ? ' '
+            : current?.sectionLabel
+              ? t('reader.whereSection', { section: current.sectionLabel, percent })
+              : t('reader.where', { percent })}
+        </Text>
+      </View>
+      {show ? (
+        <>
+          {narration.narrating ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              icon={narration.playing ? 'pause' : 'play'}
+              accessibilityLabel={t(
+                narration.playing ? 'player.controls.pause' : 'player.controls.play',
+              )}
+              onPress={() => {
+                chrome.touched();
+                narration.toggle();
+              }}
+            />
+          ) : null}
+          <Button
+            variant="ghost"
+            size="icon"
+            icon="list"
+            accessibilityLabel={t('reader.contents')}
+            disabled={!opened?.toc.length}
+            onPress={() => setTocOpen(true)}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            icon="minus"
+            accessibilityLabel={t('reader.smaller')}
+            disabled={fontScale === FONT_SCALES[0]}
+            onPress={() => {
+              chrome.touched();
+              changeFontScale(-1);
+            }}
+          />
+          <Button
+            variant="ghost"
+            size="icon"
+            icon="plus"
+            accessibilityLabel={t('reader.larger')}
+            disabled={fontScale === FONT_SCALES.at(-1)}
+            onPress={() => {
+              chrome.touched();
+              changeFontScale(1);
+            }}
+          />
+          <ReaderMenu
+            value={themeChoice}
+            dark={theme.scheme === 'dark'}
+            onChange={chooseTheme}
+            autoHide={autoHide === true}
+            onAutoHide={chooseAutoHide}
+            onOpenChange={setMenuOpen}
+          />
+        </>
+      ) : null}
+    </View>
+  );
+
   return (
     <>
+      {Platform.OS !== 'web' ? (
+        <StatusBar
+          hidden={!chrome.shown}
+          animated={!reduced}
+          hideTransitionAnimation={reduced ? 'none' : 'slide'}
+        />
+      ) : null}
       <View
         className="flex-1 bg-card"
-        style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+        style={immersive ? undefined : { paddingTop: topInset, paddingBottom: insets.bottom }}
         // Web: a modal layer, so the player's keys (arrows skip, Space plays) stand back
         // while reading; the reader's own keys name it as theirs.
         {...(Platform.OS === 'web'
@@ -513,154 +681,127 @@ export function ReaderScreen({
         {...behind}
         accessibilityLabel={title}
       >
-        <View className="flex-row items-center gap-1 border-b border-border px-2 py-1.5">
-          <Button
-            variant="ghost"
-            size="icon"
-            icon="close"
-            accessibilityLabel={t('reader.close')}
-            onPress={backOrHome}
-          />
-          <View className="min-w-0 flex-1 px-1">
-            <Text variant="label" numberOfLines={1}>
-              {title}
-            </Text>
-            <Text variant="caption" numberOfLines={1} style={tabularNums}>
-              {percent === null
-                ? ' '
-                : current?.sectionLabel
-                  ? t('reader.whereSection', { section: current.sectionLabel, percent })
-                  : t('reader.where', { percent })}
-            </Text>
-          </View>
-          {show ? (
-            <>
-              {narration.narrating ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  icon={narration.playing ? 'pause' : 'play'}
-                  accessibilityLabel={t(
-                    narration.playing ? 'player.controls.pause' : 'player.controls.play',
-                  )}
-                  onPress={narration.toggle}
-                />
-              ) : null}
-              <Button
-                variant="ghost"
-                size="icon"
-                icon="list"
-                accessibilityLabel={t('reader.contents')}
-                disabled={!opened?.toc.length}
-                onPress={() => setTocOpen(true)}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                icon="minus"
-                accessibilityLabel={t('reader.smaller')}
-                disabled={fontScale === FONT_SCALES[0]}
-                onPress={() => changeFontScale(-1)}
-              />
-              <Button
-                variant="ghost"
-                size="icon"
-                icon="plus"
-                accessibilityLabel={t('reader.larger')}
-                disabled={fontScale === FONT_SCALES.at(-1)}
-                onPress={() => changeFontScale(1)}
-              />
-              <ThemeMenu
-                value={themeChoice}
-                dark={theme.scheme === 'dark'}
-                onChange={chooseTheme}
-              />
-            </>
-          ) : null}
-        </View>
-
-        <View className="relative flex-1" onLayout={edges.onLayout}>
-          {ready && !shown ? (
-            // The page ends above the follow pill while it shows (fe#192).
-            <View testID="reader-page" className="flex-1" style={followPillRoom(!!followLabel)}>
-              <ReaderHost
-                key={attempt}
-                ref={host}
-                api={api}
-                connectionId={connectionId}
-                libraryId={libraryId}
-                ebookSize={ebookSize}
-                path={path}
-                name={title}
-                at={at}
-                placeKnown={opening !== null}
-                theme={theme}
-                fontScale={fontScale}
-                title={t('reader.frameTitle', { title })}
-                onMessage={onMessage}
-                onLoadError={onLoadError}
-                // The reader was made again: the edges, the toolbar and the offer wait for
-                // its next `opened`, the spinner shows meanwhile.
-                onReopen={() => setOpened(null)}
-                onFetch={() => {
-                  fetchedHere.current = true;
-                }}
-                readalongMap={readalongMap}
-                readalongEbookSha256={mapEbookSha}
-                onEbook={onEbook}
-                readalongPosition={narration.readalongPosition}
-                onSeek={narration.onSeek}
-                onFollowing={onFollowing}
-                onReadalongState={(s) => setReadalongOk(s.state === 'ok')}
-              />
-            </View>
-          ) : null}
-          {show ? <PageEdges host={host} rtl={rtl} narrow={edges.narrow} /> : null}
-          {signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
-            <View className="absolute inset-0 items-center justify-center p-4">
-              <View className="w-full max-w-md">
-                <SignInAgainState connection={signedOut} />
-              </View>
-            </View>
-          ) : shown ? (
-            <ReaderMessage failure={shown} onRetry={retry} />
-          ) : spinner ? (
-            <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
-              <Spinner size="large" />
-            </View>
-          ) : null}
-          {notSaved || offer || followLabel ? (
-            // One foot for the cards and the follow pill, stacked: a refusal can come while
-            // an offer waits.
-            <View
-              className="absolute bottom-4 left-4 right-4 items-center gap-2"
-              pointerEvents="box-none"
-            >
-              {followLabel ? (
-                <FollowPill label={followLabel} onPress={() => host.current?.follow()} />
-              ) : null}
-              {notSaved ? (
-                <NotSavedCard signedOut={signedOut} onDismiss={() => setUnsaved('dismissed')} />
-              ) : null}
-              {offer ? (
-                <JumpOfferCard
-                  offer={offer}
-                  onJump={() => {
-                    host.current?.goto({ cfi: offer.cfi });
-                    void acknowledge();
+        {immersive ? null : bar}
+        {/* Immersive: the room above the page is the page's colour while the book shows,
+            so with the bar hidden only the book is on screen. */}
+        <View
+          className="flex-1"
+          style={
+            immersive
+              ? {
+                  paddingTop: topInset,
+                  paddingBottom: insets.bottom,
+                  backgroundColor: show ? theme.background : undefined,
+                }
+              : undefined
+          }
+        >
+          <View className="relative flex-1" onLayout={edges.onLayout}>
+            {ready && !shown ? (
+              // The page ends above the follow pill while it shows (fe#192).
+              <View testID="reader-page" className="flex-1" style={followPillRoom(!!followLabel)}>
+                <ReaderHost
+                  key={attempt}
+                  ref={host}
+                  api={api}
+                  connectionId={connectionId}
+                  libraryId={libraryId}
+                  ebookSize={ebookSize}
+                  path={path}
+                  name={title}
+                  at={at}
+                  placeKnown={opening !== null}
+                  theme={theme}
+                  fontScale={fontScale}
+                  title={t('reader.frameTitle', { title })}
+                  onMessage={onMessage}
+                  onLoadError={onLoadError}
+                  // The reader was made again: the edges, the toolbar and the offer wait for
+                  // its next `opened`, the spinner shows meanwhile.
+                  onReopen={() => setOpened(null)}
+                  onFetch={() => {
+                    fetchedHere.current = true;
                   }}
-                  onStay={stay}
+                  readalongMap={readalongMap}
+                  readalongEbookSha256={mapEbookSha}
+                  onEbook={onEbook}
+                  readalongPosition={narration.readalongPosition}
+                  onSeek={narration.onSeek}
+                  onFollowing={onFollowing}
+                  onReadalongState={(s) => setReadalongOk(s.state === 'ok')}
                 />
-              ) : null}
-            </View>
-          ) : null}
+              </View>
+            ) : null}
+            {show ? <PageEdges host={host} rtl={rtl} narrow={edges.narrow} /> : null}
+            {signedOut && (shown === 'signedOut' || shown === 'fetch') ? (
+              <View className="absolute inset-0 items-center justify-center p-4">
+                <View className="w-full max-w-md">
+                  <SignInAgainState connection={signedOut} />
+                </View>
+              </View>
+            ) : shown ? (
+              <ReaderMessage failure={shown} onRetry={retry} />
+            ) : spinner ? (
+              <View className="absolute inset-0 items-center justify-center" pointerEvents="none">
+                <Spinner size="large" />
+              </View>
+            ) : null}
+            {notSaved || offer || followLabel ? (
+              // One foot for the cards and the follow pill, stacked: a refusal can come while
+              // an offer waits.
+              <View
+                className="absolute bottom-4 left-4 right-4 items-center gap-2"
+                pointerEvents="box-none"
+              >
+                {followLabel ? (
+                  <FollowPill label={followLabel} onPress={() => host.current?.follow()} />
+                ) : null}
+                {notSaved ? (
+                  <NotSavedCard signedOut={signedOut} onDismiss={() => setUnsaved('dismissed')} />
+                ) : null}
+                {offer ? (
+                  <JumpOfferCard
+                    offer={offer}
+                    onJump={() => {
+                      host.current?.goto({ cfi: offer.cfi });
+                      void acknowledge();
+                    }}
+                    onStay={stay}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+          </View>
         </View>
+        {immersive && chrome.shown ? (
+          // Over the page, the room above it included; it slides away (no slide with reduce
+          // motion: it just goes).
+          <Animated.View
+            className="absolute left-0 right-0 top-0 bg-card"
+            style={{ paddingTop: topInset }}
+            entering={SlideInUp.duration(200).reduceMotion(ReduceMotion.System)}
+            exiting={SlideOutUp.duration(200).reduceMotion(ReduceMotion.System)}
+          >
+            {bar}
+          </Animated.View>
+        ) : null}
       </View>
       <Sheet visible={tocOpen} onClose={() => setTocOpen(false)} title={t('reader.contents')}>
         <TocList toc={opened?.toc} section={current?.sectionLabel} onSelect={gotoEntry} />
       </Sheet>
     </>
   );
+}
+
+/** Whether a focus event (the web's) landed by the keyboard: its element shows its focus
+ * ring (`:focus-visible`). */
+function keyboardFocus(event: unknown): boolean {
+  const target = (event as { target?: { matches?: (selector: string) => boolean } }).target;
+  try {
+    return target?.matches?.(':focus-visible') === true;
+  } catch {
+    return false;
+  }
 }
 
 /** The reader's layer name (`data-layer`), for its own keyboard shortcuts. */
@@ -838,21 +979,31 @@ function TocRow({
   );
 }
 
-/** The page colours (fe#246): like the app, light, dark or black, saved on this device for
- * the reader and the companion's Text tab. Its glyph is the colours' scheme. */
-function ThemeMenu({
+/** The reader's own settings (fe#246), saved on this device: the page colours (like the app,
+ * light, dark or black, for the reader and the companion's Text tab) and whether the top bar
+ * hides while reading. Its glyph is the colours' scheme. */
+function ReaderMenu({
   value,
   dark,
   onChange,
+  autoHide,
+  onAutoHide,
+  onOpenChange,
 }: {
   value: ReaderThemeChoice;
   dark: boolean;
   onChange: (choice: ReaderThemeChoice) => void;
+  autoHide: boolean;
+  onAutoHide: (on: boolean) => void;
+  onOpenChange: (open: boolean) => void;
 }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
+  // Taken off the page while open (the bar moved above or over the page): it holds the bar
+  // no more.
+  useEffect(() => () => onOpenChange(false), [onOpenChange]);
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={onOpenChange}>
       <DropdownMenuTrigger asChild>
         <Button
           variant="ghost"
@@ -873,6 +1024,15 @@ function ThemeMenu({
             {choice === value ? <Icon name="check" size={16} color={themed.foreground} /> : null}
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>{t('reader.topBar.heading')}</DropdownMenuLabel>
+        <DropdownMenuItem
+          onPress={() => onAutoHide(!autoHide)}
+          accessibilityState={{ checked: autoHide }}
+        >
+          <Text className="flex-1">{t('reader.topBar.autoHide')}</Text>
+          {autoHide ? <Icon name="check" size={16} color={themed.foreground} /> : null}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

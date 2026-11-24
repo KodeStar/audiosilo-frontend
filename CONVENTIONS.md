@@ -1411,6 +1411,23 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   chosen shows at once on every surface mounted (`themeWatchers`). The host
   only ever gets hex colours and a scheme (`ReaderTheme`, `readerThemeOf`): black is the dark
   scheme on `#000000`, so the reader's dark rules and read-along highlight apply unchanged.
+- **Immersive mode** (fe#246, `reader-chrome.ts`): the full-screen reader's top bar hides
+  `CHROME_HIDE_MS` (4 s) after it shows or was last pressed, or at the first page turn the
+  reader made (never the narration's while it follows); a tap in the middle half of the page
+  shows it again, and a second hides it. The rules are pure (`mayHide`, `nextChrome`,
+  `settleChrome`) under `useReaderChrome`. It never hides with the setting off (the reader
+  menu's "Hide while reading", `loadAutoHide`, per device, default on), a screen reader on
+  (`useScreenReader`, `src/lib/screen-reader.ts`), no book on the page, or the reader menu,
+  the contents or (web) the keyboard's focus in the bar. While it can hide, the bar lies over
+  the page (`Animated.View`, a slide that reduce motion drops), so showing it never lays the
+  book out again; the room above the page is the page's colour and holds its largest top
+  inset per window size, since the status bar (hidden with the bar in the apps,
+  expo-status-bar) going would shrink it on Android. The Android navigation bar stays (no
+  `expo-navigation-bar`). The centre tap is the reader document's `centreTap`
+  (`reader/src/taps.js`): a click in the page's middle half (a section's click placed by its
+  frame, which scrolls sideways under the page), never one a link or a read-along sentence
+  took (both prevent it; it is judged a tick later), a selection, a swipe or a modified click.
+  The companion's Text tab has no top bar and ignores it.
 - **One session setup** (fe#172, `reader-session.ts`): both hosts start each document's
   session with `startReaderSession` (the channel, the `READER_START_MS` timeout, and where each
   message goes: `ready` runs the host's `onReady`, sends what waited, then the read-along side's
