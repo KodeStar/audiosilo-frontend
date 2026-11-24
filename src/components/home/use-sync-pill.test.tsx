@@ -31,6 +31,8 @@ notifyQueriesSynchronously();
 // save was made (another device's, 24 minutes before this one signed in).
 describe('useSyncPill', () => {
   const newest = { at: '2026-10-05T10:00:00Z', connectionId: 'a' };
+  // The app's client: what a test wrote goes, whether it passed or not.
+  afterEach(() => qc.clear());
 
   it('follows the progress list this device last read from the server', async () => {
     useReachability.setState({ online: {} });
@@ -50,7 +52,6 @@ describe('useSyncPill', () => {
     });
     expect(result.current).toEqual({ kind: 'synced', at: '2026-10-05T10:24:00.000Z' });
     await unmount();
-    qc.clear();
   });
 });
 
