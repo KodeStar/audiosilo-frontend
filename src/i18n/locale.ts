@@ -8,8 +8,8 @@ import { useSyncExternalStore } from 'react';
  * with the device's region when the device names one for that language ("en-GB" for
  * English on a British phone), so dates and numbers read the listener's way ("12 Nov 2026",
  * not "Nov 12, 2026"; fe#204). Lives apart from `./index` (which binds react-i18next) so
- * locale-only consumers like `src/lib/format.ts` don't pull React into their dependency
- * graph.
+ * locale-only consumers like `src/lib/format.ts` don't pull react-i18next into their
+ * dependency graph.
  */
 export function getLocale(): string {
   const language = i18next.language || 'en';
@@ -22,22 +22,22 @@ export function getLocale(): string {
 /** The last language's answer: the device's locales are read once per UI language, and again
  * once the app is back in front (the region can change in the device's settings meanwhile). */
 let regional: { language: string; tag: string } | null = null;
+/** The mounted `useLocale` readers, told once the app is back in front. */
+const readers = new Set<() => void>();
 AppState.addEventListener('change', (state) => {
-  if (state === 'active') regional = null;
+  if (state !== 'active') return;
+  regional = null;
+  for (const onChange of readers) onChange();
 });
 
 /** Renders `onChange`'s reader again when the UI language changes or the app comes back in
  * front (the device's region may have changed). */
 function subscribeLocale(onChange: () => void): () => void {
   i18next.on('languageChanged', onChange);
-  const app = AppState.addEventListener('change', (state) => {
-    if (state !== 'active') return;
-    regional = null;
-    onChange();
-  });
+  readers.add(onChange);
   return () => {
     i18next.off('languageChanged', onChange);
-    app.remove();
+    readers.delete(onChange);
   };
 }
 
