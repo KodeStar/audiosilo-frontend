@@ -335,13 +335,17 @@ export function ReaderScreen({
   // narration turns the pages; a save would carry another device's reading along with
   // it). Once the listener turns away, where they are is saved, and every move after.
   const onFollowing = (value: boolean) => {
+    const was = following.current;
     following.current = value;
     setFollowingShown(value);
     if (value) {
       cancelSave();
-    } else if (atNow.current) {
-      scheduleSave(atNow.current);
+      return;
     }
+    if (atNow.current) scheduleSave(atNow.current);
+    // The reader turned the page away from the narration: its `progress` came first, while
+    // still following, so the turn counts for the top bar here.
+    if (was) chrome.pageTurned();
   };
   const flushSave = useLatest(() => {
     const next = pending.current;

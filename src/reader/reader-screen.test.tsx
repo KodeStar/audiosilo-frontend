@@ -606,6 +606,23 @@ describe('ReaderScreen', () => {
       expect(bar()).toBeTruthy();
     });
 
+    it('hides the bar when the reader turns the page away from the narration', async () => {
+      mockNarrating = true;
+      mockMap = { sections: [{ href: 'c1.xhtml', spans: [] }] };
+      await mount();
+      await opened();
+      await act(async () => {
+        mockHost!.onFollowing!(true);
+      });
+      // The reader document says the place first, then that it stopped following.
+      await turn();
+      expect(bar()).toBeTruthy();
+      await act(async () => {
+        mockHost!.onFollowing!(false);
+      });
+      expect(bar()).toBeNull();
+    });
+
     it('keeps the bar while its menu is open', async () => {
       await mount();
       await opened();
