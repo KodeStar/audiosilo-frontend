@@ -60,7 +60,11 @@ export function Attribution({
   );
 }
 
-const LINK_CLASS = cn(Platform.select({ web: `cursor-pointer rounded-sm ${FOCUS_RING_CLASS}` }));
+// `max-w-full shrink`: a long credit wraps inside its row instead of running past the card.
+const LINK_CLASS = cn(
+  'max-w-full shrink',
+  Platform.select({ web: `cursor-pointer rounded-sm ${FOCUS_RING_CLASS}` }),
+);
 
 /**
  * A credit's caption: an underlined link opening `url` (like every external link,
