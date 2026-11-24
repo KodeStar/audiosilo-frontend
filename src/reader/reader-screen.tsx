@@ -1,4 +1,12 @@
-import { memo, type ReactNode, useEffect, useReducer, useRef, useState } from 'react';
+import {
+  type ComponentRef,
+  memo,
+  type ReactNode,
+  useEffect,
+  useReducer,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   AppState,
@@ -413,9 +421,11 @@ export function ReaderScreen({
   // The top bar in immersive mode (fe#246): held on screen while a menu or the contents from
   // it are open, or (the web) the keyboard's focus is on the screen's own controls (the bar,
   // the page edges, the cards), never the book's: a keyboard user tabbing out of the book
-  // brings the hidden bar back, as a centre tap does.
+  // brings the hidden bar back, as a centre tap does. So does any focus arriving in the
+  // hidden bar (`focusHoldsBar`).
   const [menuOpen, setMenuOpen] = useState(false);
   const [focusIn, setFocusIn] = useState(false);
+  const topBar = useRef<ComponentRef<typeof View>>(null);
   const chrome = useReaderChrome({
     autoHide: autoHideOn,
     screenReader,
@@ -581,7 +591,7 @@ export function ReaderScreen({
     act();
   };
   // The top bar: close, the title and where the reader is, then the narration, the contents,
-  // the text size and the page colours.
+  // the text size and the reading settings.
   const bar = (
     <View className="flex-row items-center gap-1 border-b border-border px-2 py-1.5">
       <Button
@@ -669,14 +679,17 @@ export function ReaderScreen({
         // Web: a modal layer, so the player's keys (arrows skip, Space plays) stand back
         // while reading; the reader's own keys name it as theirs. The top bar stays while
         // the keyboard's focus is on the screen's controls (not a click's, which stays on
-        // the button pressed; nor the book's frame), and only once it leaves them, not as it
-        // moves between them.
+        // the button pressed; nor the book's frame), or any focus came into the hidden bar,
+        // and only once it leaves them, not as it moves between them.
         {...(Platform.OS === 'web'
           ? {
               role: 'dialog' as const,
               'aria-modal': true,
               dataSet: { layer: READER_LAYER },
-              onFocus: (e: { nativeEvent: unknown }) => setFocusIn(keyboardFocus(e.nativeEvent)),
+              onFocus: (e: { nativeEvent: unknown }) =>
+                setFocusIn((held) =>
+                  focusHoldsBar(e.nativeEvent, topBar.current, !chrome.shown, held),
+                ),
               onBlur: (e: { currentTarget: unknown; nativeEvent: unknown }) => {
                 if (!focusStaysIn(e)) setFocusIn(false);
               },
@@ -687,20 +700,15 @@ export function ReaderScreen({
         accessibilityLabel={title}
       >
         {immersive && Platform.OS === 'web' ? (
-          // The web's bar over the page stays in the page while hidden, only slid off the
-          // top: a screen reader's virtual cursor (the web cannot tell one is on) still
-          // reaches Close and Contents, and the keyboard meets it before the book, so
-          // Shift+Tab out of the book lands on it. Focus arriving in it shows it.
+          // The web's bar: in the page while hidden, before the book (ReaderScreen's note).
           <View
+            ref={topBar}
             testID="reader-top-bar"
             className={cn(
               'absolute left-0 right-0 top-0 z-10 bg-card transition-transform duration-200 motion-reduce:transition-none',
               chrome.shown ? 'translate-y-0' : '-translate-y-full',
             )}
             style={{ paddingTop: topInset }}
-            onFocus={() => {
-              if (!chrome.shown) chrome.touched();
-            }}
           >
             {bar}
           </View>
@@ -828,6 +836,22 @@ export function keyboardFocus(event: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/** Whether a focus (the web's) holds the top bar: the keyboard's on the screen's controls,
+ * or any focus in the bar (`bar`) that arrived while it was hidden, as a screen reader's
+ * may with no focus ring (a click cannot reach a hidden bar), kept (`held`) while it moves
+ * within the bar. A click's on the bar showing holds nothing: the bar's wait runs. */
+export function focusHoldsBar(
+  event: unknown,
+  bar: unknown,
+  hidden: boolean,
+  held: boolean,
+): boolean {
+  if (keyboardFocus(event)) return true;
+  const target = (event as { target?: unknown }).target;
+  const box = bar as { contains?: (node: unknown) => boolean } | null;
+  return (hidden || held) && box?.contains?.(target) === true;
 }
 
 /** Whether a blur (the web's) moves the focus to another of the screen's controls inside

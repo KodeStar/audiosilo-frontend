@@ -159,7 +159,13 @@ jest.mock('./reading-progress', () => ({
 import { EbookStorageError, EbookTooLargeError } from './ebook-errors';
 import { FOLLOW_PILL_ROOM } from './page-edge';
 import { centreTapArrived, resetCentreTapForTests } from './reader-chrome';
-import { focusStaysIn, keyboardFocus, ReaderScreen, tocOpeningIndex } from './reader-screen';
+import {
+  focusHoldsBar,
+  focusStaysIn,
+  keyboardFocus,
+  ReaderScreen,
+  tocOpeningIndex,
+} from './reader-screen';
 import { loadAutoHide, loadReaderTheme, saveAutoHide, saveReaderTheme } from './reader-settings';
 /* eslint-enable import/first */
 
@@ -707,12 +713,16 @@ describe('ReaderScreen', () => {
       expect(slidAway()).toBe(false);
     });
 
-    it('shows when focus arrives in it while hidden', async () => {
+    it("shows for the keyboard's focus arriving in it while hidden", async () => {
       await mount();
       await opened();
       await turn();
       expect(slidAway()).toBe(true);
-      await fireEvent(topBar(), 'focus');
+      const target = {
+        tagName: 'DIV',
+        matches: (selector: string) => selector === ':focus-visible',
+      };
+      await fireEvent(topBar(), 'focus', { nativeEvent: { target } });
       expect(slidAway()).toBe(false);
     });
 
@@ -737,6 +747,20 @@ describe('ReaderScreen', () => {
       // The book's frame: focus in the book is the reader's, reading.
       expect(keyboardFocus({ target: element('IFRAME', true) })).toBe(false);
       expect(keyboardFocus({})).toBe(false);
+    });
+
+    it("holds the bar for any focus that came into it hidden, not a click's on it shown", () => {
+      const button = element('DIV', false);
+      const bar = { contains: (node: unknown) => node === button };
+      // A screen reader's focus, with no focus ring, in the hidden bar.
+      expect(focusHoldsBar({ target: button }, bar, true, false)).toBe(true);
+      // Kept as it moves within the bar once shown.
+      expect(focusHoldsBar({ target: button }, bar, false, true)).toBe(true);
+      // A click on the bar showing: its wait runs.
+      expect(focusHoldsBar({ target: button }, bar, false, false)).toBe(false);
+      // Outside the bar, only the keyboard's holds.
+      expect(focusHoldsBar({ target: element('DIV', false) }, bar, true, true)).toBe(false);
+      expect(focusHoldsBar({ target: element('DIV', true) }, null, false, false)).toBe(true);
     });
 
     it('lets the focus move between the controls, and leave into the book', () => {
