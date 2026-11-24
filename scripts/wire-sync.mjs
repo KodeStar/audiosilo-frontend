@@ -6,12 +6,12 @@
 // machine; src/api/__wire__/source.json pins the server commit it came from.
 //
 //   node scripts/wire-sync.mjs [--server <dir>] [--ref <rev>]
-//       copy the goldens at <rev> (default origin/main) of the server checkout
-//       <dir> (default ../audiosilo-server) and pin that commit
+//       fetch origin in the server checkout <dir> (default ../audiosilo-server),
+//       then copy and pin the goldens at <rev> (default origin/main)
 //   node scripts/wire-sync.mjs --check [--server <dir>]
 //       fail when the copy differs from the pinned commit's goldens (compared
 //       by git blob id), read from the checkout when --server is given, else
-//       from GitHub in one request (CI)
+//       from GitHub (CI). Warn when main has at least 50 commits beyond the pin.
 //
 // npm run wire:sync / npm run wire:check run them.
 
@@ -33,6 +33,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUT = path.join(ROOT, 'src', 'api', '__wire__');
 const GOLDENS = 'internal/api/testdata/wire';
 const REPO = 'KodeStar/audiosilo-server';
+const WARN_BEHIND = 50;
 
 // Inside a git hook or `git rebase --exec`, git's own variables name the caller's
 // repository and win over -C. They are dropped, or every call here would read
@@ -77,35 +78,28 @@ function fromCheckout(dir, ref) {
   );
 }
 
-/**
- * The goldens' git blob ids at a commit on GitHub (the server repository is
- * public): the directory listing carries them, so the check is one request and
- * downloads no file.
- */
-async function idsOnGitHub(sha) {
-  const what = `listing ${GOLDENS} at ${sha}`;
+async function github(endpoint, what) {
   const headers = { Accept: 'application/vnd.github+json', 'User-Agent': 'audiosilo-wire-check' };
   if (process.env.GITHUB_TOKEN) headers.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   let r;
-  let list;
   try {
-    r = await fetch(`https://api.github.com/repos/${REPO}/contents/${GOLDENS}?ref=${sha}`, {
+    r = await fetch(`https://api.github.com/repos/${REPO}/${endpoint}`, {
       headers,
       signal: AbortSignal.timeout(15_000),
     });
-    if (r.ok) list = await r.json();
+    if (r.ok) return await r.json();
   } catch (e) {
     throw new Error(`${what}: ${e.message}`, { cause: e });
   }
-  if (!r.ok) {
-    // A 403 or 429 with nothing left is GitHub's rate limit.
-    const limited =
-      r.status === 429 || (r.status === 403 && r.headers.get('x-ratelimit-remaining') === '0');
-    const hint = limited
-      ? ' (GitHub rate limit: set GITHUB_TOKEN, or pass --server <checkout>)'
-      : '';
-    throw new Error(`${what}: HTTP ${r.status}${hint}`);
-  }
+  const limited =
+    r.status === 429 || (r.status === 403 && r.headers.get('x-ratelimit-remaining') === '0');
+  const hint = limited ? ' (GitHub rate limit: set GITHUB_TOKEN, or pass --server <checkout>)' : '';
+  throw new Error(`${what}: HTTP ${r.status}${hint}`);
+}
+
+/** The directory listing contains one blob id per golden. */
+async function idsOnGitHub(sha) {
+  const list = await github(`contents/${GOLDENS}?ref=${sha}`, `listing ${GOLDENS} at ${sha}`);
   return Object.fromEntries(
     list.filter((e) => e.type === 'file' && e.name.endsWith('.json')).map((e) => [e.name, e.sha]),
   );
@@ -139,8 +133,19 @@ export function pinnedRef(out) {
   return JSON.parse(readFileSync(path.join(out, 'source.json'), 'utf8')).ref;
 }
 
+/** Number of commits on main absent from the pin, including when the pin is on a review branch. */
+export async function freshnessWarning(ref, server) {
+  const behind = server
+    ? Number(git(server, 'rev-list', '--count', `${ref}..origin/main`).trim())
+    : (await github(`compare/${ref}...main?per_page=1`, `comparing ${ref} to main`)).ahead_by;
+  if (!Number.isSafeInteger(behind) || behind < 0) throw new Error('invalid server commit count');
+  if (behind >= WARN_BEHIND)
+    return `Wire pin ${ref} is ${behind} commits behind server main. Run npm run wire:sync and review the goldens.`;
+}
+
 /** Copies the goldens at rev of the server checkout into out and pins the commit. */
 export function sync(server, rev, out) {
+  git(server, 'fetch', 'origin', '+refs/heads/main:refs/remotes/origin/main');
   const sha = git(server, 'rev-parse', `${rev}^{commit}`).trim();
   const goldens = fromCheckout(server, sha);
   mkdirSync(out, { recursive: true });
@@ -180,6 +185,9 @@ async function main() {
     process.exit(1);
   }
   console.log(`src/api/__wire__ matches ${REPO}@${ref} (${Object.keys(want).length} goldens)`);
+  const warning = await freshnessWarning(ref, server);
+  if (warning)
+    console.warn(process.env.GITHUB_ACTIONS ? `::warning::${warning}` : `Warning: ${warning}`);
 }
 
 // Run only as a script, not when the test imports the helpers.

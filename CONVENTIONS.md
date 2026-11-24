@@ -19,17 +19,19 @@ minted silently just to refresh a label.
 `scripts/wire-sync.mjs`; audiosilo#96, server#347): the server records the shape of each important
 player envelope (each field's JSON type, never a value) in `internal/api/testdata/wire/`, and this
 repo keeps a byte copy in `src/api/__wire__/`, pinned to a server commit by `source.json`. The parity
-test reads each golden and checks it against its type in `types.ts` with the TypeScript compiler
-(`ENVELOPES` names the type, as `client.ts` reads the answer): a field the type requires that the
-server does not send, a field sent with a JSON type the type does not allow (`null` included), and a
-field the server sends that the type does not know all fail. A field the player leaves out on purpose
-goes in `UNMIRRORED` with why; an entry that no longer applies fails too. The copy is committed, not
-fetched, so the test runs offline and the same everywhere: `npm run wire:sync` copies the goldens at
-the server checkout's `origin/main` (`-- --server <dir> --ref <rev>` for another) and re-pins, and
-`npm run wire:check` (CI) fails when the copy differs from the pinned commit's goldens on GitHub
-(one request: it compares git blob ids; `-- --server <dir>` reads a checkout instead). A
-wire change: the server's goldens first (`-update`), then `wire:sync`, then `types.ts`. A new
-golden on the server fails `maps every golden to a type` until it has an `ENVELOPES` entry.
+test checks each golden against the named response type from `types.ts` that `client.ts` uses.
+The matched and unmatched metadata cases each check their branch of `BookMeta`. The server
+merges array elements into one shape, so the test walks the fields from each represented union
+member. A missing required field, an incompatible JSON type (including `null`) or an unknown
+server field fails the test. To skip a field deliberately, add its path and reason to `UNMIRRORED`.
+The test also reports unused entries and goldens without an `ENVELOPES` entry.
+
+The parity test reads the committed copy offline. After a server wire change, run
+`npm run wire:sync` and update `types.ts`. Sync fetches the server's main branch before
+copying from `origin/main` (use `-- --server <dir> --ref <rev>` for another checkout or revision).
+CI runs `npm run wire:check` to compare git blob ids at the pin and report any difference.
+It also warns when server main has at least 50 commits beyond the pin. Use
+`-- --server <dir>` to check locally against that checkout's last fetched `origin/main`.
 
 **Path is identity, scoped by connection.** All content is addressed by
 `(library_id, rel_path)`, never a DB id, and every content call passes

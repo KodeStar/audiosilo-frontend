@@ -13,57 +13,73 @@ import { type CheckedReadalongMap, parseReadalongMap } from '@/reader/readalong-
 import type {
   AddMemberBody,
   AddMemberResult,
-  ApiKey,
+  ApiErrorResponse,
   ApiKeyCreated,
+  ApiKeysResponse,
   AuthSession,
   Book,
   BookMeta,
-  BookMetaWork,
-  Bookmark,
-  BookmarkLabel,
-  BookmarkPatch,
   BookPage,
   BookRef,
   BookSort,
+  Bookmark,
+  BookmarkLabel,
+  BookmarkPatch,
+  BookmarksResponse,
+  BooksResponse,
   BridgeEstimate,
   BridgeJob,
   BridgeJobList,
   BridgeJobRequest,
   CastToken,
   ChaptersResponse,
-  Collection,
   CollectionDetail,
   CollectionInput,
   CollectionPatch,
+  CollectionResponse,
+  CollectionsResponse,
   CoverSize,
   DemoSession,
-  Favourite,
-  History,
+  FavouritesResponse,
   HistoryEntry,
+  HistoryResponse,
+  HouseListening,
   HouseholdMember,
   HouseholdMembers,
   HouseholdSettings,
-  HouseListening,
-  Library,
+  LibrariesResponse,
   LibrivoxFetchAnswer,
   LibrivoxSearchResult,
   LibrivoxWork,
   ListeningGoalStatus,
+  ListeningSyncRequest,
+  ListeningSyncResponse,
   Listing,
+  MetaWorkResponse,
+  MyBookmark,
   MyDevice,
   MyDeviceRevoked,
-  MyBookmark,
+  MyDevicesResponse,
   MyListening,
   MyNote,
+  MyPodcasts,
   NextBook,
   Note,
   NotePatch,
+  NotesResponse,
+  OpmlExport,
+  OpmlImportResult,
   Page,
   PageQuery,
+  PageResponse,
   PairingPayload,
   PasswordChange,
   PeopleList,
-  PersonCount,
+  PeopleResponse,
+  PodcastCheckResult,
+  PodcastDiscoveryProvider,
+  PodcastDiscoveryProviders,
+  PodcastDiscoverySearch,
   PodcastEpisodeOrder,
   PodcastEpisodePage,
   PodcastFetchPendingCode,
@@ -71,39 +87,34 @@ import type {
   PodcastFetchStatus,
   PodcastFollowResult,
   PodcastShow,
-  MyPodcasts,
-  OpmlExport,
-  OpmlImportResult,
-  PodcastCheckResult,
-  PodcastDiscoveryProvider,
-  PodcastDiscoveryProviders,
-  PodcastDiscoverySearch,
-  Progress,
+  PodcastShowsResponse,
   ProgressEdit,
   ProgressInput,
-  QueueEntry,
-  ReadingProgress,
-  ReadingProgressInput,
-  ReadingProgressSaved,
-  ListeningSyncRequest,
-  ListeningSyncResponse,
-  ReadalongEstimate,
-  RatedBook,
-  Rating,
+  ProgressListResponse,
+  ProgressResponse,
+  ProgressSavedResponse,
+  QueueResponse,
+  RatingResponse,
+  RatingSavedResponse,
   RatingValue,
+  RatingsResponse,
+  ReadalongEstimate,
+  ReadingProgressInput,
+  ReadingProgressResponse,
+  ReadingProgressSaved,
   SeriesBooks,
   SeriesBooksEntry,
-  SeriesCount,
+  SeriesListResponse,
   ServerAddresses,
   ServerInfo,
-  ShareTarget,
+  ShareTargetsResponse,
   StatsRange,
   UpcomingCalendarLink,
   UpcomingCalendarStatus,
   UpcomingResponse,
   UpdateMemberBody,
   User,
-  UserStats,
+  UserStatsResponse,
 } from './types';
 
 /** An answer with its `addresses` checked (`cleanAddresses`: normalised, a malformed
@@ -475,7 +486,7 @@ function unauthorizedOrigin(
  * `code` (on a 401, the server's mark names the code when the body lost it), or for a 503
  * about an episode still on its way, a `PodcastFetchPendingError` keeping its `fetch`. */
 function apiErrorOf(res: Response, data: unknown, fallbackMsg: string): ApiError {
-  const body = data as { error?: unknown; code?: unknown; fetch?: unknown } | undefined;
+  const body = data as Partial<Record<keyof ApiErrorResponse, unknown>> | undefined;
   const msg = typeof body?.error === 'string' ? body.error : '';
   const mark = unauthorizedMark(res);
   const code =
@@ -1147,7 +1158,7 @@ export class ApiClient {
   }
   /** The caller's non-revoked API keys (metadata only), newest first. */
   async listApiKeys(signal?: AbortSignal) {
-    const r = await this.request<{ api_keys: ApiKey[] | null }>('GET', '/auth/tokens', { signal });
+    const r = await this.request<ApiKeysResponse>('GET', '/auth/tokens', { signal });
     return r.api_keys ?? [];
   }
   /** Revoke a key by id. Success is any 2xx and may carry an empty body (204);
@@ -1158,7 +1169,7 @@ export class ApiClient {
 
   // --- Libraries & browsing ------------------------------------------------
   async libraries() {
-    const r = await this.request<{ libraries: Library[] }>('GET', '/libraries');
+    const r = await this.request<LibrariesResponse>('GET', '/libraries');
     return r.libraries ?? [];
   }
   browse(libraryId: number, path = '', offset?: number, limit?: number, signal?: AbortSignal) {
@@ -1168,7 +1179,7 @@ export class ApiClient {
     });
   }
   async search(q: string, limit?: number, signal?: AbortSignal) {
-    const r = await this.request<{ books: Book[] }>('GET', '/search', {
+    const r = await this.request<BooksResponse>('GET', '/search', {
       query: { q, limit },
       signal,
     });
@@ -1177,7 +1188,7 @@ export class ApiClient {
   /** Most recently added books across every accessible library (server merges and
    * sorts by added date), so the client needn't fan out per library. */
   async recentBooks(limit?: number, signal?: AbortSignal) {
-    const r = await this.request<{ books: Book[] }>('GET', '/books/recent', {
+    const r = await this.request<BooksResponse>('GET', '/books/recent', {
       query: { limit },
       signal,
     });
@@ -1277,11 +1288,9 @@ export class ApiClient {
     signal?: AbortSignal,
   ): Promise<PeopleList> {
     // The wire envelopes: `{ authors, unknown }` and `{ narrators, unknown }`.
-    const r = await this.request<{
-      authors?: PersonCount[] | null;
-      narrators?: PersonCount[] | null;
-      unknown?: number;
-    }>('GET', `/libraries/${libraryId}/${kind}`, { signal });
+    const r = await this.request<PeopleResponse>('GET', `/libraries/${libraryId}/${kind}`, {
+      signal,
+    });
     return { people: r[kind] ?? [], unknown: r.unknown ?? 0 };
   }
   /** Series of a library, sorted case-insensitively. With `memberships` (capability
@@ -1291,11 +1300,10 @@ export class ApiClient {
     { memberships = false }: { memberships?: boolean } = {},
     signal?: AbortSignal,
   ) {
-    const r = await this.request<{ series: SeriesCount[] | null }>(
-      'GET',
-      `/libraries/${libraryId}/series`,
-      { query: { memberships: memberships ? 1 : undefined }, signal },
-    );
+    const r = await this.request<SeriesListResponse>('GET', `/libraries/${libraryId}/series`, {
+      query: { memberships: memberships ? 1 : undefined },
+      signal,
+    });
     return r.series ?? [];
   }
   /** What to play after a book, resolved server-side: the community series rail when it
@@ -1369,7 +1377,7 @@ export class ApiClient {
    * exactly like an unknown id, and a down meta service 502s. Callers must render
    * a quiet fallback, never an error. */
   async metaWork(workId: string, signal?: AbortSignal) {
-    const res = await this.request<{ work: BookMetaWork }>('GET', '/meta/work', {
+    const res = await this.request<MetaWorkResponse>('GET', '/meta/work', {
       query: { id: workId },
       signal,
     });
@@ -1384,11 +1392,9 @@ export class ApiClient {
   /** A podcast library's shows (title order; the caller's scope applies, and a private
    * show only reaches the people who follow it). */
   async podcastShows(libraryId: number, signal?: AbortSignal): Promise<PodcastShow[]> {
-    const r = await this.request<{ shows: PodcastShow[] | null }>(
-      'GET',
-      `/libraries/${libraryId}/podcasts`,
-      { signal },
-    );
+    const r = await this.request<PodcastShowsResponse>('GET', `/libraries/${libraryId}/podcasts`, {
+      signal,
+    });
     return r.shows ?? [];
   }
   /** One page of a show's episodes in `order` (the server orders: by published, then
@@ -1653,26 +1659,21 @@ export class ApiClient {
 
   // --- Listening state -----------------------------------------------------
   async allProgress() {
-    const r = await this.request<{ progress: Progress[] | null }>('GET', '/me/progress');
+    const r = await this.request<ProgressListResponse>('GET', '/me/progress');
     return r.progress ?? [];
   }
   async getProgress(libraryId: number, path: string, signal?: AbortSignal) {
-    const r = await this.request<{ progress: Progress | null }>(
-      'GET',
-      `/libraries/${libraryId}/progress`,
-      { query: { path }, signal },
-    );
+    const r = await this.request<ProgressResponse>('GET', `/libraries/${libraryId}/progress`, {
+      query: { path },
+      signal,
+    });
     return r.progress;
   }
   async saveProgress(libraryId: number, path: string, input: ProgressInput) {
-    const r = await this.request<{ progress: Progress }>(
-      'PUT',
-      `/libraries/${libraryId}/progress`,
-      {
-        query: { path },
-        body: input,
-      },
-    );
+    const r = await this.request<ProgressSavedResponse>('PUT', `/libraries/${libraryId}/progress`, {
+      query: { path },
+      body: input,
+    });
     return r.progress;
   }
   /** Send listening events (capability `listening_sync`, Sync v2): `POST
@@ -1752,7 +1753,7 @@ export class ApiClient {
   }
   /** The caller's place in a book's ebook; null when they have none there yet. */
   async readingProgress(libraryId: number, path: string, signal?: AbortSignal) {
-    const r = await this.request<{ reading_progress: ReadingProgress | null }>(
+    const r = await this.request<ReadingProgressResponse>(
       'GET',
       `/libraries/${libraryId}/reading-progress`,
       { query: { path }, signal },
@@ -1780,7 +1781,7 @@ export class ApiClient {
     path: string,
     { finished, position, started_at, finished_at }: ProgressEdit,
   ) {
-    const r = await this.request<{ progress: Progress }>(
+    const r = await this.request<ProgressSavedResponse>(
       'PATCH',
       `/libraries/${libraryId}/progress`,
       { query: { path }, body: { finished, position, started_at, finished_at } },
@@ -1789,11 +1790,9 @@ export class ApiClient {
   }
 
   async bookmarks(libraryId: number, path: string) {
-    const r = await this.request<{ bookmarks: Bookmark[] }>(
-      'GET',
-      `/libraries/${libraryId}/bookmarks`,
-      { query: { path } },
-    );
+    const r = await this.request<BookmarksResponse>('GET', `/libraries/${libraryId}/bookmarks`, {
+      query: { path },
+    });
     return r.bookmarks ?? [];
   }
   /** Bookmark a book at `position`. `label` and `clientId` are sent only when given, and
@@ -1836,7 +1835,7 @@ export class ApiClient {
   }
 
   async notes(libraryId: number, path: string) {
-    const r = await this.request<{ notes: Note[] }>('GET', `/libraries/${libraryId}/notes`, {
+    const r = await this.request<NotesResponse>('GET', `/libraries/${libraryId}/notes`, {
       query: { path },
     });
     return r.notes ?? [];
@@ -1871,7 +1870,7 @@ export class ApiClient {
     { limit, cursor }: PageQuery,
     signal?: AbortSignal,
   ): Promise<Page<T>> {
-    const r = await this.request<Record<K, T[] | null> & { next_cursor?: string }>('GET', path, {
+    const r = await this.request<PageResponse<K, T>>('GET', path, {
       query: { limit, cursor },
       signal,
     });
@@ -1886,7 +1885,7 @@ export class ApiClient {
   // so the UI degrades gracefully rather than erroring.
   async favourites(signal?: AbortSignal) {
     try {
-      const r = await this.request<{ favourites: Favourite[] | null }>('GET', '/me/favourites', {
+      const r = await this.request<FavouritesResponse>('GET', '/me/favourites', {
         signal,
       });
       return r.favourites ?? [];
@@ -1906,7 +1905,7 @@ export class ApiClient {
   // The caller's queue, in order, at most 500 books. Every write answers with the
   // whole stored queue, so the caller reconciles with what the server kept.
   async queue(signal?: AbortSignal) {
-    const r = await this.request<{ queue: QueueEntry[] }>('GET', '/me/queue', { signal });
+    const r = await this.request<QueueResponse>('GET', '/me/queue', { signal });
     return r.queue;
   }
   /** Replace the whole queue with `items`, in this order. Duplicates collapse (the
@@ -1916,7 +1915,7 @@ export class ApiClient {
    * access, which a read leaves out but keeps): to move one book, use
    * {@link addToQueue} with a `position`, which leaves hidden entries alone. */
   async setQueue(items: BookRef[]) {
-    const r = await this.request<{ queue: QueueEntry[] }>('PUT', '/me/queue', {
+    const r = await this.request<QueueResponse>('PUT', '/me/queue', {
       body: { items: bareRefs(items) },
     });
     return r.queue;
@@ -1925,7 +1924,7 @@ export class ApiClient {
    * in the queue as this caller sees it (absent or past the end: the end). A book already queued moves
    * to `position` when one is given, else stays. A full queue is a 409 (`queue_full`). */
   async addToQueue(libraryId: number, path: string, position?: number) {
-    const r = await this.request<{ queue: QueueEntry[] }>('POST', '/me/queue', {
+    const r = await this.request<QueueResponse>('POST', '/me/queue', {
       body: { library_id: libraryId, path, position },
     });
     return r.queue;
@@ -1941,7 +1940,7 @@ export class ApiClient {
   // is a 404; a viewer's write is a 403 (`not_owner`).
   /** Owned collections first, then those shared with the caller, each newest first. */
   async collections(signal?: AbortSignal) {
-    const r = await this.request<{ collections: Collection[] }>('GET', '/me/collections', {
+    const r = await this.request<CollectionsResponse>('GET', '/me/collections', {
       signal,
     });
     return r.collections;
@@ -1949,7 +1948,7 @@ export class ApiClient {
   /** Create a collection. Over 100 owned is a 409 (`collections_full`); a bad name a
    * 400. Only `name` and `description` are sent (the server decodes strictly). */
   async createCollection({ name, description }: CollectionInput) {
-    const r = await this.request<{ collection: Collection }>('POST', '/me/collections', {
+    const r = await this.request<CollectionResponse>('POST', '/me/collections', {
       body: { name, description },
     });
     return r.collection;
@@ -1962,7 +1961,7 @@ export class ApiClient {
    * are sent (the server decodes strictly, so a spread `Collection` would otherwise be a
    * 400); an absent one is left as it is. */
   async updateCollection(id: number, { name, description }: CollectionPatch) {
-    const r = await this.request<{ collection: Collection }>('PATCH', `/me/collections/${id}`, {
+    const r = await this.request<CollectionResponse>('PATCH', `/me/collections/${id}`, {
       body: { name, description },
     });
     return r.collection;
@@ -1999,16 +1998,14 @@ export class ApiClient {
    * not a share target rejects the whole request (400 `unknown user`); a demo owner
    * gets a 403. */
   async setCollectionShares(id: number, userIds: number[]) {
-    const r = await this.request<{ collection: Collection }>(
-      'PUT',
-      `/me/collections/${id}/shares`,
-      { body: { user_ids: userIds } },
-    );
+    const r = await this.request<CollectionResponse>('PUT', `/me/collections/${id}/shares`, {
+      body: { user_ids: userIds },
+    });
     return r.collection;
   }
   /** The users the caller can share with, by username. A demo account gets a 403. */
   async shareTargets(signal?: AbortSignal) {
-    const r = await this.request<{ users: ShareTarget[] }>('GET', '/me/share-targets', {
+    const r = await this.request<ShareTargetsResponse>('GET', '/me/share-targets', {
       signal,
     });
     return r.users;
@@ -2017,18 +2014,17 @@ export class ApiClient {
   // --- Ratings (capability `ratings`) --------------------------------------
   /** The caller's rating of exactly this path, or null when there is none. */
   async rating(libraryId: number, path: string, signal?: AbortSignal) {
-    const r = await this.request<{ rating: Rating | null }>(
-      'GET',
-      `/libraries/${libraryId}/rating`,
-      { query: { path }, signal },
-    );
+    const r = await this.request<RatingResponse>('GET', `/libraries/${libraryId}/rating`, {
+      query: { path },
+      signal,
+    });
     return r.rating ?? null;
   }
   /** Rate a book 1-5 with an optional note (at most 500 characters, trimmed). The
    * PUT replaces the whole rating, so leaving `note` out clears a saved note. A
    * part/disc path rates its book: the returned rating carries the book's own path. */
   async setRating(libraryId: number, path: string, rating: RatingValue, note?: string) {
-    const r = await this.request<{ rating: Rating }>('PUT', `/libraries/${libraryId}/rating`, {
+    const r = await this.request<RatingSavedResponse>('PUT', `/libraries/${libraryId}/rating`, {
       query: { path },
       body: { rating, note },
     });
@@ -2041,7 +2037,7 @@ export class ApiClient {
   }
   /** Every rating the caller can still see, newest change first. */
   async myRatings(signal?: AbortSignal) {
-    const r = await this.request<{ ratings: RatedBook[] }>('GET', '/me/ratings', {
+    const r = await this.request<RatingsResponse>('GET', '/me/ratings', {
       signal,
     });
     return r.ratings;
@@ -2051,7 +2047,7 @@ export class ApiClient {
   // `range` defaults to `30d` on the server when omitted (see StatsRange).
   /** The caller's own listening stats for a period. */
   async myStats(range?: StatsRange, signal?: AbortSignal) {
-    const r = await this.request<{ stats: UserStats }>('GET', '/me/stats', {
+    const r = await this.request<UserStatsResponse>('GET', '/me/stats', {
       query: { range },
       signal,
     });
@@ -2079,7 +2075,7 @@ export class ApiClient {
   // --- My devices (capability `my_devices`) --------------------------------
   /** The caller's own live sessions and API keys, most recently seen first. */
   async myDevices(signal?: AbortSignal) {
-    const r = await this.request<{ devices: MyDevice[] }>('GET', '/me/devices', {
+    const r = await this.request<MyDevicesResponse>('GET', '/me/devices', {
       signal,
     });
     return r.devices;
@@ -2324,11 +2320,9 @@ export class ApiClient {
   /** A book's listening spans, newest first: the server's default 100, or up to `limit`
    * (it caps at 500). */
   async history(libraryId: number, path: string, limit?: number) {
-    const r = await this.request<{ history: History[] | null }>(
-      'GET',
-      `/libraries/${libraryId}/history`,
-      { query: { path, limit } },
-    );
+    const r = await this.request<HistoryResponse>('GET', `/libraries/${libraryId}/history`, {
+      query: { path, limit },
+    });
     return r.history ?? [];
   }
   /** One page of the caller's listening spans across books, newest ended first (see
