@@ -65,6 +65,23 @@ export function FollowByUrl({
   const ended = outcome?.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
   const request =
     outcome?.kind === 'adding' ? requests?.find((r) => r.id === outcome.requestId) : undefined;
+  // The show it follows now: the follow's own answer, or the request that ended added.
+  const followed =
+    outcome?.kind === 'following'
+      ? {
+          title: outcome.show.title,
+          libraryId: outcome.show.library_id,
+          path: outcome.show.path,
+          publicAlready: outcome.publicAlready,
+        }
+      : ended?.kind === 'following'
+        ? {
+            title: request ? requestLabel(request, shows) : ended.path,
+            libraryId: ended.libraryId,
+            path: ended.path,
+            publicAlready: false,
+          }
+        : null;
 
   const submit = () => {
     // The keyboard's Go submits too, so a follow on its way holds both.
@@ -143,37 +160,21 @@ export function FollowByUrl({
         className="self-start"
         testID="follow-by-url-submit"
       />
-      {outcome?.kind === 'following' ? (
+      {followed ? (
         <View className="flex-row flex-wrap items-center gap-3" accessibilityLiveRegion="polite">
           <Text variant="body" testID="follow-by-url-following">
             {t(
-              outcome.publicAlready
+              followed.publicAlready
                 ? 'podcasts.find.address.followingPublic'
                 : 'podcasts.find.address.following',
-              { title: outcome.show.title },
+              { title: followed.title },
             )}
           </Text>
           <Button
             variant="outline"
             size="sm"
             title={t('podcasts.find.search.openShow')}
-            onPress={() =>
-              openPodcastShow(connectionId, outcome.show.library_id, outcome.show.path)
-            }
-          />
-        </View>
-      ) : ended?.kind === 'following' ? (
-        <View className="flex-row flex-wrap items-center gap-3" accessibilityLiveRegion="polite">
-          <Text variant="body" testID="follow-by-url-following">
-            {t('podcasts.find.address.following', {
-              title: request ? requestLabel(request, shows) : ended.path,
-            })}
-          </Text>
-          <Button
-            variant="outline"
-            size="sm"
-            title={t('podcasts.find.search.openShow')}
-            onPress={() => openPodcastShow(connectionId, ended.libraryId, ended.path)}
+            onPress={() => openPodcastShow(connectionId, followed.libraryId, followed.path)}
           />
         </View>
       ) : ended?.kind === 'failed' ? (

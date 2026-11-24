@@ -94,7 +94,9 @@ function RequestRow({
   const themed = useThemeColors();
   const { openPodcastShow } = useOpen();
   const open = isOpenRequest(request);
-  const failed = !open && request.state !== 'done' && request.state !== 'cancelled';
+  // Ended without a show: failed or cancelled, the rows Dismiss takes off.
+  const unadded = !open && request.state !== 'done';
+  const failed = unadded && request.state !== 'cancelled';
   const show = requestShow(request);
   const label = requestLabel(request, shows);
   return (
@@ -135,7 +137,7 @@ function RequestRow({
           onPress={() => openPodcastShow(connectionId, show.libraryId, show.path)}
         />
       ) : null}
-      {onDismiss && !open && request.state !== 'done' ? (
+      {onDismiss && unadded ? (
         <Button
           variant="ghost"
           size="icon"

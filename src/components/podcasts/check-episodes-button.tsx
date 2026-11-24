@@ -97,18 +97,18 @@ export function CheckEpisodesButton({
       },
     );
   const found = ended ? show.episode_count - asked.count : 0;
-  const caption =
-    ended && show.status.error
+  // A failed check says nothing here: the show page's own line says it failed.
+  const caption = ended
+    ? show.status.error
       ? null
-      : ended
-        ? found > 0
-          ? t('podcasts.check.found', { count: found })
-          : t('podcasts.check.noNew')
-        : !running && lastChecked
-          ? t('podcasts.check.lastChecked', {
-              when: formatRelative(lastChecked, i18n.language || 'en', now),
-            })
-          : null;
+      : found > 0
+        ? t('podcasts.check.found', { count: found })
+        : t('podcasts.check.noNew')
+    : !running && lastChecked
+      ? t('podcasts.check.lastChecked', {
+          when: formatRelative(lastChecked, i18n.language || 'en', now),
+        })
+      : null;
   return (
     <>
       <Button
