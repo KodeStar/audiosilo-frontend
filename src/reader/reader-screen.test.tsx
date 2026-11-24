@@ -246,6 +246,7 @@ describe('ReaderScreen', () => {
     mockPlaying = true;
     mockScreenReader = false;
     mockFocused = true;
+    mockStatusBar = null;
   });
 
   describe('saving the place', () => {
