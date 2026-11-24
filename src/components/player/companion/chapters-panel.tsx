@@ -1,4 +1,13 @@
-import { memo, useMemo, useRef } from 'react';
+import {
+  memo,
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   FlatList,
@@ -6,6 +15,7 @@ import {
   Platform,
   useWindowDimensions,
   View,
+  type ViewInstance,
 } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
@@ -13,6 +23,7 @@ import { Icon } from '@/components/ui/icon';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { chapterLabel } from '@/lib/chapter-label';
 import { formatClock, formatDurationOrZero } from '@/lib/format';
+import { openingIndex, openingOffset } from '@/lib/list-opening';
 import { quietly } from '@/lib/quietly';
 import { isLargeText, scaleCapped, useFontScale } from '@/lib/text-scale';
 import { useLatest } from '@/lib/use-latest';
@@ -23,6 +34,7 @@ import { wholeSecondsLeft } from '@/playback/time-left';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { type PageScroll, usePageScroll } from '../page-scroll';
 import { trackLabel } from '../transport';
 import { chapterRows, type ChapterRow } from './companion-model';
 
@@ -38,24 +50,104 @@ export function chapterRowHeight(scale: number): number {
   return scaleCapped(ROW_H, scale, ROW_MAX_SCALE);
 }
 
-/**
- * The row a virtualized chapter list opens at (`initialScrollIndex`): `want`, when the rows
- * from it on fill a window's height, so the list can scroll that far. Otherwise none: a list
- * too short for it renders from that row and never fills in the rows above it, which stay
- * blank and untappable (FlatList on Android: Part 1 of a four-file book opened on Part 4).
- * The list then opens at its top and scrolls to the row once laid out (`ChaptersPanel`).
- */
-export function openingIndex(
-  want: number,
-  count: number,
-  rowHeight: number,
-  windowHeight: number,
-): number | undefined {
-  return want > 0 && (count - want) * rowHeight >= windowHeight ? want : undefined;
-}
-
 /** The list's bottom padding. */
 const LIST_PAD_BOTTOM = 12;
+
+/** Inline, a list of up to this many rows draws them all; a longer one draws only the rows
+ * near the visible part of the page (`PageRows`). */
+const INLINE_ALL_UP_TO = 100;
+/** The drawn rows move in steps of this many, so a scroll redraws the list once a step. */
+const INLINE_STEP = 20;
+
+/**
+ * The rows `[first, last)` an inline list draws: those within one page height above or
+ * below the visible part, in `INLINE_STEP` steps. `top` is the list's top in the page's
+ * content (null until measured: then the rows from the top, as a list just below the
+ * controls shows first), `y` how far the page is scrolled and `height` its visible height.
+ */
+export function inlineRows(
+  count: number,
+  rowHeight: number,
+  top: number | null,
+  y: number,
+  height: number,
+): [number, number] {
+  const clamp = (n: number) => Math.min(count, Math.max(0, n));
+  if (top === null) {
+    return [0, clamp(Math.ceil((2 * height) / rowHeight / INLINE_STEP) * INLINE_STEP)];
+  }
+  const first = Math.floor((y - height - top) / rowHeight / INLINE_STEP) * INLINE_STEP;
+  const last = Math.ceil((y + 2 * height - top) / rowHeight / INLINE_STEP) * INLINE_STEP;
+  return [clamp(first), Math.max(clamp(first), clamp(last))];
+}
+
+/**
+ * A long chapter list inline in the player's page (the tablet's companion): every row's
+ * room is held, but only the rows near the visible part of the page are drawn
+ * (`inlineRows`), so a book of a thousand chapters scrolls as one of ten. The page scrolls
+ * the list (a nested virtual list would never know its viewport), so the list follows the
+ * page's scroll (`usePageScroll`) and measures where it sits in it. A screen reader or a
+ * keyboard moving past the drawn rows scrolls the page, which draws the next ones.
+ */
+function PageRows({
+  page,
+  count,
+  rowHeight,
+  render,
+}: {
+  page: PageScroll;
+  count: number;
+  rowHeight: number;
+  render: (index: number) => ReactNode;
+}) {
+  const { height: windowHeight } = useWindowDimensions();
+  const self = useRef<ViewInstance>(null);
+  const [top, setTop] = useState<number | null>(null);
+  // Both measured in the same pass, so a scroll moves them alike and the difference holds.
+  const measure = useCallback(() => {
+    const view = self.current;
+    const origin = page.origin();
+    if (!view || !origin) return;
+    let listY: number | undefined;
+    let originY: number | undefined;
+    const done = () => {
+      if (listY !== undefined && originY !== undefined) setTop(listY - originY);
+    };
+    origin.measureInWindow((_x, y) => {
+      originY = y;
+      done();
+    });
+    view.measureInWindow((_x, y) => {
+      listY = y;
+      done();
+    });
+  }, [page]);
+  useEffect(() => {
+    let seen = page.get().layout;
+    return page.subscribe(() => {
+      const now = page.get().layout;
+      if (now === seen) return;
+      seen = now;
+      measure();
+    });
+  }, [page, measure]);
+  const rowsKey = () => {
+    const { y, height } = page.get();
+    return inlineRows(count, rowHeight, top, y, height || windowHeight).join(':');
+  };
+  const [first, last] = useSyncExternalStore(page.subscribe, rowsKey, rowsKey)
+    .split(':')
+    .map(Number);
+  const drawn: ReactNode[] = [];
+  for (let i = first; i < last; i++) drawn.push(render(i));
+  return (
+    <View ref={self} testID="chapters-page-rows" onLayout={measure}>
+      {first > 0 ? <View style={{ height: first * rowHeight }} /> : null}
+      {drawn}
+      {last < count ? <View style={{ height: (count - last) * rowHeight }} /> : null}
+    </View>
+  );
+}
 
 type RowProps = {
   index: number;
@@ -141,7 +233,8 @@ const Row = memo(function Row({ index, label, state, side, height, wrap, onPress
  * speed). A tap seeks there: a jump, so the Undo chip follows. A book without a
  * whole-book timeline lists its files instead. `virtualized` (in a sheet, or as the
  * desktop column's own scroller) opens on the current chapter; inline in a scrolling
- * page it is a plain list.
+ * page it is a plain list, drawn only near the visible part of the page when it is long
+ * (`PageRows`).
  */
 export function ChaptersPanel({
   virtualized = false,
@@ -164,6 +257,7 @@ export function ChaptersPanel({
   const scale = useFontScale();
   const rowHeight = chapterRowHeight(scale);
   const { height: windowHeight } = useWindowDimensions();
+  const page = usePageScroll();
   const list = useRef<FlatList<string>>(null);
   /** The list (this mount of it) once it was first laid out, when one that opened at its top
    * is scrolled to the current row (`openingIndex`): one that mounts again (the panel stayed
@@ -225,7 +319,12 @@ export function ChaptersPanel({
     />
   );
 
-  if (!virtualized) return <View>{labels.map((_, i) => render(i))}</View>;
+  if (!virtualized) {
+    if (page && labels.length > INLINE_ALL_UP_TO) {
+      return <PageRows page={page} count={labels.length} rowHeight={rowHeight} render={render} />;
+    }
+    return <View>{labels.map((_, i) => render(i))}</View>;
+  }
   const want = Math.max(0, Math.min(current - 2, labels.length - 1));
   const opening = openingIndex(want, labels.length, rowHeight, windowHeight);
   // Opened at its top: scrolled to the row as far as the list goes, once, when first laid out.
@@ -233,8 +332,13 @@ export function ChaptersPanel({
     if (!list.current || placed.current === list.current) return;
     placed.current = list.current;
     if (opening !== undefined) return;
-    const room = labels.length * rowHeight + LIST_PAD_BOTTOM - e.nativeEvent.layout.height;
-    const offset = Math.min(want * rowHeight, Math.max(0, room));
+    const offset = openingOffset(
+      want,
+      labels.length,
+      rowHeight,
+      e.nativeEvent.layout.height,
+      LIST_PAD_BOTTOM,
+    );
     if (offset > 0) list.current?.scrollToOffset({ offset, animated: false });
   };
   return (

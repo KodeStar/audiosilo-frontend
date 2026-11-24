@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import type { ReactElement } from 'react';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import type { PageScroll } from './page-scroll';
+
 let mockLayout: 'phone' | 'tablet' | 'desktop' = 'phone';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
@@ -27,9 +29,17 @@ jest.mock('./player-parts', () => {
     PlayerColumn: ({ children }: { children: unknown }) => children,
   };
 });
+/** The page the inline companion scrolls with (`usePageScroll`), as it last saw it. */
+let mockPage: PageScroll | null = null;
 jest.mock('./companion/companion', () => {
   const { Text: T } = jest.requireActual('react-native');
-  return { Companion: ({ variant }: { variant: string }) => <T>{`companion ${variant}`}</T> };
+  const { usePageScroll } = jest.requireActual('./page-scroll');
+  return {
+    Companion: ({ variant }: { variant: string }) => {
+      mockPage = usePageScroll();
+      return <T>{`companion ${variant}`}</T>;
+    },
+  };
 });
 let mockOnTip: ((showing: boolean) => void) | undefined;
 let mockHoverTip: boolean | undefined;
@@ -164,6 +174,17 @@ describe('PlayerView', () => {
     mockLayout = 'tablet';
     await mount(<PlayerView onClose={jest.fn()} />);
     expect(screen.getByTestId('player-page').props.keyboardShouldPersistTaps).toBe('handled');
+  });
+
+  it("tablet: the inline companion follows the page's scroll (its long Chapters list)", async () => {
+    mockLayout = 'tablet';
+    mockPage = null;
+    await mount(<PlayerView onClose={jest.fn()} />);
+    expect(mockPage).not.toBeNull();
+    await fireEvent.scroll(screen.getByTestId('player-page'), {
+      nativeEvent: { contentOffset: { x: 0, y: 300 } },
+    });
+    expect(mockPage!.get().y).toBe(300);
   });
 
   it('desktop: a companion column, and Up next stays in the drawer', async () => {

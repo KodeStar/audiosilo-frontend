@@ -53,6 +53,7 @@ import type { Connection } from '@/stores/session';
 import { backOrHome } from '@/lib/back-or-home';
 import { useHeldTopInset } from '@/lib/held-top-inset';
 import { type ShortcutKey, useGlobalShortcut } from '@/lib/keyboard';
+import { openingIndex, openingOffset } from '@/lib/list-opening';
 import { bookTitle } from '@/lib/paths';
 import { useScreenReader } from '@/lib/screen-reader';
 import { scaleCapped, useFontScale } from '@/lib/text-scale';
@@ -944,28 +945,12 @@ function ShortToc({ entries, current, onSelect }: TocProps) {
   );
 }
 
-/**
- * The row a long contents opens at (`initialScrollIndex`): `want`, when the rows from it on
- * fill a window's height, so the list can scroll that far. Otherwise none: a list too short
- * below that row renders from it and never fills in the rows above it, which stay blank and
- * can't be tapped (the player's Chapters list showed it on Android). The list then opens at
- * its top and is scrolled to the row once laid out (`LongToc`).
- */
-export function tocOpeningIndex(
-  want: number,
-  count: number,
-  rowHeight: number,
-  windowHeight: number,
-): number | undefined {
-  return want > 0 && (count - want) * rowHeight >= windowHeight ? want : undefined;
-}
-
 /** A long contents: only the rows near the screen are drawn. A virtual list can open in its
  * middle, and keep its place once scrolled, only where it knows every row's offset
  * (`getItemLayout`), so these rows are one height and their labels one line. Opened on
  * rows not measured, with no known offsets, it drew the rows it opened on at offset 0 and
  * went back to the first entries at the first scroll. Near the end it opens at its top and
- * is scrolled there instead (`tocOpeningIndex`). */
+ * is scrolled there instead (`openingIndex`, `openingOffset`). */
 function LongToc({ entries, current, onSelect }: TocProps) {
   const rowHeight = scaleCapped(TOC_ROW_H, useFontScale(), TOC_ROW_MAX_SCALE);
   const { height: windowHeight } = useWindowDimensions();
@@ -974,14 +959,12 @@ function LongToc({ entries, current, onSelect }: TocProps) {
   // rotation) leaves the reader's own scrolling alone.
   const placed = useRef(false);
   const want = Math.max(0, current - TOC_LEAD_ROWS);
-  const opening = tocOpeningIndex(want, entries.length, rowHeight, windowHeight);
+  const opening = openingIndex(want, entries.length, rowHeight, windowHeight);
   const onLayout = (e: LayoutChangeEvent) => {
     if (placed.current) return;
     placed.current = true;
     if (opening !== undefined) return;
-    // As far toward the row as the list scrolls.
-    const room = entries.length * rowHeight - e.nativeEvent.layout.height;
-    const offset = Math.min(want * rowHeight, Math.max(0, room));
+    const offset = openingOffset(want, entries.length, rowHeight, e.nativeEvent.layout.height);
     if (offset > 0) list.current?.scrollToOffset({ offset, animated: false });
   };
   return (

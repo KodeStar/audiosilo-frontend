@@ -38,6 +38,7 @@ import {
   PlayerHeader,
   PlayerStatusLine,
 } from './player-parts';
+import { PageScrollContext, usePageScrollSource } from './page-scroll';
 import { PlayerSheetHost } from './player-sheet-host';
 import { usePlayerSheets } from './player-sheets';
 import {
@@ -174,6 +175,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const pins = usePlayingPins();
   // While one of its sheets is open the player under it is hidden from a screen reader.
   const behind = useBehindModalProps();
+  const { scroll: pageScroll, props: pageScrollProps, setOrigin } = usePageScrollSource();
   // A phone's column is a flex column filling the viewport: the cover's slot takes what
   // the rest leaves (measured), so the player fits a phone without scrolling; the column
   // scrolls only once the slot is at its minimum.
@@ -299,6 +301,9 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         <ScrollView
           testID="player-page"
           {...behind}
+          // The tablet's long inline Chapters list follows the page's scroll (`PageRows`). Fed
+          // on a phone too, so a page turned into a tablet's knows where it is.
+          {...pageScrollProps}
           className="flex-1"
           contentContainerClassName={phone ? 'grow px-5 pt-1' : 'px-12 pt-2'}
           contentContainerStyle={{ paddingBottom: bottomPad }}
@@ -306,13 +311,16 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           // a tap on "Add note" must add it, not only dismiss the keyboard.
           keyboardShouldPersistTaps="handled"
         >
+          <View ref={setOrigin} />
           {main}
           {!phone ? (
             <View
               testID="player-companion-inline"
               className="mt-8 w-full max-w-[720px] self-center rounded-card border border-border bg-card px-4"
             >
-              <Companion variant="inline" />
+              <PageScrollContext.Provider value={pageScroll}>
+                <Companion variant="inline" />
+              </PageScrollContext.Provider>
             </View>
           ) : null}
         </ScrollView>

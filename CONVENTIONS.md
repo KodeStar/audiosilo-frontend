@@ -1409,7 +1409,8 @@ reads while `ebooks` is unknown, offline, never when it is `false`). The route i
   two lines, and the list scrolls to the current one once it is laid out. From
   `TOC_VIRTUAL_FROM` entries (fe#165) it is a virtual `FlatList` of rows of one height
   (`getItemLayout`, the height following the text scale, labels one line) opened with
-  `initialScrollIndex`. Never a virtual list without `getItemLayout` here: opened in its
+  `initialScrollIndex` (`openingIndex`, `src/lib/list-opening.ts`, the player's Chapters list's
+  too). Never a virtual list without `getItemLayout` here: opened in its
   middle on rows of unknown height it draws them at offset 0 and goes back to the first
   entries at the first scroll.
 - **Appearance** (`use-reader-appearance.ts`, `reader-settings.ts`): the text size and the page
@@ -5675,6 +5676,11 @@ Route-driven side effects (search reset on leaving the Search tab, browse scroll
 block (`communityCredit`, Story so far's `recapMarks`; generated panels wear `GeneratedMark`,
 Story so far its `recapMarks` chips, and Who's who / Story so far offer an admin `GenerateOffer`
 under their empty state).
+  Its Chapters list (`chapters-panel.tsx`) is a virtual `FlatList` in a sheet or the column,
+  opened on the current chapter (`openingIndex` / `openingOffset` in `src/lib/list-opening.ts`,
+  shared with the reader's contents). Inline on a tablet the page scrolls it, so a list past
+  `INLINE_ALL_UP_TO` rows draws only the rows near the page's visible part (`PageRows`, fed the
+  page's scroll by `usePageScroll`, `page-scroll.ts`), never a virtual list nested in the page.
   `CompanionRevealListener` (root layout) toasts "New in Who's who" on a natural chapter crossing
   only (`watchReveal` + `revealOnCrossing`: a pause, a buffer or a file change reported in two
   writes on the way still counts; a seek never does), reading the chapter at Who's who's own
