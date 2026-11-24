@@ -299,6 +299,9 @@ export type User = {
   last_seen_at?: string;
 };
 
+/** The JSON body of a server error. A pending episode fetch also carries its status. */
+export type ApiErrorResponse = { error: string; code?: string; fetch?: PodcastFetchStatus };
+
 /** Response of /auth/exchange and /auth/login. The token is the session secret;
  * `server_id` is the paired server's stable identity (with `user.id`, the connection id:
  * `connectionIdOf`). */
@@ -379,6 +382,8 @@ export type ApiKey = {
   last_seen: string | null;
 };
 
+export type ApiKeysResponse = { api_keys: ApiKey[] | null };
+
 /** Response of POST /auth/tokens: the plaintext secret (shown to the user once and
  * never again) plus the new key's metadata. */
 export type ApiKeyCreated = {
@@ -407,6 +412,8 @@ export type Library = {
    * more than one library - the earlier library's copy wins de-duplication. */
   sort_order: number;
 };
+
+export type LibrariesResponse = { libraries: Library[] };
 
 /** One entry in the filesystem (hybrid) browse view. */
 export type FsEntry = {
@@ -679,6 +686,8 @@ export type BookSort = 'author' | 'title' | 'recent';
  * once the list is exhausted. */
 export type BookPage = { books: Book[]; next_cursor?: string };
 
+export type BooksResponse = { books: Book[] };
+
 /** One series of GET /libraries/{id}/series/books (capability `series_books`): exactly
  * the page `GET /libraries/{id}/books?series=<name>&memberships=1&limit=N` would return
  * (default sort; `books` is `[]` for none), so `next_cursor` (absent once exhausted)
@@ -704,6 +713,12 @@ export type PersonCount = { name: string; books: number; duration: number };
  * only books inside the caller's share scope. */
 export type PeopleList = { people: PersonCount[]; unknown: number };
 
+export type PeopleResponse = {
+  authors?: PersonCount[] | null;
+  narrators?: PersonCount[] | null;
+  unknown?: number;
+};
+
 /** One series a book is in, with its position there (0 = none). A range (books 1-3)
  * is `position` 1 with `position_end` 3; `position_end` is absent for a single
  * position, and from older servers. */
@@ -724,6 +739,8 @@ export type SeriesCount = {
    * capability `series_memberships`); 0 without memberships, absent on older servers. */
   extra_books?: number;
 };
+
+export type SeriesListResponse = { series: SeriesCount[] | null };
 
 /** Response of GET /libraries/{id}/next (capability `next_book`): what to play
  * after a book. `source` names the step that produced `next` (or that decided
@@ -875,6 +892,8 @@ export type BookMetaWork = {
    * servers. */
   generated_description?: BookMetaGeneratedDescription;
 };
+
+export type MetaWorkResponse = { work: BookMetaWork };
 
 /** What of a work came from this server's own generated files (see
  * {@link BookMetaWork.generated}). `generated_at` is RFC 3339. `description` is Bridge
@@ -1055,6 +1074,12 @@ export type Progress = {
   cover_version?: string;
 };
 
+export type ProgressSavedResponse = { progress: Progress };
+
+export type ProgressResponse = { progress: Progress | null };
+
+export type ProgressListResponse = { progress: Progress[] | null };
+
 /** A listening place the server did not keep (Sync v2): the losing side of a diverged
  * event, in whole-book seconds on the server's timeline. */
 export type ListeningOtherPlace = {
@@ -1209,6 +1234,8 @@ export type ReadingProgress = {
   updated_at: string;
 };
 
+export type ReadingProgressResponse = { reading_progress: ReadingProgress | null };
+
 /** Body of PUT /libraries/{id}/reading-progress. `base_version` is the stored `version`
  * this device last saw (0 for none): a save from another device than the stored row's,
  * made on an older version, is diverged, and the server keeps the further place of the
@@ -1257,6 +1284,8 @@ export type Bookmark = {
   created_at: string;
 };
 
+export type BookmarksResponse = { bookmarks: Bookmark[] };
+
 /** The bookmark labels this player knows: the five a listener picks, and `fell_asleep`,
  * the sleep timer's automatic bookmark. The server checks only a label's shape (see
  * {@link Bookmark.label}), never this list. Ordered lists and a type guard live in
@@ -1278,6 +1307,8 @@ export type Note = {
   created_at: string;
   updated_at: string;
 };
+
+export type NotesResponse = { notes: Note[] };
 
 /** Body of PATCH /notes/{id} (capability `annotations`, owner only): absent fields are
  * left as they are, at least one is required. `body` is at most 10000 characters;
@@ -1307,6 +1338,8 @@ export type Favourite = {
   created_at: string;
 };
 
+export type FavouritesResponse = { favourites: Favourite[] | null };
+
 /** A recorded listening span (positions over a time range). */
 export type History = {
   id: number;
@@ -1317,6 +1350,8 @@ export type History = {
   started_at: string;
   ended_at: string;
 };
+
+export type HistoryResponse = { history: History[] | null };
 
 // --- Across books (player redesign Phase 4, capability `annotations`) -----------
 // The caller's own rows over every book they can still open, newest first, one keyset
@@ -1329,6 +1364,8 @@ export type History = {
  * absent on the last one. An older server never sends `next_cursor`, so its answer is
  * exactly one page. Pass `next_cursor` back as {@link PageQuery.cursor}. */
 export type Page<T> = { items: T[]; next_cursor?: string };
+
+export type PageResponse<K extends string, T> = Record<K, T[] | null> & { next_cursor?: string };
 
 /** Paging of the across-books lists. `limit` is 1-500 (the server's default 100, a
  * larger value is clamped); `cursor` is a previous page's opaque `next_cursor` (a
@@ -1365,6 +1402,8 @@ export type BookListEntry = BookRef & {
 /** One entry of the caller's Up next queue (capability `queue`), in queue order. */
 export type QueueEntry = BookListEntry;
 
+export type QueueResponse = { queue: QueueEntry[] };
+
 /** One item of a collection (capability `collections`), in collection order. */
 export type CollectionItem = BookListEntry;
 
@@ -1390,6 +1429,10 @@ export type Collection = {
   updated_at: string;
 };
 
+export type CollectionResponse = { collection: Collection };
+
+export type CollectionsResponse = { collections: Collection[] };
+
 /** Response of GET /me/collections/{id} (and of the items writes): the collection and
  * its items in order, filtered by the caller's current access. */
 export type CollectionDetail = { collection: Collection; items: CollectionItem[] };
@@ -1405,6 +1448,8 @@ export type CollectionPatch = { name?: string; description?: string };
  * non-demo, not the caller. */
 export type ShareTarget = UserRef;
 
+export type ShareTargetsResponse = { users: ShareTarget[] };
+
 /** A rating value: a whole number of stars. */
 export type RatingValue = 1 | 2 | 3 | 4 | 5;
 
@@ -1418,9 +1463,15 @@ export type Rating = BookRef & {
   updated_at: string;
 };
 
+export type RatingSavedResponse = { rating: Rating };
+
+export type RatingResponse = { rating: Rating | null };
+
 /** One row of GET /me/ratings: the rating plus the book in the list shape when the
  * path is indexed. */
 export type RatedBook = Rating & { book?: Book };
+
+export type RatingsResponse = { ratings: RatedBook[] };
 
 /** The `range` of the personal stats routes: the last 7/30/90 days, the last year
  * (`1y`), this calendar year (`year`, answered as its `YYYY`), or a calendar year
@@ -1511,6 +1562,8 @@ export type UserStats = StatsPeriod & {
   clients: StatsClient[];
 };
 
+export type UserStatsResponse = { stats: UserStats };
+
 /** Response of GET /me/listening (capability `user_stats`): the caller's listening
  * day by day and nothing else. Streaks are the client's to compute from `days`. */
 export type MyListening = StatsPeriod & { days: ListeningDay[] };
@@ -1597,6 +1650,8 @@ export type MyDevice = {
    * `household_members`; absent on older servers and on a member's own device rows. */
   member_sign_ins?: { id: number; name: string }[];
 };
+
+export type MyDevicesResponse = { devices: MyDevice[] };
 
 /** Response of DELETE /me/devices/{id}: `current` is true when the caller signed out
  * the very token it used, which is dead from then on (sign out locally). */
@@ -2099,6 +2154,8 @@ export type PodcastShow = {
   /** How many episodes the server keeps (an admin setting; the player shows none). */
   retention?: { mode: string; keep: number; days: number };
 };
+
+export type PodcastShowsResponse = { shows: PodcastShow[] | null };
 
 /** A follow-by-URL request in flight (Bridge Phase 2d-2 shows them; listed by
  * `GET /me/podcasts` already). */

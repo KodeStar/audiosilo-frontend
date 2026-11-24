@@ -22,26 +22,45 @@ const PROBE = path.join(__dirname, '__wire_probe__.ts');
 const ENVELOPES: Record<string, string> = {
   server: 'T.ServerInfo',
   'server-anonymous': 'T.ServerInfo',
+  'server-bridge': 'T.ServerInfo',
   'auth-redeem': 'T.PairingPayload',
+  'auth-redeem-invite': 'T.PairingPayload',
   'auth-exchange': 'T.AuthSession',
+  'auth-exchange-invite': 'T.AuthSession',
   'auth-oidc-finish': 'T.AuthSession',
   'auth-password': 'T.PasswordChange',
+  error: 'T.ApiErrorResponse',
+  'error-code': 'T.ApiErrorResponse',
   me: 'T.User',
-  libraries: '{ libraries: T.Library[] }',
+  'me-owner': 'T.User',
+  libraries: 'T.LibrariesResponse',
+  'libraries-listener': 'T.LibrariesResponse',
   fs: 'T.Listing',
+  'fs-pending': 'T.Listing',
   books: 'T.BookPage',
-  authors:
-    '{ authors?: T.PersonCount[] | null; narrators?: T.PersonCount[] | null; unknown?: number }',
-  series: '{ series: T.SeriesCount[] | null }',
-  search: '{ books: T.Book[] }',
+  'books-page': 'T.BookPage',
+  // PeopleResponse leaves both lists optional only to serve /narrators too: /authors
+  // always sends its list and the count, so a drop of either fails here.
+  authors: "Required<Pick<T.PeopleResponse, 'authors' | 'unknown'>>",
+  series: 'T.SeriesListResponse',
+  search: 'T.BooksResponse',
+  'search-copies': 'T.BooksResponse',
   item: 'T.Book',
+  'item-episode': 'T.Book',
+  'item-readalong-stale': 'T.Book',
+  'item-recordings': 'T.Book',
   chapters: 'T.ChaptersResponse',
-  progress: '{ progress: T.Progress | null }',
-  'me-progress': '{ progress: T.Progress[] | null }',
-  favourites: '{ favourites: T.Favourite[] | null }',
+  'chapters-edited': 'T.ChaptersResponse',
+  progress: 'T.ProgressResponse',
+  'me-progress': 'T.ProgressListResponse',
+  'me-progress-diverged': 'T.ProgressListResponse',
+  favourites: 'T.FavouritesResponse',
   'listening-sync': 'T.ListeningSyncResponse',
-  bookmarks: '{ bookmarks: T.Bookmark[] }',
-  meta: 'T.BookMeta',
+  'listening-sync-diverged': 'T.ListeningSyncResponse',
+  bookmarks: 'T.BookmarksResponse',
+  meta: 'Extract<T.BookMeta, { matched: true }>',
+  'meta-bundle': 'Extract<T.BookMeta, { matched: true }>',
+  'meta-unmatched': 'Extract<T.BookMeta, { matched: false }>',
   upcoming: 'T.UpcomingResponse',
   'household-listening': 'T.HouseListening',
 };
@@ -110,10 +129,8 @@ function probeTypes(
 /** How shape (the server's) and type (the player's) disagree. */
 function compare(checker: ts.TypeChecker, shape: Shape, type: ts.Type): Problems {
   const out: Problems = { errors: [], unknown: [] };
-  walk(checker, shape, type, '$', out);
-  out.errors.sort();
-  out.unknown.sort();
-  return out;
+  walk(checker, shape, [type], '$', out, false);
+  return { errors: [...new Set(out.errors)].sort(), unknown: [...new Set(out.unknown)].sort() };
 }
 
 const score = (p: Problems) => p.errors.length + p.unknown.length;
@@ -125,10 +142,11 @@ function members(type: ts.Type): ts.Type[] {
 /** An object type, or an intersection of them (`A & { b: number }`); never an array. */
 function isObject(checker: ts.TypeChecker, type: ts.Type): boolean {
   if (type.isIntersection()) return type.types.every((t) => isObject(checker, t));
-  return (
-    !!(type.flags & ts.TypeFlags.Object) && !checker.isArrayType(type) && !checker.isTupleType(type)
-  );
+  return !!(type.flags & ts.TypeFlags.Object) && !isArrayLike(checker, type);
 }
+
+const isArrayLike = (checker: ts.TypeChecker, type: ts.Type) =>
+  checker.isArrayType(type) || checker.isTupleType(type);
 
 const SCALAR: Record<string, ts.TypeFlags> = {
   string: ts.TypeFlags.StringLike,
@@ -137,72 +155,147 @@ const SCALAR: Record<string, ts.TypeFlags> = {
   null: ts.TypeFlags.Null,
 };
 
-function walk(checker: ts.TypeChecker, shape: Shape, type: ts.Type, at: string, out: Problems) {
-  if (type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return;
-  const name = () => checker.typeToString(type);
+/** Whether member is the JSON kind of shape (a scalar, an array or an object). */
+function fitsKind(checker: ts.TypeChecker, shape: Shape, member: ts.Type): boolean {
+  if (typeof shape === 'string') return !!(member.flags & SCALAR[shape]);
+  if (Array.isArray(shape)) return isArrayLike(checker, member);
+  return isObject(checker, member);
+}
+
+// A single answer must fit one whole alternative. Keep the closest member's
+// diagnostics when all fail so the report names the fields to fix.
+function closest<T>(choices: T[], check: (choice: T, problems: Problems) => void, out: Problems) {
+  const reports = choices.map((choice) => {
+    const problems: Problems = { errors: [], unknown: [] };
+    check(choice, problems);
+    return problems;
+  });
+  const best = reports.reduce((a, b) => (score(a) <= score(b) ? a : b));
+  out.errors.push(...best.errors);
+  out.unknown.push(...best.unknown);
+}
+
+function walk(
+  checker: ts.TypeChecker,
+  shape: Shape,
+  types: ts.Type[],
+  at: string,
+  out: Problems,
+  merged: boolean,
+) {
+  const variants = types.flatMap(members);
+  if (variants.some((t) => t.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown))) return;
+  const name = () => types.map((t) => checker.typeToString(t)).join(' | ');
   if (isOr(shape)) {
-    for (const alt of shape.$or) walk(checker, alt, type, at, out);
+    for (const alt of shape.$or) walk(checker, alt, types, at, out, merged);
     return;
   }
   if (typeof shape === 'string') {
-    const flag = SCALAR[shape];
-    if (flag === undefined) throw new Error(`${at}: unknown shape ${shape}`);
-    if (!members(type).some((m) => m.flags & flag)) {
+    if (!Object.hasOwn(SCALAR, shape)) throw new Error(`${at}: unknown shape ${shape}`);
+    if (!variants.some((m) => fitsKind(checker, shape, m))) {
       out.errors.push(`${at}: the server sends ${shape}, the type is ${name()}`);
     }
     return;
   }
   if (Array.isArray(shape)) {
-    const arrays = members(type).filter((m) => checker.isArrayType(m) || checker.isTupleType(m));
+    const arrays = variants.filter((m) => fitsKind(checker, shape, m));
     if (arrays.length === 0) {
       out.errors.push(`${at}: the server sends an array, the type is ${name()}`);
       return;
     }
     if (shape.length === 0) return;
-    const el = checker.getTypeArguments(arrays[0] as ts.TypeReference)[0];
-    if (el) walk(checker, shape[0], el, `${at}[]`, out);
+    const elements = arrays.map((m) => checker.getIndexTypeOfType(m, ts.IndexKind.Number)!);
+    const walkRows = (rows: ts.Type[], p: Problems) =>
+      walk(checker, shape[0], rows, `${at}[]`, p, true);
+    if (merged) walkRows(elements, out);
+    else closest(elements, (row, p) => walkRows([row], p), out);
     return;
   }
-  const objects = members(type).filter((m) => isObject(checker, m));
+  const objects = variants.filter((m) => fitsKind(checker, shape, m));
   if (objects.length === 0) {
     out.errors.push(`${at}: the server sends an object, the type is ${name()}`);
     return;
   }
-  // A union of object types (a discriminated answer): the member that fits best.
-  let best: Problems | undefined;
-  for (const obj of objects) {
-    const p: Problems = { errors: [], unknown: [] };
-    walkObject(checker, shape, obj, at, p);
-    if (!best || score(p) < score(best)) best = p;
-    if (score(best) === 0) break;
-  }
-  out.errors.push(...best!.errors);
-  out.unknown.push(...best!.unknown);
+  if (merged) walkObjects(checker, shape, objects, at, out, true);
+  else closest(objects, (obj, p) => walkObjects(checker, shape, [obj], at, p, false), out);
 }
 
-function walkObject(
+// A merged golden can contain several values for the same field. A row of
+// this type could be present if each required field has a possible value.
+function canAppear(checker: ts.TypeChecker, shape: Shape, type: ts.Type): boolean {
+  if (isOr(shape)) return shape.$or.some((alt) => canAppear(checker, alt, type));
+  return members(type).some((member) => {
+    if (member.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) return true;
+    if (!fitsKind(checker, shape, member)) return false;
+    return (
+      typeof shape === 'string' ||
+      Array.isArray(shape) ||
+      requiredGaps(checker, shape, member, true).length === 0
+    );
+  });
+}
+
+function requiredGaps(
   checker: ts.TypeChecker,
   shape: { [k: string]: Shape },
   obj: ts.Type,
+  checkValues: boolean,
+): string[] {
+  return checker.getPropertiesOfType(obj).flatMap((prop) => {
+    const type = checker.getTypeOfSymbol(prop);
+    if (members(type).some((m) => m.flags & ts.TypeFlags.Undefined)) return [];
+    if (!Object.hasOwn(shape, prop.name))
+      return [`${prop.name}: required in the type, the server does not send it`];
+    if (checkValues && !canAppear(checker, shape[prop.name], type))
+      return [`${prop.name}: no observed value fits the required ${checker.typeToString(type)}`];
+    return [];
+  });
+}
+
+// The server merges array elements by JSON kind. Only a union member that
+// could occur in those rows can account for a field specific to that member.
+function walkObjects(
+  checker: ts.TypeChecker,
+  shape: { [k: string]: Shape },
+  objects: ts.Type[],
   at: string,
   out: Problems,
+  merged: boolean,
 ) {
-  const index = checker.getIndexInfoOfType(obj, ts.IndexKind.String);
-  const props = new Map(checker.getPropertiesOfType(obj).map((p) => [p.name, p]));
-  for (const [key, sub] of Object.entries(shape)) {
-    const prop = props.get(key);
-    if (prop) walk(checker, sub, checker.getTypeOfSymbol(prop), `${at}.${key}`, out);
-    else if (index) walk(checker, sub, index.type, `${at}.${key}`, out);
-    else out.unknown.push(`${at}.${key}`);
-  }
-  for (const [key, prop] of props) {
-    // An optional field's type includes undefined (strict, no exactOptionalPropertyTypes).
-    if (key in shape) continue;
-    if (members(checker.getTypeOfSymbol(prop)).some((m) => m.flags & ts.TypeFlags.Undefined)) {
-      continue;
+  const variants = objects.map((obj) => ({
+    obj,
+    gaps: requiredGaps(checker, shape, obj, objects.length > 1),
+  }));
+  const gaps: Problems = { errors: [], unknown: [] };
+  const reportGaps = (variant: (typeof variants)[number], p: Problems) => {
+    p.errors.push(...variant.gaps.map((gap) => `${at}.${gap}`));
+  };
+  if (variants.every((v) => v.gaps.length > 0)) closest(variants, reportGaps, gaps);
+
+  const fields = Object.entries(shape).map(([key, sub]) => {
+    const owners = variants.flatMap((v) => {
+      const prop = checker.getPropertyOfType(v.obj, key);
+      const type = prop
+        ? checker.getTypeOfSymbol(prop)
+        : checker.getIndexInfoOfType(v.obj, ts.IndexKind.String)?.type;
+      return type ? [{ ...v, type }] : [];
+    });
+    const possible = owners.filter((v) => v.gaps.length === 0);
+    if (owners.length && !possible.length) closest(owners, reportGaps, gaps);
+    return { key, sub, owners, possible };
+  });
+
+  // If a required field rules out a member we need, walk all its fields for
+  // diagnostics. A retyped leaf then gets its own path in the report.
+  const before = out.errors.length;
+  for (const { key, sub, owners, possible } of fields) {
+    if (!owners.length) out.unknown.push(`${at}.${key}`);
+    else {
+      const types = (gaps.errors.length ? owners : possible).map((v) => v.type);
+      walk(checker, sub, types, `${at}.${key}`, out, merged);
     }
-    out.errors.push(`${at}.${key}: required in the type, the server does not send it`);
   }
+  if (objects.length === 1 || out.errors.length === before) out.errors.push(...gaps.errors);
 }
 
 function readGoldens(): Record<string, { route: string; shape: Shape }> {
@@ -276,7 +369,16 @@ describe('the parity check itself', () => {
       h?: (string | number)[];
       i?: Inner & { y: string };
     };`;
-  const { checker, types } = probeTypes(['Probe'], extra);
+  const { checker, types } = probeTypes(
+    [
+      'Probe',
+      'string[] | number[]',
+      '({ a: string; value: { x: string; data: number[] } } | { b: boolean; id: number; value: { y: number; data: string[] } })[]',
+      '({ left: number; shared: { value: string } } | { right: number; shared: { value: boolean } })[]',
+      "{ kind: 'a'; x: number } | { kind: 'b'; y: string; z: number }",
+    ],
+    extra,
+  );
   const good: Shape = {
     a: 'string',
     c: 'string',
@@ -317,6 +419,57 @@ describe('the parity check itself', () => {
       ],
       unknown: ['$.d[].y', '$.i.w', '$.z'],
     });
+  });
+
+  it('checks a single answer against a later union member, and reports its drift', () => {
+    const type = types[4];
+    expect(compare(checker, { kind: 'string', y: 'string', z: 'number' }, type)).toEqual({
+      errors: [],
+      unknown: [],
+    });
+    expect(compare(checker, { kind: 'string', y: 'number', z: 'number' }, type)).toEqual({
+      errors: ['$.y: the server sends number, the type is string'],
+      unknown: [],
+    });
+  });
+
+  it('checks later array alternatives and keeps a single array consistent with its type', () => {
+    const type = types[1];
+    expect(compare(checker, ['number'], type)).toEqual({ errors: [], unknown: [] });
+    expect(compare(checker, [{ $or: ['string', 'number'] }], type).errors).toHaveLength(1);
+  });
+
+  it('walks all members represented in a merged row, including their nested fields', () => {
+    const type = types[2];
+    const value = { x: 'string', y: 'number', data: [{ $or: ['number', 'string'] }] };
+    const row = { a: 'string', b: 'boolean', id: 'number', value };
+    expect(compare(checker, [row], type)).toEqual({ errors: [], unknown: [] });
+    expect(compare(checker, [{ a: 'string', value: { x: 'string', data: [] } }], type)).toEqual({
+      errors: [],
+      unknown: [],
+    });
+    expect(
+      compare(checker, [{ ...row, value: { ...value, y: 'string', z: 'null' } }], type),
+    ).toEqual({
+      errors: ['$[].value.y: the server sends string, the type is number'],
+      unknown: ['$[].value.z'],
+    });
+    expect(compare(checker, [{ a: 'string', b: 'boolean', value }], type).errors).toContain(
+      '$[].id: required in the type, the server does not send it',
+    );
+  });
+
+  it('requires each represented row to account for its shared fields', () => {
+    const type = types[3];
+    const row = {
+      left: 'number',
+      right: 'number',
+      shared: { value: { $or: ['string', 'boolean'] } },
+    };
+    expect(compare(checker, [row], type)).toEqual({ errors: [], unknown: [] });
+    expect(compare(checker, [{ ...row, shared: { value: 'string' } }], type).errors).toHaveLength(
+      1,
+    );
   });
 
   it('reports null where the type has none, and an array where it wants an object', () => {
