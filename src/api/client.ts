@@ -1531,10 +1531,15 @@ export class ApiClient {
     });
   }
   /** Dismiss the caller's own follow request once it failed or was cancelled (204;
-   * capability `podcast_request_dismiss`). One still open (or added) is 409 `request_open`,
-   * one that is gone 404 `request_not_found`. */
-  dismissPodcastRequest(id: number) {
-    return this.request<void>('DELETE', `/podcasts/requests/${id}`);
+   * capability `podcast_request_dismiss`). One still open (or added) is 409 `request_open`;
+   * one the server no longer has (its own 404 `request_not_found`, not a proxy's) counts as
+   * dismissed. */
+  async dismissPodcastRequest(id: number): Promise<void> {
+    try {
+      await this.request<void>('DELETE', `/podcasts/requests/${id}`);
+    } catch (e) {
+      if (!(e instanceof ApiError && e.status === 404 && e.fromServer)) throw e;
+    }
   }
   /** Ask a followed show to check its feed now (202, the poll; an open poll is returned
    * as it is). Within a minute of the last check is 429 `checked_recently`; a show the

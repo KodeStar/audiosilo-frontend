@@ -3380,14 +3380,14 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     await expect(client().dismissPodcastRequest(81)).resolves.toBeUndefined();
     expect(call(m).url.toString()).toBe('https://h/api/v1/podcasts/requests/81');
     expect(call(m).init.method).toBe('DELETE');
-    for (const [status, code] of [
-      [409, 'request_open'],
-      [404, 'request_not_found'],
-    ] as const) {
-      refuse(status, code);
-      const e = await failure(client().dismissPodcastRequest(81));
-      expect([e.status, e.code]).toEqual([status, code]);
-    }
+    refuse(409, 'request_open');
+    const e = await failure(client().dismissPodcastRequest(81));
+    expect([e.status, e.code]).toEqual([409, 'request_open']);
+    // The server's own 404: the request is gone, as dismissed. A proxy's 404 is not.
+    refuse(404, 'request_not_found');
+    await expect(client().dismissPodcastRequest(81)).resolves.toBeUndefined();
+    installAnswers(() => ({ status: 404, body: 'Not Found' }));
+    expect((await failure(client().dismissPodcastRequest(81))).status).toBe(404);
   });
 
   it('decodes a 202 subscribing and the follow-by-address refusals', async () => {

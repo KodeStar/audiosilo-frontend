@@ -3331,17 +3331,14 @@ export function useCheckPodcast(connectionId?: string) {
 }
 
 /** Dismiss the listener's own follow request once it failed or was cancelled (capability
- * `podcast_request_dismiss`, not the module's): it leaves the cached follow requests. One
- * the server no longer has (404) leaves them too; one it still holds open (409
+ * `podcast_request_dismiss`, not the module's): it leaves the cached follow requests, as
+ * does one the server no longer has (`dismissPodcastRequest`); one it still holds open (409
  * `request_open`) is the caller's to say. */
 export function useDismissPodcastRequest(connectionId?: string) {
   return useCapabilityMutation(
     'podcast_request_dismiss',
     connectionId,
-    (api, v: { id: number }) =>
-      api.dismissPodcastRequest(v.id).catch((e: unknown) => {
-        if (!(e instanceof ApiError && e.status === 404 && e.fromServer)) throw e;
-      }),
+    (api, v: { id: number }) => api.dismissPodcastRequest(v.id),
     ({ qc, cid }, _answer, v) =>
       storeAnswer<MyPodcasts>(
         qc,

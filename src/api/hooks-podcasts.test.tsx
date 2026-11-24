@@ -443,18 +443,11 @@ describe('useDismissPodcastRequest (fe#126)', () => {
     expect(mockClients.c1.dismissPodcastRequest).not.toHaveBeenCalled();
   });
 
-  it.each([
-    ['dismissed', undefined],
-    ['already gone (404)', new ApiError(404, 'gone', 'request_not_found', undefined, false, true)],
-  ])('takes a %s request out of the cached follow requests', async (_name, failure) => {
-    const on = await mount(
-      { podcast_request_dismiss: true },
-      () => ({ m: useDismissPodcastRequest(), known: useCapability('podcast_request_dismiss') }),
-      undefined,
-      (c) => {
-        if (failure) c.dismissPodcastRequest.mockRejectedValue(failure);
-      },
-    );
+  it('takes a dismissed request out of the cached follow requests', async () => {
+    const on = await mount({ podcast_request_dismiss: true }, () => ({
+      m: useDismissPodcastRequest(),
+      known: useCapability('podcast_request_dismiss'),
+    }));
     on.qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), {
       shows: [],
       requests: [request({ id: 81, state: 'failed' }), request({ id: 82, state: 'queued' })],
@@ -467,29 +460,25 @@ describe('useDismissPodcastRequest (fe#126)', () => {
     expect(cached(on.qc)).toEqual([82]);
   });
 
-  it('keeps a request the server still holds open, or a proxy answered for', async () => {
-    for (const failure of [
-      new ApiError(409, 'open', 'request_open', undefined, false, true),
-      new ApiError(404, 'not found'),
-    ]) {
-      const on = await mount(
-        { podcast_request_dismiss: true },
-        () => ({ m: useDismissPodcastRequest(), known: useCapability('podcast_request_dismiss') }),
-        undefined,
-        (c) => c.dismissPodcastRequest.mockRejectedValue(failure),
-      );
-      on.qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), {
-        shows: [],
-        requests: [request({ id: 81, state: 'failed' })],
-      });
-      await waitFor(() => expect(on.result.current.known).toBe(true));
-      let error: unknown;
-      await act(async () => {
-        await on.result.current.m.mutateAsync({ id: 81 }).catch((e: unknown) => (error = e));
-      });
-      expect(error).toBe(failure);
-      expect(cached(on.qc)).toEqual([81]);
-    }
+  it('keeps a request the server still holds open', async () => {
+    const failure = new ApiError(409, 'open', 'request_open', undefined, false, true);
+    const on = await mount(
+      { podcast_request_dismiss: true },
+      () => ({ m: useDismissPodcastRequest(), known: useCapability('podcast_request_dismiss') }),
+      undefined,
+      (c) => c.dismissPodcastRequest.mockRejectedValue(failure),
+    );
+    on.qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), {
+      shows: [],
+      requests: [request({ id: 81, state: 'failed' })],
+    });
+    await waitFor(() => expect(on.result.current.known).toBe(true));
+    let error: unknown;
+    await act(async () => {
+      await on.result.current.m.mutateAsync({ id: 81 }).catch((e: unknown) => (error = e));
+    });
+    expect(error).toBe(failure);
+    expect(cached(on.qc)).toEqual([81]);
   });
 });
 
