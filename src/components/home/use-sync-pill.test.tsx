@@ -21,9 +21,12 @@ jest.mock('expo-router', () => ({ useIsFocused: () => true }));
 /* eslint-disable import/first */
 import { qk } from '@/api/hooks';
 import { useReachability } from '@/api/reachability';
+import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 import { usePendingCounts, useSyncPill } from './use-sync-pill';
 /* eslint-enable import/first */
+
+notifyQueriesSynchronously();
 
 // UPGRADE-05: the pill says when this device last read the progress, not when the newest
 // save was made (another device's, 24 minutes before this one signed in).

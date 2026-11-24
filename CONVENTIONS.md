@@ -233,7 +233,9 @@ component again (fe#280: a row's menu kept offering Download after the episode p
 episode not available). Read the cache at render through a subscription: a query hook, or
 `useCachedQueryData(key)` (`src/api/use-cached-query-data.ts`: cache only, no fetch, no
 observer, one cache listener per reader, notified in React Query's batches; `false` for no key
-reads nothing; a test of it sets `notifyQueriesSynchronously()`). `getQueryData` stays fine in
+reads nothing; a test of it sets `notifyQueriesSynchronously()`), or `useCachedQueryState(key,
+pick)` beside it for another part of the entry's state (its `dataUpdatedAt`), from the app's
+client or a context one. `getQueryData` stays fine in
 callbacks, effects and framework-free code. One render read is held on purpose: the Cast
 button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
 cache collects them with only the docked player showing. Jest builds the app's code with the
