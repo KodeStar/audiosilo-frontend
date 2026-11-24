@@ -103,6 +103,10 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
   return node;
 }
 
+/** How long the Media Session's cover from another origin may take to load before the
+ * lock screen takes its plain URL instead (`artworkFor`). */
+export const ARTWORK_FETCH_MS = 10_000;
+
 /**
  * The `crossOrigin` an element takes for `url`: `'anonymous'` for another origin's http(s)
  * stream (the server a player served elsewhere plays from, a second signed-in server), so
@@ -110,10 +114,6 @@ function makeCompressor(ctx: AudioContext, c: CompressorSettings): DynamicsCompr
  * page's own origin, the service worker's `/_offline/` copies, `blob:` and `data:`, as
  * before. Set before every `src`: it decides how that load is made.
  */
-/** How long the Media Session's cover from another origin may take to load before the
- * lock screen takes its plain URL instead (`artworkFor`). */
-export const ARTWORK_FETCH_MS = 10_000;
-
 const crossOriginFor = (url: string): string | null => corsModeFor(url, pageLocation()) ?? null;
 
 /**
