@@ -14,7 +14,7 @@ import { linesFor, scaleCapped, useFontScale, useLargeText } from '@/lib/text-sc
 import { useNow } from '@/lib/use-now';
 import { cn } from '@/lib/utils';
 import { selectBookKey, usePlayer } from '@/playback/store';
-import { timeLeft } from '@/playback/time-left';
+import { timeLeft, wholeSecondsLeft } from '@/playback/time-left';
 import { useSettings } from '@/stores/settings';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -340,7 +340,6 @@ export const SeekTimes = memo(function SeekTimes({
 }) {
   const { t } = useTranslation();
   const now = useNow(15_000);
-  const remaining = Math.max(0, length - elapsed);
   // Time left to the segment's end at the speed: the app's one speed rule.
   const wall = timeLeft(elapsed, length, rate)?.seconds ?? 0;
   const time = formatDuration(wall);
@@ -361,7 +360,7 @@ export const SeekTimes = memo(function SeekTimes({
         {time ? t(SEGMENT_LEFT[kind], { time, clock }) : ''}
       </Text>
       <Text variant="caption" style={tabularNums}>
-        -{formatClock(remaining)}
+        -{formatClock(wholeSecondsLeft(length - elapsed))}
       </Text>
     </View>
   );

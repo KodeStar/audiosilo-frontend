@@ -271,6 +271,17 @@ describe('SeekTimes', () => {
     expect(screen.getByText(/^3m left in the chapter · ends /)).toBeTruthy();
   });
 
+  // fe#197: the countdown and the words round a time left the same way (`wholeSecondsLeft`),
+  // so 59.6 s left reads "-1:00" beside "1m left", never "-0:59".
+  it('rounds the countdown as the words do', async () => {
+    await render(<SeekTimes elapsed={0} length={59.6} rate={1} />);
+    expect(screen.getByText('-1:00')).toBeTruthy();
+    expect(screen.getByText(/^1m left in the chapter · ends /)).toBeTruthy();
+    await render(<SeekTimes elapsed={10} length={69.4} rate={1} />);
+    expect(screen.getByText('-0:59')).toBeTruthy();
+    expect(screen.getByText(/^59s left in the chapter · ends /)).toBeTruthy();
+  });
+
   it('says file for a book without a whole-book timeline', async () => {
     await render(<SeekTimes elapsed={0} length={600} rate={1} kind="file" />);
     expect(screen.getByText(/^10m left in the file · ends /)).toBeTruthy();

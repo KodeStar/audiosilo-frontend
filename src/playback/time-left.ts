@@ -44,12 +44,20 @@ export function timeLeft(position: number, total: number, speed: number): TimeLe
   return { seconds: wallClockSeconds(total - Math.max(0, position), s), speed: s };
 }
 
+/** Whole seconds of a time left: to the nearest second, as `formatDuration` rounds it. The
+ * app's one rounding rule for a time left, so the seek row's countdown ("-1:00") and its
+ * words ("1m left in the chapter") agree at a minute's edge (fe#197), and the elapsed clock
+ * (whole seconds down) plus the countdown add up to the length `formatDuration` gives. */
+export function wholeSecondsLeft(seconds: number): number {
+  return seconds > 0 ? Math.round(seconds) : 0;
+}
+
 /** The seconds `formatDuration` tells apart, for a selector that should change only when
  * the words do: whole minutes from a minute up ("22h 27m"), whole seconds below ("45s").
  * `formatTimeLeft` of the result reads exactly as of the input. */
 export function displaySeconds(seconds: number): number {
   if (!(seconds > 0)) return 0;
-  const s = Math.round(seconds);
+  const s = wholeSecondsLeft(seconds);
   if (s >= 60) return Math.floor(s / 60) * 60;
   // Under half a second still reads "0s", not nothing.
   return s > 0 ? s : 0.1;
