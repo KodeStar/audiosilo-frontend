@@ -1,3 +1,8 @@
+/** Whether `code` is the React Compiler's output: it opens a memo cache. */
+export function compiledByCompiler(code: string): boolean {
+  return /compilerRuntime\.c\)\(\d+\)/.test(code);
+}
+
 /**
  * Whether the React Compiler built `fn` (Jest builds the app's code with it, as the app
  * ships): its body opens with the compiler's memo cache. The compiler skips a component or
@@ -6,5 +11,5 @@
  * whatever the code does.
  */
 export function builtByCompiler(fn: (...args: never[]) => unknown): boolean {
-  return /compilerRuntime\.c\)\(\d+\)/.test(String(fn));
+  return compiledByCompiler(String(fn));
 }
