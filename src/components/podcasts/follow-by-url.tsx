@@ -40,7 +40,7 @@ type Outcome =
  * says so when it was asked for as private but the library has it as a public feed; a new
  * one is a request read live from the follow requests (the page's list polls them) until
  * it ends: followed with Open show, or why it could not be added, or cancelled, never
- * "Adding" after it failed (fe#126).
+ * "Adding" after it failed (fe#126), nor once the list no longer holds it (dismissed).
  */
 export function FollowByUrl({
   connectionId,
@@ -61,7 +61,8 @@ export function FollowByUrl({
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
   const { data: shows } = usePodcastShows(libraryId, connectionId);
   // How the request on its way ended (null while open or not read yet, `unknown` once the
-  // list no longer holds it: what the follow answered stands then).
+  // list no longer holds it: dismissed under it, or past the list's week; nothing is said
+  // then, never "Adding" again). The follow put its request in the list (`storeFollowByUrl`).
   const ended = outcome?.kind === 'adding' ? requestEnd(requests, outcome.requestId) : null;
   const request =
     outcome?.kind === 'adding' ? requests?.find((r) => r.id === outcome.requestId) : undefined;
@@ -185,7 +186,7 @@ export function FollowByUrl({
         <Text variant="body" accessibilityLiveRegion="polite" testID="follow-by-url-cancelled">
           {t('podcasts.find.address.cancelled')}
         </Text>
-      ) : outcome?.kind === 'adding' ? (
+      ) : outcome?.kind === 'adding' && ended?.kind !== 'unknown' ? (
         <Text variant="body" accessibilityLiveRegion="polite" testID="follow-by-url-adding">
           {t('podcasts.find.address.adding')}
         </Text>

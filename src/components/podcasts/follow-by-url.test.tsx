@@ -139,14 +139,23 @@ describe('FollowByUrl', () => {
       expect(mockOpenShow).toHaveBeenCalledWith('c1', 7, 'New Show');
     });
 
-    it('keeps Adding while it is open, or once the list no longer holds it', async () => {
+    it('keeps Adding while it is open, or before the list is read', async () => {
       const view = await asked();
+      expect(screen.getByTestId('follow-by-url-adding')).toBeTruthy();
       mockRequests = [request({ state: 'queued' })];
       await rerender(view);
       expect(screen.getByTestId('follow-by-url-adding')).toBeTruthy();
+    });
+
+    it('says nothing once the list no longer holds it (dismissed), never Adding again', async () => {
+      const view = await asked();
+      mockRequests = [request({ state: 'failed', error: { code: 'not_a_feed', message: 'x' } })];
+      await rerender(view);
+      expect(screen.getByTestId('follow-by-url-failed')).toBeTruthy();
       mockRequests = [];
       await rerender(view);
-      expect(screen.getByTestId('follow-by-url-adding')).toBeTruthy();
+      expect(screen.queryByTestId('follow-by-url-failed')).toBeNull();
+      expect(screen.queryByTestId('follow-by-url-adding')).toBeNull();
     });
   });
 
