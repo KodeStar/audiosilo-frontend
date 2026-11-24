@@ -236,11 +236,14 @@ observer, one cache listener per reader, notified in React Query's batches; `fal
 reads nothing; a test of it sets `notifyQueriesSynchronously()`). `getQueryData` stays fine in
 callbacks, effects and framework-free code. One render read is held on purpose: the Cast
 button's item and chapters (`use-cast-button.ts`), which a subscription would lose when the
-cache collects them with only the docked player showing. Jest leaves the compiler off, so a
-test of code that depends on it renders through `withReactCompiler(require, './module')`
-(`src/testing/react-compiler.ts`), called in a `describe` or at a file's top level, never in
-a test: it builds once in that scope's `beforeAll` (the first build loads Babel and outlasts
-a test's 5 s on a loaded machine) and returns a getter its tests call.
+cache collects them with only the docked player showing. Jest builds the app's code with the
+compiler on too (the `src/` transform in `jest.config.js`; test files and `src/testing/` stay
+as written; `src/testing/react-compiler.test.ts` guards it), so a test renders what ships,
+with `--coverage` too: the compiler is a plugin there, with the preset's options, so it
+builds each file before istanbul adds its counters (why: the comment in `jest.config.js`). The
+compiler skips a component or hook it can't build without a word (a condition inside a `try`
+is enough), so a test of what it memoises first asserts `builtByCompiler(subject)`
+(`src/testing/react-compiler.ts`; the fe#280 guard in `book-actions.test.tsx` does).
 
 **Client identification.** `ApiClient.request()` sends
 `X-AudioSilo-Client: AudioSilo/<APP_VERSION or dev> (<Platform.OS>)` on every API call
@@ -4750,7 +4753,11 @@ direct tests: `src/api/client.ts`, `src/lib/*`, `src/playback/book-queue.ts` +
 of `src/app/**` screens so it stays unit-testable. Harness: **jest-expo 58 (Jest 30)
 + @testing-library/react-native 14** - matchers are built in (no `jest-native`);
 `jest.setup.ts` provides in-memory mocks for `expo-secure-store` + AsyncStorage,
-and tests mock `fetch` / `@/api/reachability` as needed. Flip `Platform.OS` at
+and tests mock `fetch` / `@/api/reachability` as needed. A mocked hook whose answer a test
+changes mid-test is wrapped in `mockedHook(...)` and the test then calls `await mocksChanged()`
+(`src/testing/mock-hooks.ts`), never a `rerender` with the same props: the real hook (a query,
+a store, the route) re-renders its caller, and under the React Compiler a same-props rerender
+reaches only the root, every child's element being memoised (fe#355). Flip `Platform.OS` at
 runtime to cover web-vs-native branches. A suite that needs a real DOM names
 `@jest-environment ./src/testing/jsdom-environment.js`, never plain `jsdom`: on Jest 30 the
 stock environment breaks under React Native's jest setup (it redefines `window`) and when

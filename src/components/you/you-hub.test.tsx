@@ -4,7 +4,8 @@ let mockParams: Record<string, string> = {};
 const mockSetOptions = jest.fn();
 const mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => mockParams,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useLocalSearchParams: require('@/testing/mock-hooks').mockedHook(() => mockParams),
   useNavigation: () => ({ setOptions: mockSetOptions }),
   router: { setParams: (p: object) => mockSetParams(p) },
 }));
@@ -103,6 +104,7 @@ import { Text } from 'react-native';
 
 import { useSubNav } from '@/components/shell/sub-nav-store';
 import type { PlayerModule } from '@/modules/registry';
+import { mocksChanged } from '@/testing/mock-hooks';
 
 import { YouHub } from './you-hub';
 /* eslint-enable import/first */
@@ -213,7 +215,7 @@ describe('YouHub scrolling', () => {
     await screen.rerender(<YouHub />);
     expect(screen.getByTestId('you-hub-scroll')).toBe(first);
     mockParams = { section: 'stats' };
-    await screen.rerender(<YouHub />);
+    await mocksChanged();
     expect(screen.getByTestId('you-hub-scroll')).not.toBe(first);
   });
 });

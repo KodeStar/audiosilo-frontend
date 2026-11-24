@@ -1,12 +1,14 @@
 import { act, fireEvent, screen } from '@testing-library/react-native';
 
 import { ApiError } from '@/api/client';
+import { mocksChanged } from '@/testing/mock-hooks';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 let mockParams: Record<string, string | undefined> = {};
 const mockSetParams = jest.fn();
 jest.mock('expo-router', () => ({
-  useLocalSearchParams: () => mockParams,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useLocalSearchParams: require('@/testing/mock-hooks').mockedHook(() => mockParams),
   router: { setParams: (p: unknown) => mockSetParams(p) },
 }));
 jest.mock('@/components/layout/content-scope', () => ({
@@ -14,7 +16,10 @@ jest.mock('@/components/layout/content-scope', () => ({
 }));
 // The page's connection: the route's scope, else the default one (a link without it).
 let mockCid = 'c1';
-jest.mock('@/api/provider', () => ({ useCid: () => mockCid }));
+jest.mock('@/api/provider', () => ({
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useCid: require('@/testing/mock-hooks').mockedHook(() => mockCid),
+}));
 jest.mock('@/components/player/mini-player', () => ({ useMiniPlayerInset: () => 0 }));
 const mockTitles: (string | undefined)[] = [];
 jest.mock('@/lib/use-page-title', () => ({
@@ -24,7 +29,8 @@ jest.mock('@/lib/use-page-title', () => ({
 let mockOnline = true;
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
-  useDeviceOnline: () => mockOnline,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useDeviceOnline: require('@/testing/mock-hooks').mockedHook(() => mockOnline),
 }));
 
 let mockCaps: Record<string, boolean | undefined> = {};
@@ -45,31 +51,35 @@ let mockServerFetching = false;
 let mockServerFailures = 0;
 const mockServerRetry = jest.fn();
 const mockLibrariesCids = new Set<string>();
-jest.mock('@/api/hooks', () => ({
-  useServerInfo: () => ({
-    isPaused: mockServerPaused,
-    error: mockServerError,
-    isFetching: mockServerFetching,
-    errorUpdateCount: mockServerFailures,
-    refetch: mockServerRetry,
-  }),
-  useCapability: (flag: string, cid?: string) => {
-    mockCapCids.add(cid);
-    return mockCaps[flag];
-  },
-  useLibrariesOf: (cid: string) => {
-    mockLibrariesCids.add(cid);
-    return {
-      data: mockLibraries,
-      isFetching: mockLibrariesFetching,
-      isPaused: mockLibrariesPaused,
-      error: mockLibrariesError,
-      dataUpdatedAt: mockLibrariesReadAt,
-      errorUpdatedAt: mockLibrariesFailedAt,
-      refetch: mockLibrariesRead,
-    };
-  },
-}));
+jest.mock('@/api/hooks', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { mockedHook } = require('@/testing/mock-hooks');
+  return {
+    useServerInfo: mockedHook(() => ({
+      isPaused: mockServerPaused,
+      error: mockServerError,
+      isFetching: mockServerFetching,
+      errorUpdateCount: mockServerFailures,
+      refetch: mockServerRetry,
+    })),
+    useCapability: mockedHook((flag: string, cid?: string) => {
+      mockCapCids.add(cid);
+      return mockCaps[flag];
+    }),
+    useLibrariesOf: mockedHook((cid: string) => {
+      mockLibrariesCids.add(cid);
+      return {
+        data: mockLibraries,
+        isFetching: mockLibrariesFetching,
+        isPaused: mockLibrariesPaused,
+        error: mockLibrariesError,
+        dataUpdatedAt: mockLibrariesReadAt,
+        errorUpdatedAt: mockLibrariesFailedAt,
+        refetch: mockLibrariesRead,
+      };
+    }),
+  };
+});
 
 // Each section has its own suite: here, which one shows and with what.
 jest.mock('./directory-search', () => ({
@@ -250,9 +260,9 @@ describe('FindShowsScreen', () => {
       mockServerFetching = true;
       return new Promise<void>((resolve) => (settle = resolve));
     });
-    const view = await mountWithPortal(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
     await fireEvent.press(screen.getByText('Retry'));
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).toBeBusy();
     // Failed again: the sentence with Retry ready.
@@ -260,7 +270,7 @@ describe('FindShowsScreen', () => {
     mockServerFailures = 2;
     mockServerFetching = false;
     await act(async () => settle());
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(screen.getByText("Couldn't check whether you can add shows.")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Retry' })).not.toBeBusy();
   });
@@ -271,11 +281,11 @@ describe('FindShowsScreen', () => {
     signIn();
     mockServerError = new ApiError(401, 'unauthorized');
     mockServerFailures = 1;
-    const view = await mountWithPortal(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
     expect(screen.queryByText("Couldn't check whether you can add shows.")).toBeNull();
     mockServerError = null;
     mockServerFetching = true;
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(screen.queryByText("Couldn't check whether you can add shows.")).toBeNull();
     expect(screen.queryByText('Retry')).toBeNull();
   });
@@ -336,12 +346,12 @@ describe('FindShowsScreen', () => {
     mockCid = 'c2';
     signIn({}, 'c2');
     mockLibraries = [{ id: 3, kind: 'podcasts' }];
-    const view = await mountWithPortal(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
     // Kept from before the page opened: read again before the library is called missing.
     expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
     mockLibrariesReadAt = 2;
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(screen.getByTestId('find-shows-library-missing')).toBeTruthy();
     expect(screen.getByText("This link doesn't point to anything here.")).toBeTruthy();
     expect(screen.queryByTestId('section-search')).toBeNull();
@@ -352,12 +362,12 @@ describe('FindShowsScreen', () => {
   it('reads the list again when the page opens after its last read failed', async () => {
     mockLibrariesError = new ApiError(502, 'bad gateway');
     mockLibrariesFailedAt = 1;
-    const view = await mountWithPortal(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('section-search')).toBeTruthy();
     // Failed again: not asked again on this library.
     mockLibrariesFailedAt = 2;
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
   });
 
@@ -367,8 +377,8 @@ describe('FindShowsScreen', () => {
       mockLibraries = [{ id: 3 }, { id: 7 }];
       mockLibrariesReadAt = 2;
     });
-    const view = await mountWithPortal(<FindShowsScreen />);
-    await view.rerender(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
+    await mocksChanged();
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
     expect(screen.getByTestId('section-search').props.children).toBe('search 7');
@@ -376,13 +386,13 @@ describe('FindShowsScreen', () => {
 
   it('reads the list again once per library the page moves to', async () => {
     mockLibraries = [{ id: 7 }];
-    const view = await mountWithPortal(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
     expect(mockLibrariesRead).not.toHaveBeenCalled();
     mockParams = { connection: 'c1', library: '8' };
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
     expect(screen.queryByTestId('find-shows-library-missing')).toBeNull();
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(mockLibrariesRead).toHaveBeenCalledTimes(1);
   });
 
@@ -396,12 +406,12 @@ describe('FindShowsScreen', () => {
   it('asks nothing while offline, nor again for a list read since the page opened', async () => {
     mockLibraries = [{ id: 3 }];
     mockOnline = false;
-    const view = await mountWithPortal(<FindShowsScreen />);
+    await mountWithPortal(<FindShowsScreen />);
     expect(mockLibrariesRead).not.toHaveBeenCalled();
     // The reconnect's own read answered without the library: missing, no second ask.
     mockOnline = true;
     mockLibrariesReadAt = 2;
-    await view.rerender(<FindShowsScreen />);
+    await mocksChanged();
     expect(mockLibrariesRead).not.toHaveBeenCalled();
     expect(screen.getByTestId('find-shows-library-missing')).toBeTruthy();
   });

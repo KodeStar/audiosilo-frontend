@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
 import type { LibrariesOfServer } from '@/api/hooks';
+import { mocksChanged } from '@/testing/mock-hooks';
 
 jest.mock('expo-router', () => ({
   Link: ({ children }: { children: unknown }) => children,
@@ -20,7 +21,8 @@ let mockFavourites: { favourites: object[]; error?: unknown; unreadError?: unkno
   favourites: [],
 };
 jest.mock('@/api/hooks', () => ({
-  useFavouritesAll: () => mockFavourites,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  useFavouritesAll: require('@/testing/mock-hooks').mockedHook(() => mockFavourites),
   useLibrariesAll: () => ({
     groups: mockLists,
     libraries: mockLists.flatMap((g) => g.libraries),
@@ -71,16 +73,16 @@ describe('FoldersMode', () => {
   it('says the Favourites row failed only for a list with nothing kept', async () => {
     const down = new Error('down');
     mockFavourites = { favourites: [], error: down, unreadError: down };
-    const view = await render(<FoldersMode />);
+    await render(<FoldersMode />);
     expect(screen.getByText("Couldn't load your favourites")).toBeTruthy();
 
     mockFavourites = { favourites: [], error: down, unreadError: null };
-    await view.rerender(<FoldersMode />);
+    await mocksChanged();
     expect(screen.getByText('Tap the heart on any item to curate')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your favourites")).toBeNull();
 
     mockFavourites = { favourites: [{}], error: down, unreadError: null };
-    await view.rerender(<FoldersMode />);
+    await mocksChanged();
     expect(screen.getByText('1 item')).toBeTruthy();
   });
 
