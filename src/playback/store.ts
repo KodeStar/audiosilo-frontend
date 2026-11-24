@@ -204,7 +204,7 @@ let playIntent: 'page' | 'remote' | null = null;
  * until a play is asked for again, a start still loading does not play once it has loaded
  * (`startEngine`). */
 let yieldedAttempt = -1;
-/** Pending stall→error timer and its deadline (see armStallWatchdog). */
+/** The pending stall→error `engineTimeout` (see armStallWatchdog). */
 let stallTimer: { cancel(): void } | null = null;
 /** Until when a `playing` report may be older than a pause the store fenced: the stall
  * watchdog's (`fireStallWatchdog`), or a tab's give-way pause of a Cast receiver still
@@ -4078,9 +4078,6 @@ async function createService(): Promise<PlaybackService> {
   // move or speed. Read inside the service's listeners only: `reportedBook` is the book of
   // the report being handled.
   const heldForAnother = engineHoldsOtherBook;
-  // A report held for another book: the watchdog still runs (re-armed while an adoption is
-  // under way), and the adoption reads the engine itself when it lands.
-  const holdReport = () => engineTick();
   // Binaries whose items never name a book can still identify the queue through the
   // car sync. A file change or remote seek can be its first report of a car start.
   const canCheckUnnamed = () =>
@@ -4175,7 +4172,9 @@ async function createService(): Promise<PlaybackService> {
       unnamedPlays = false;
       otherBookReported(other, raw);
       noteOtherBookPlays();
-      holdReport();
+      // Held for another book: the watchdog still runs (re-armed while an adoption is under
+      // way), and the adoption reads the engine itself when it lands.
+      engineTick();
       return;
     }
     otherReport = null;
@@ -4195,7 +4194,7 @@ async function createService(): Promise<PlaybackService> {
     // older binary names none). Before the fault's stop below, as a named one's: a faulted
     // store's book never pauses that book's play, nor reloads over it.
     if (unnamedHeld || engineIsAnothers()) {
-      holdReport();
+      engineTick();
       return;
     }
     // Collapse the native bridge's noisy resume/retry event stream to a spinner. While

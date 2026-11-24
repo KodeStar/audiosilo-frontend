@@ -96,9 +96,9 @@ const consumers = new Set<(now: number) => void>();
 const timeouts = new Set<(now: number) => void>();
 
 /** An engine event arrived (the store calls this on every snapshot it takes): run every
- * running `engineTicker` that is due, and every `engineTimeout` past its deadline. One stopped by an earlier one in this same pass
- * does not run (the sleep timer's fire stops its fade, which must not restore the volume
- * before the pause lands). */
+ * `engineTimeout` past its deadline, then every running `engineTicker` that is due. One
+ * stopped by an earlier one in this same pass does not run (the sleep timer's fire stops its
+ * fade, which must not restore the volume before the pause lands). */
 export function engineTick() {
   const now = Date.now();
   for (const due of [...timeouts]) due(now);
