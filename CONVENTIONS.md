@@ -915,10 +915,15 @@ Read-along); the console covers everything else.
   The community has both: `covered` (no action; `useGenerate` splits it out as `covered`, and
   the book page's `GenerateCovered` says so, admin-only, with "See characters" opening the
   Characters tab; the companion never shows it). Else
-  `regenerate` (the book menu) when some were generated here, else `generate`. Nothing until
-  the book's `/meta` answer
+  `regenerate` (the book menu) when generated content shows (`generatedShown`:
+  `generated.characters`, or `generated.recaps` with a non-empty `recaps` list; a masked file never
+  reaches `/meta` and a generated summary alone is no recaps), else `generate`: the one rule the
+  console reads from its estimate as `has.local[d] && !has.community[d]` (server#218, pinned on
+  the server by `TestGeneratedShownAgrees`). Nothing until the book's `/meta` answer
   (`metaAnswered`) and its jobs are known, or while a job shows its status (`statusJob`: the
-  newest generate job while open or once failed). The player always sends `GENERATE_PARAMS`
+  newest generate job while open or once failed; a failed one gives way to the covered line once
+  the community has both, `communityCovers`, by the book's state now, not the job's time: nothing
+  is left to try again, server#218). The player always sends `GENERATE_PARAMS`
   (`source: auto`, `contribute: local`): it never offers to contribute.
 - **Surfaces**: `useGenerate` (one book's model: allowed, offer, the confirmation, the queue
   and cancel writes; its own job read is `active: false` with a `select`, so progress polls
@@ -1801,6 +1806,15 @@ and the About card under its eyebrow for a generated description) and never the 
 CC BY-SA credit:
 **`communityCredit(work, dimension)`** is the work's `attribution` unless that dimension was
 generated, and every `Attribution` beside characters (or a lone list recap) reads through it.
+The book page's earlier books (`PreviousBooksSection`) are other works: each opened row credits
+its own work's `attribution` (its `source_url` is that work's page), never the current work's,
+which is absent when the current work's content was all generated (server#218).
+Every rendered credit links its `source_url` (CC BY-SA asks the material be linked) and its
+licence the deed: `Attribution` and Search's `CharacterCredits` draw both with `CaptionLink`
+(companion-pieces.tsx), plain text when the URL is missing or not http(s). Search credits the
+character rows on screen (`characterCredits(hits)`, each hit carrying its book's
+`attribution`), one line per credit, licence and source page, naming the book when there are
+several.
 A Recaps panel reads
 **`recapMarks(generated, shown)`** instead (Bridge 1e): the whole-book summary's source is
 `generated.recap_summary` (absent on an older server, whose `recaps` then stands for both),
@@ -1808,7 +1822,9 @@ the list's `generated.recaps` (the wire sets it for either part, but the server 
 summary only with its generated list, so a shown list it flags is generated), so a community
 summary beside a generated list keeps its credit and each part wears its own chip when they
 differ (one chip heads the panel when every shown part was generated; a part's chip sits under
-the list's heading or above the summary).
+the list's heading or above the summary). The book page passes `shown.previous` (its previous
+books, the community's): its generated parts then take their own chips instead of one heading
+the panel, and its `credit` stays this work's own parts' (server#218).
 
 **Player-redesign data API (Phase 1a, the wire).** `src/api` mirrors the
 server's additive redesign endpoints, each gated on its own capability flag (absent on
@@ -1833,7 +1849,15 @@ places its next work, else series -> folder -> none, `source` naming who produce
 `next`; a `work` without `local` is the rail's next work left unplaced; a community
 `next` can be in another library);
 `coverUrl(lib, path, {size, version})` (`cover_sizes`; `size` bounds the longer side;
-`version` is the book's `cover_version`, sent as `v=` purely as a cache buster);
+`version` is the book's `cover_version`, sent as `v=` purely as a cache buster; a
+`/me/progress` row, a `Favourite`, an `FsEntry` and a `HouseListeningRow` carry their book's
+too (server#215; the `FsEntry`'s is mirrored only, folder rows draw no cover); a progress
+row's cover (Home's tiles, Now and Previously on cards, See all, Up next's suggestions, the
+palette, the car) takes the row's own before its `/item`'s, so the URL does not change as
+the book loads (the Finish what you started shelf reads no `/item`: the row's alone), and a
+progress edit's echo (which carries none) keeps the listed row's; a favourite's cover (Home's
+rail, the Favourites page, the Collections mode's Favourites card) and a household row's
+take theirs);
 `bookMeta(..., {includePrevious, hideSpoilers})` and `useBookMeta(..., opts)`
 (`meta_bundle`; each variant has its own `qk.bookMeta` key; `nextBook` and an
 `includePrevious` request get the server's 30 s budget, not 15 s). `Book` gains

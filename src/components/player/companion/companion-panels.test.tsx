@@ -158,6 +158,28 @@ describe("Who's who", () => {
     await press('CC BY-SA 4.0');
     expect(mockOpenUrl).toHaveBeenCalledWith(attribution.license_url);
   });
+
+  // CC BY-SA asks the material be linked where practicable: the credit opens the work's page.
+  it("links the credit to the work's page, by a name that starts with its words", async () => {
+    await mount(<StoryPanel data={data()} />);
+    const link = screen.getByRole('link', {
+      name: 'Community notes from AudioSilo Meta community contributors, opens the source page',
+    });
+    await act(async () => fireEvent.press(link));
+    expect(mockOpenUrl).toHaveBeenCalledWith(attribution.source_url);
+  });
+
+  it('keeps the credit as plain text without a source page', async () => {
+    for (const source_url of ['', 'javascript:alert(1)']) {
+      mockOpenUrl.mockClear();
+      await mount(<WhoPanel data={data({ attribution: { ...attribution, source_url } })} />);
+      expect(
+        screen.getByText('Community notes from AudioSilo Meta community contributors'),
+      ).toBeTruthy();
+      expect(screen.queryByRole('link', { name: /opens the source page/ })).toBeNull();
+      expect(screen.getAllByRole('link')).toHaveLength(1);
+    }
+  });
 });
 
 describe('Story so far', () => {

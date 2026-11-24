@@ -458,7 +458,8 @@ appears in 5. City of Bells". A character whose chapter you just crossed animate
 with **Show anyway** (then a warning badge and "Hide them again"). Story so far: "Up to chapter 22", written to
 stop exactly there; the next paragraph fades in when you finish a chapter. The whole-book summary (`in_short`
 includes the ending) is blurred behind "Show the whole-book summary". Every community block ends with the
-attribution "Community notes from AudioSilo Meta contributors · CC BY-SA 4.0". Characters or recaps a Bridge
+attribution "Community notes from AudioSilo Meta contributors · CC BY-SA 4.0", the credit linking the work's page
+on the metadata site (`source_url`, plain text without one) and the licence its deed. Characters or recaps a Bridge
 generated on the listener's server (an unmatched book's, or the half the community lacks) never carry that
 credit: their panel opens with a quiet "Generated on this server" chip instead (`GeneratedMark`; the book page's
 About card wears the same chip, `GeneratedChip`, under its eyebrow when its text is a description generated on the

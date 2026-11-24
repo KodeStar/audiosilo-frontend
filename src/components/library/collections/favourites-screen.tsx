@@ -115,6 +115,7 @@ export function FavouritesScreen() {
             title={bookTitle(f.title, f.path)}
             author={f.author}
             caption={f.author}
+            coverVersion={f.cover_version}
             server={server(f)}
             width={tile}
           />
@@ -174,6 +175,7 @@ function BookRow({ fav, server }: { fav: SourcedFavourite; server?: string }) {
       title={bookTitle(fav.title, fav.path)}
       author={fav.author}
       subtitle={subtitle}
+      coverVersion={fav.cover_version}
       onPress={() => openBook(fav.connectionId, fav.library_id, fav.path)}
       trailing={<UnfavouriteButton fav={fav} />}
     />

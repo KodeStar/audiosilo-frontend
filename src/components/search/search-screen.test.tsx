@@ -3,6 +3,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 const mockRouter = { push: jest.fn(), navigate: jest.fn() };
 // A tile's actions menu (book actions, the player) has its own tests.
 jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
+const mockOpenExternal = jest.fn();
+jest.mock('@/lib/support', () => ({
+  ...jest.requireActual('@/lib/support'),
+  openExternalUrl: (url: string) => mockOpenExternal(url),
+}));
 jest.mock('expo-router', () => ({
   get router() {
     return mockRouter;
@@ -69,7 +74,7 @@ const empty = (): Results => ({
   authors: [],
   narrators: [],
   peopleState: idle(),
-  characters: { hits: [], total: 0, hidden: 0, attributions: [] },
+  characters: { hits: [], total: 0, hidden: 0 },
   charactersState: idle(),
   settled: true,
   total: 0,
@@ -203,18 +208,16 @@ describe('SearchScreen, results', () => {
             connectionId: 'a',
             libraryId: 1,
             path: "Expanse/Caliban's War",
+            attribution: {
+              credit: 'AudioSilo Meta contributors',
+              license: 'CC BY-SA 4.0',
+              license_url: '',
+              source_url: 'https://meta.example/work?id=calibans-war',
+            },
           },
         ],
         total: 1,
         hidden: 2,
-        attributions: [
-          {
-            credit: 'AudioSilo Meta contributors',
-            license: 'CC BY-SA 4.0',
-            license_url: '',
-            source_url: '',
-          },
-        ],
       },
       total: 4,
     };
@@ -245,7 +248,13 @@ describe('SearchScreen, results', () => {
     expect(
       screen.getByText('2 more matches after your place in the book, hidden to avoid spoilers.'),
     ).toBeTruthy();
-    expect(screen.getByText('AudioSilo Meta contributors · CC BY-SA 4.0')).toBeTruthy();
+    await fireEvent.press(
+      screen.getByRole('link', { name: 'AudioSilo Meta contributors, opens the source page' }),
+    );
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://meta.example/work?id=calibans-war');
+    // No deed URL: the licence stays text.
+    expect(screen.getByText('CC BY-SA 4.0')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /Licence/ })).toBeNull();
 
     // Opening a result opens the book and keeps the search.
     await fireEvent.press(
@@ -256,6 +265,55 @@ describe('SearchScreen, results', () => {
       params: { libraryId: '1', connection: 'a', path: "Expanse/Caliban's War" },
     });
     expect(useRecentSearches.getState().recent).toEqual(['meng']);
+  });
+
+  // Two books' credits read alike but link different pages: each names its book.
+  it('names the book on each credit when the characters come from several', async () => {
+    const credit = (source_url: string) => ({
+      credit: 'AudioSilo Meta contributors',
+      license: 'CC BY-SA 4.0',
+      license_url: 'https://creativecommons.org/licenses/by-sa/4.0/',
+      source_url,
+    });
+    const hit = (name: string, bookTitle: string, source_url: string) => ({
+      key: name,
+      name,
+      bookTitle,
+      connectionId: 'a',
+      libraryId: 1,
+      path: `Expanse/${bookTitle}`,
+      attribution: credit(source_url),
+    });
+    mockResults = {
+      ...empty(),
+      characters: {
+        hits: [
+          hit('James Holden', "Caliban's War", 'https://meta.example/work?id=calibans-war'),
+          hit('Julie Mao', 'Leviathan Wakes', ''),
+        ],
+        total: 2,
+        hidden: 0,
+      },
+      total: 2,
+    };
+    await render(<SearchScreen />);
+    await type('j');
+    await fireEvent.press(
+      screen.getByRole('link', {
+        name: "Caliban's War · AudioSilo Meta contributors, opens the source page",
+      }),
+    );
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://meta.example/work?id=calibans-war');
+    // No source page: the credit stays text.
+    expect(screen.getByText('Leviathan Wakes · AudioSilo Meta contributors')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /^Leviathan Wakes/ })).toBeNull();
+    // Each licence opens its deed.
+    const deeds = screen.getAllByRole('link', { name: 'Licence: CC BY-SA 4.0' });
+    expect(deeds).toHaveLength(2);
+    await fireEvent.press(deeds[1]);
+    expect(mockOpenExternal).toHaveBeenLastCalledWith(
+      'https://creativecommons.org/licenses/by-sa/4.0/',
+    );
   });
 
   it('says when nothing matches, once every group has answered', async () => {

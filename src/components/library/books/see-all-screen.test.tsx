@@ -17,29 +17,36 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
-// The grid and its tiles have their own tests; here, only which state the page is in.
+// The grid and its tiles have their own tests; here, which state the page is in and the
+// cover version each finished tile is handed.
 jest.mock('@/components/library/cover-grid', () => {
   const { Text, View } = jest.requireActual('react-native');
   return {
     CoverGrid: ({
       data,
+      renderItem,
       ListHeaderComponent,
       ListEmptyComponent,
     }: {
       data: readonly unknown[];
+      renderItem: (item: unknown, tile: number) => ReactElement;
       ListHeaderComponent: ReactElement;
       ListEmptyComponent: ReactElement;
     }) => (
       <View>
         {ListHeaderComponent}
         {data.length === 0 ? ListEmptyComponent : <Text>{`${data.length} tiles`}</Text>}
+        {data.map((item, i) => (
+          <View key={i}>{renderItem(item, 120)}</View>
+        ))}
       </View>
     ),
     CoverGridSkeleton: () => <Text>loading grid</Text>,
   };
 });
+const mockCoverTile = jest.fn((_props: { coverVersion?: string }) => null);
 jest.mock('@/components/library/cover-tile', () => ({
-  CoverTile: () => null,
+  CoverTile: (p: { coverVersion?: string }) => mockCoverTile(p),
   useServerFlag: () => () => undefined,
 }));
 jest.mock('./book-items', () => ({ BookTile: () => null }));
@@ -115,6 +122,13 @@ describe('SeeAllScreen', () => {
     await render(<SeeAllScreen />);
     expect(screen.getByText("You're offline")).toBeTruthy();
     expect(screen.queryByText('No finished books yet.')).toBeNull();
+  });
+
+  it("hands a finished tile its progress row's cover_version", async () => {
+    mockParams = { type: 'finished' };
+    mockProgress = { ...read, progress: [{ ...place(true), cover_version: 'cv5' }] };
+    await render(<SeeAllScreen />);
+    expect(mockCoverTile).toHaveBeenCalledWith(expect.objectContaining({ coverVersion: 'cv5' }));
   });
 
   it('keeps showing the finished books it has while another server is held', async () => {

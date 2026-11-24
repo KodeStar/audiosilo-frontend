@@ -30,21 +30,33 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
-// The cards and dialogs have their own tests; here, only which state the list is in.
+// The cards and dialogs have their own tests; here, which state the list is in and the
+// covers the Favourites card fans.
+const mockCoverFan = jest.fn((_covers: { path: string; coverVersion?: string }[]) => null);
 jest.mock('../collections/collection-card', () => {
   const { Text } = jest.requireActual('react-native');
   return {
     CollectionCard: ({ collection }: { collection: Collection }) => <Text>{collection.name}</Text>,
-    CollectionCardFrame: ({ title, lines }: { title: string; lines: string[] }) => (
+    CollectionCardFrame: ({
+      title,
+      lines,
+      art,
+    }: {
+      title: string;
+      lines: string[];
+      art?: React.ReactNode;
+    }) => (
       <>
         <Text>{title}</Text>
         {lines.filter(Boolean).map((line) => (
           <Text key={line}>{line}</Text>
         ))}
+        {art}
       </>
     ),
     CollectionCardSkeleton: () => <Text>loading card</Text>,
-    CoverFan: () => null,
+    CoverFan: ({ covers }: { covers: { path: string; coverVersion?: string }[] }) =>
+      mockCoverFan(covers),
     NewCollectionCard: () => <Text>New collection</Text>,
     useShareText: () => '',
   };
@@ -110,6 +122,7 @@ beforeEach(() => {
   mockDeviceOnline = true;
   mockSupported = true;
   mockFavourites = { favourites: [] };
+  mockCoverFan.mockClear();
   mockParams = { connection: 'home', id: '4' };
   mockCollections = unread();
   mockCollection = unread();
@@ -157,6 +170,32 @@ describe('CollectionsMode with no list read', () => {
     mockFavourites = { favourites: [], error: down };
     await mountMode();
     expect(screen.getByText('0 items')).toBeTruthy();
+  });
+
+  it("fans the Favourites card's covers at each favourite's cover_version", async () => {
+    mockCollections = { ...unread(), data: [] };
+    const fav = (path: string, cover_version?: string) => ({
+      connectionId: 'home',
+      connectionName: 'Home',
+      library_id: 1,
+      path,
+      is_book: true,
+      title: path,
+      author: 'Ann',
+      series: '',
+      series_index: 0,
+      duration: 100,
+      created_at: '2026-10-01T00:00:00Z',
+      cover_version,
+    });
+    mockFavourites = { favourites: [fav('A/One', 'cv1'), fav('A/Two')] };
+    await mountMode();
+    const covers = mockCoverFan.mock.calls.at(-1)?.[0] ?? [];
+    // A favourite from an older server (no cover_version) asks without one.
+    expect(covers.map((c) => [c.path, c.coverVersion])).toEqual([
+      ['A/One', 'cv1'],
+      ['A/Two', undefined],
+    ]);
   });
 
   it('says offline, with no Retry, when it failed with no network on the device', async () => {

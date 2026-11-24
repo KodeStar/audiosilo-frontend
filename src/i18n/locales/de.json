@@ -1850,6 +1850,7 @@
       "history": "Verlauf",
       "attribution": "Community-Notizen von {{credit}}",
       "licence": "Lizenz: {{licence}}",
+      "creditSource": "{{credit}}, öffnet die Quellseite",
       "hideAgain": "Wieder ausblenden",
       "spoilersShown": "Spoiler sichtbar",
       "justMet": "Gerade kennengelernt",

@@ -263,6 +263,14 @@ describe('statusJob and generateOffer', () => {
     expect(statusJob([bridgeJob({ kind: 'bridge.verify' })])).toBeUndefined();
   });
 
+  it('lets a failed job give way to the covered line once the community has both', () => {
+    const failed = bridgeJob({ id: 3, state: 'failed' });
+    expect(statusJob([failed], true)).toBeUndefined();
+    expect(statusJob([failed], false)).toBe(failed);
+    // An open job still shows over the line: it can be cancelled.
+    expect(statusJob([open], true)).toBe(open);
+  });
+
   const base = {
     allowed: true,
     metaKnown: true,
@@ -286,6 +294,7 @@ describe('statusJob and generateOffer', () => {
       { characters: C, recaps: C, generated: { description: true } },
       'covered',
     ],
+    // Also a generated file the community masks: it never reaches /meta, so no mark.
     ['community characters only', { characters: C }, 'generate'],
     ['community recaps only', { recaps: C }, 'generate'],
     [
@@ -305,6 +314,18 @@ describe('statusJob and generateOffer', () => {
       'regenerate',
     ],
     ['neither', {}, 'generate'],
+    // A generated whole-book summary alone is no recaps (server#218): `generated.recaps`
+    // marks it, but no list shows, as the console's `has.local.recaps` is false for it.
+    [
+      'generated summary only',
+      { recaps: [], generated: { recaps: true, recap_summary: true } },
+      'generate',
+    ],
+    [
+      'community characters, generated summary only',
+      { characters: C, generated: { recaps: true, recap_summary: true } },
+      'generate',
+    ],
   ] as const)('%s', (_label, content, offer) => {
     expect(generateOffer({ ...base, content })).toBe(offer);
   });
