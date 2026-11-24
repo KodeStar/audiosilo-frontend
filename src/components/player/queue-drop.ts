@@ -2,6 +2,7 @@ import { resolveClient } from '@/api/connection-clients';
 import { CapabilityError, cachedCapability, qk, queueQuery, removeFromQueue } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 import type { BookRef, QueueEntry } from '@/api/types';
+import { isDeviceOnline } from '@/lib/device-online';
 import { entryHolds } from '@/playback/up-next-resolver';
 
 /** How long a queue read answers the end-of-book drops before `/queue` is read again. */
@@ -18,7 +19,8 @@ const entryKeyOf = (cid: string, e: BookRef) => JSON.stringify([cid, e.library_i
  * exact; the entry may be the book folder above a part path), looked up in the queue at
  * call time (the cached read while fresh, see `QUEUE_DROP_FRESH_MS`), so a book that
  * isn't queued sends nothing (when `/queue` can't be read, the cached queue answers, and
- * with none each book goes by its own path). A removed entry also leaves the cached queue at once, so a
+ * with none each book goes by its own path; with the device offline nothing is sent, as no
+ * remove could reach the server either). A removed entry also leaves the cached queue at once, so a
  * later call for the same book (the credits opened on return, after the end already
  * dropped it) sends nothing again, and one already being removed is not sent twice (a
  * start in place drops the book it starts, and the end of a book drops the same one).
@@ -44,6 +46,8 @@ export async function dropFromQueue(
       gcTime: QUEUE_DROP_FRESH_MS,
     })
     .catch(() => undefined);
+  // Offline, the removes would fail as the read did (fe#358): none is sent.
+  if (!entries && !isDeviceOnline()) return;
   // A failed read must not keep the book queued (fe#155): the cached queue still knows the
   // stored entries, and with no read at all each book goes by its own path (removes are
   // exact and idempotent, so a book that was never queued costs one quiet request).

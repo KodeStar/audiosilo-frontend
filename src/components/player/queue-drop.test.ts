@@ -12,6 +12,8 @@ jest.mock('@/api/provider', () =>
 const mockQueueRead = jest.fn();
 let mockClient: object | null;
 jest.mock('@/api/connection-clients', () => ({ resolveClient: () => mockClient }));
+let mockDeviceOnline = true;
+jest.mock('@/lib/device-online', () => ({ isDeviceOnline: () => mockDeviceOnline }));
 
 /* eslint-disable import/first */
 import { QueryObserver } from '@tanstack/react-query';
@@ -34,6 +36,7 @@ beforeEach(() => {
   mockClient = { queue: () => mockQueueRead() };
   mockQueueRead.mockReset().mockResolvedValue([entry('Series/Book 1')]);
   mockRemove.mockReset().mockResolvedValue(undefined);
+  mockDeviceOnline = true;
 });
 
 /** Until the first remove is on its way (the queue read before it settles first). */
@@ -130,6 +133,17 @@ describe('dropFromQueue', () => {
       await dropFromQueue('c1', [finished]);
       expect(mockQueueRead).toHaveBeenCalledTimes(1);
       expect(mockRemove.mock.calls).toEqual([['c1', { libraryId: 1, path: 'Series' }]]);
+    });
+
+    // fe#358: offline, no remove could reach the server either.
+    it('sends nothing while the device is offline', async () => {
+      mockDeviceOnline = false;
+      queryClient.setQueryData(qk.queue('c1'), [entry('Series')], {
+        updatedAt: Date.now() - QUEUE_DROP_FRESH_MS - 1_000,
+      });
+      await dropFromQueue('c1', [finished, queued]);
+      expect(mockQueueRead).toHaveBeenCalledTimes(1);
+      expect(mockRemove).not.toHaveBeenCalled();
     });
 
     it('sends exact removes for the books themselves with no cached queue', async () => {
