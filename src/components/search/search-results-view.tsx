@@ -11,6 +11,7 @@ import { roleLabelKey } from '@/components/library/book-meta';
 import { CoverTileSkeleton } from '@/components/library/cover-grid';
 import { gridMetrics } from '@/components/library/cover-layout';
 import { CoverTile, useServerFlag } from '@/components/library/cover-tile';
+import { CreditSourceLink } from '@/components/player/companion/companion-pieces';
 import { PersonChip } from '@/components/series/person-chip';
 import { SeriesCard } from '@/components/series/series-card';
 import type { ProgressLookup } from '@/components/series/series-model';
@@ -201,14 +202,17 @@ export function SearchResultsView({
           {r.characters.hidden > 0 ? (
             <HiddenStrip label={t('search.hiddenCharacters', { count: r.characters.hidden })} />
           ) : null}
-          {r.characters.attributions.map((a) => (
-            <Text
-              key={`${a.credit}|${a.license}`}
-              variant="caption"
-              className="text-subtle-foreground"
-            >
-              {[a.credit, a.license].filter(Boolean).join(' · ')}
-            </Text>
+          {r.characters.attributions.map((a, _, all) => (
+            <CreditSourceLink
+              key={`${a.credit}|${a.license}|${a.source_url}`}
+              // Several sources read alike: each names the book it credits.
+              text={[all.length > 1 ? a.bookTitle : '', a.credit, a.license]
+                .filter(Boolean)
+                .join(' · ')}
+              sourceUrl={a.source_url}
+              className="self-start"
+              textClassName="text-subtle-foreground"
+            />
           ))}
         </Group>
       ) : null}

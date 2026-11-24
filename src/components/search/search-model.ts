@@ -230,9 +230,13 @@ export type CharacterMatches = {
    * count only, never a name. A name met in one book is not counted again for
    * another book that has not reached it yet. */
   hidden: number;
-  /** The credits of the books the hits come from, once each (render beside them). */
-  attributions: BookMetaAttribution[];
+  /** The credits of the books the hits come from, once per credit, licence and source
+   * page (render beside them, each linking its `source_url`). */
+  attributions: CharacterCredit[];
 };
+
+/** A book's community credit beside its character hits, with the title it credits. */
+export type CharacterCredit = BookMetaAttribution & { bookTitle: string };
 
 /**
  * The characters matching `query` across the listener's started books, gated by their
@@ -287,14 +291,19 @@ export function matchCharacters(
 
   const ordered = [...met.values()].sort((a, b) => a.rank - b.rank);
   const shown = ordered.slice(0, limit);
-  const attributions: BookMetaAttribution[] = [];
-  for (const { attribution } of shown) {
+  const attributions: CharacterCredit[] = [];
+  for (const { attribution, hit } of shown) {
     if (!attribution) continue;
     if (
-      attributions.some((a) => a.credit === attribution.credit && a.license === attribution.license)
+      attributions.some(
+        (a) =>
+          a.credit === attribution.credit &&
+          a.license === attribution.license &&
+          (a.source_url ?? '') === (attribution.source_url ?? ''),
+      )
     )
       continue;
-    attributions.push(attribution);
+    attributions.push({ ...attribution, bookTitle: hit.bookTitle });
   }
   let hidden = 0;
   for (const name of unmet) if (!met.has(name)) hidden++;

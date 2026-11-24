@@ -498,6 +498,8 @@ describe('previous books (Recaps tab)', () => {
     await press('The Two Towers');
     expect(screen.getByText('Nearly all of it.')).toBeTruthy();
     expect(screen.getByText(/Community notes from/)).toBeTruthy();
+    await fireEvent.press(screen.getByRole('link', { name: /opens the source page/ }));
+    expect(mockOpenExternal).toHaveBeenCalledWith(twoTowersCredit.source_url);
   });
 
   it('shows a quiet note plus the meta link when the work has no recap at all', async () => {

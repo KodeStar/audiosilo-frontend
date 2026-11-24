@@ -1778,6 +1778,10 @@ generated, and every `Attribution` beside characters (or a lone list recap) read
 The book page's earlier books (`PreviousBooksSection`) are other works: each opened row credits
 its own work's `attribution` (its `source_url` is that work's page), never the current work's,
 which is absent when the current work's content was all generated (server#218).
+Every rendered credit links its `source_url` (CC BY-SA asks the material be linked):
+`Attribution`'s credit and Search's credit lines go through `CreditSourceLink`
+(companion-pieces.tsx), plain text when the URL is missing or not http(s). Search keeps one
+line per credit, licence and source page, naming the book when there are several.
 A Recaps panel reads
 **`recapMarks(generated, shown)`** instead (Bridge 1e): the whole-book summary's source is
 `generated.recap_summary` (absent on an older server, whose `recaps` then stands for both),

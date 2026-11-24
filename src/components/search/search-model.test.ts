@@ -245,7 +245,26 @@ describe('matchCharacters (spoiler safety)', () => {
     expect(m.hits).toHaveLength(2);
     expect(m.total).toBe(4);
     expect(m.hidden).toBe(1);
-    expect(m.attributions).toEqual([calibans.attribution]);
+    expect(m.attributions).toEqual([{ ...calibans.attribution, bookTitle: "Caliban's War" }]);
+  });
+
+  // Each work's credit links its own page, so two books' alike credits stay apart.
+  it('credits each source page once, naming the book it credits', () => {
+    const credit = (source_url: string) => ({
+      credit: 'AudioSilo Meta contributors',
+      license: 'CC BY-SA 4.0',
+      license_url: '',
+      source_url,
+    });
+    const books: CharacterBook[] = [
+      { ...calibans, attribution: credit('https://meta.example/work?id=calibans') },
+      { ...leviathan, attribution: credit('https://meta.example/work?id=leviathan') },
+    ];
+    const m = matchCharacters(books, 'j');
+    expect(m.attributions.map((a) => [a.bookTitle, a.source_url])).toEqual([
+      ["Caliban's War", 'https://meta.example/work?id=calibans'],
+      ['Leviathan Wakes', 'https://meta.example/work?id=leviathan'],
+    ]);
   });
 
   it('finds nothing for an empty query', () => {

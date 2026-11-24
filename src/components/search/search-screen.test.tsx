@@ -3,6 +3,11 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 const mockRouter = { push: jest.fn(), navigate: jest.fn() };
 // A tile's actions menu (book actions, the player) has its own tests.
 jest.mock('@/components/library/tile-actions', () => ({ TileActions: () => null }));
+const mockOpenExternal = jest.fn();
+jest.mock('@/lib/support', () => ({
+  ...jest.requireActual('@/lib/support'),
+  openExternalUrl: (url: string) => mockOpenExternal(url),
+}));
 jest.mock('expo-router', () => ({
   get router() {
     return mockRouter;
@@ -212,7 +217,8 @@ describe('SearchScreen, results', () => {
             credit: 'AudioSilo Meta contributors',
             license: 'CC BY-SA 4.0',
             license_url: '',
-            source_url: '',
+            source_url: 'https://meta.example/work?id=calibans-war',
+            bookTitle: "Caliban's War",
           },
         ],
       },
@@ -245,7 +251,12 @@ describe('SearchScreen, results', () => {
     expect(
       screen.getByText('2 more matches after your place in the book, hidden to avoid spoilers.'),
     ).toBeTruthy();
-    expect(screen.getByText('AudioSilo Meta contributors · CC BY-SA 4.0')).toBeTruthy();
+    await fireEvent.press(
+      screen.getByRole('link', {
+        name: 'AudioSilo Meta contributors · CC BY-SA 4.0, opens the source page',
+      }),
+    );
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://meta.example/work?id=calibans-war');
 
     // Opening a result opens the book and keeps the search.
     await fireEvent.press(
@@ -256,6 +267,51 @@ describe('SearchScreen, results', () => {
       params: { libraryId: '1', connection: 'a', path: "Expanse/Caliban's War" },
     });
     expect(useRecentSearches.getState().recent).toEqual(['meng']);
+  });
+
+  // Two books' credits read alike but link different pages: each names its book.
+  it('names the book on each credit when the characters come from several', async () => {
+    const credit = (bookTitle: string, source_url: string) => ({
+      credit: 'AudioSilo Meta contributors',
+      license: 'CC BY-SA 4.0',
+      license_url: '',
+      source_url,
+      bookTitle,
+    });
+    const hit = (name: string, bookTitle: string) => ({
+      key: name,
+      name,
+      bookTitle,
+      connectionId: 'a',
+      libraryId: 1,
+      path: `Expanse/${bookTitle}`,
+    });
+    mockResults = {
+      ...empty(),
+      characters: {
+        hits: [hit('James Holden', "Caliban's War"), hit('Julie Mao', 'Leviathan Wakes')],
+        total: 2,
+        hidden: 0,
+        attributions: [
+          credit("Caliban's War", 'https://meta.example/work?id=calibans-war'),
+          credit('Leviathan Wakes', ''),
+        ],
+      },
+      total: 2,
+    };
+    await render(<SearchScreen />);
+    await type('j');
+    await fireEvent.press(
+      screen.getByRole('link', {
+        name: "Caliban's War · AudioSilo Meta contributors · CC BY-SA 4.0, opens the source page",
+      }),
+    );
+    expect(mockOpenExternal).toHaveBeenCalledWith('https://meta.example/work?id=calibans-war');
+    // No source page: the credit stays text.
+    expect(
+      screen.getByText('Leviathan Wakes · AudioSilo Meta contributors · CC BY-SA 4.0'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('link', { name: /^Leviathan Wakes/ })).toBeNull();
   });
 
   it('says when nothing matches, once every group has answered', async () => {
