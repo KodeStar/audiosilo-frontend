@@ -201,4 +201,14 @@ describe('engineTimeout', () => {
     jest.advanceTimersByTime(10_000);
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it('does not run one an earlier timeout cancelled in the same pass', () => {
+    const second = jest.fn();
+    let later: { cancel(): void } | undefined;
+    engineTimeout(() => later?.cancel(), 3_000);
+    later = engineTimeout(second, 3_000);
+    eventsOnly(3);
+    jest.advanceTimersByTime(10_000);
+    expect(second).not.toHaveBeenCalled();
+  });
 });

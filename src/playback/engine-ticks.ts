@@ -101,15 +101,20 @@ const timeouts = new Set<(now: number) => void>();
  * fade, which must not restore the volume before the pause lands). */
 export function engineTick() {
   const now = Date.now();
-  for (const due of [...timeouts]) due(now);
-  for (const run of [...consumers]) {
-    if (!consumers.has(run)) continue;
-    // One consumer's throw must not starve the rest this pass, nor escape into the
-    // engine's snapshot listener that called this.
+  runEach(timeouts, now, 'a timeout');
+  runEach(consumers, now, 'a ticker');
+}
+
+/** Runs each of `set` still in it (one an earlier one cancelled this pass does not run). One
+ * throw must not starve the rest this pass, nor escape into the engine's snapshot listener
+ * that called `engineTick`. */
+function runEach(set: Set<(now: number) => void>, now: number, what: string) {
+  for (const run of [...set]) {
+    if (!set.has(run)) continue;
     try {
       run(now);
     } catch (err) {
-      console.error('[engineTick] a ticker threw', err);
+      console.error(`[engineTick] ${what} threw`, err);
     }
   }
 }
