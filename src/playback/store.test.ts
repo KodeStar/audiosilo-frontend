@@ -133,6 +133,13 @@ jest.mock('@/api/provider', () => ({
   },
 }));
 
+// A download keeps its server's place through the book's progress read (downloads store),
+// which waits on the launch's span recovery: not here, where the recovery is the tests' own.
+jest.mock('@/api/hooks', () => ({
+  ...jest.requireActual('@/api/hooks'),
+  fetchBookProgress: jest.fn(async () => null),
+}));
+
 // playBook fires an auto-download of the started book through @/lib/network's policy gate;
 // mock it so the network probe is deterministic (default: allowed).
 const mockCanAutoDownload = jest.fn((..._a: unknown[]) => Promise.resolve(true));

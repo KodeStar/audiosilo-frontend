@@ -8,6 +8,7 @@ import {
   cachedCapability,
   cachedShowTitle,
   chaptersQuery,
+  fetchBookProgress,
   fetchFailFast,
   itemQuery,
   qk,
@@ -20,7 +21,7 @@ import {
   type ServerSnapshot,
 } from '@/api/server-snapshots';
 import type { ApiClient } from '@/api/client';
-import type { Book, BookMeta, ChaptersResponse, Progress } from '@/api/types';
+import type { Book, BookMeta, ChaptersResponse } from '@/api/types';
 import { withMatchFields } from '@/components/library/meta-gating';
 import { identityMovePending } from '@/lib/connection-id';
 import { contentKey, contentKeyOf, isKeyOf } from '@/lib/content-key';
@@ -34,7 +35,6 @@ import { onStoredChange, tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock, webLocalStorage } from '@/lib/tab-lock';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
-import { progressToSave, writeMirror } from '@/playback/progress-sync';
 import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
@@ -2329,9 +2329,11 @@ async function runQueue() {
 /**
  * Keep the server's place for a book whose download starts in the progress mirror, so the
  * book opens there offline (and its first offline save starts there, instead of at 0 over
- * the server's place: v2.5.1 PLAYER-01). The server's answer, else the one the app has
- * cached (the book page read it); a server with no record leaves the mirror as it is.
- * Keep-newest (`writeMirror`), so a newer save of this device's own stays. Best effort.
+ * the server's place: v2.5.1 PLAYER-01). The book page's own read (`fetchBookProgress`)
+ * does it: the book has a downloads entry now, so the server's answer goes into the mirror
+ * (keep-newest, so a newer save of this device's own stays). A server with no record, or one
+ * that can't be reached, leaves the mirror as it is; the book's next progress read keeps the
+ * place. Best effort.
  */
 async function keepServerPlace(
   api: ApiClient,
@@ -2340,19 +2342,7 @@ async function keepServerPlace(
   path: string,
   signal: AbortSignal,
 ): Promise<void> {
-  let progress: Progress | null | undefined;
-  try {
-    progress = await api.getProgress(libraryId, path, signal);
-  } catch {
-    if (signal.aborted) return;
-    progress = queryClient.getQueryData<Progress | null>(
-      qk.progress(connectionId, libraryId, path),
-    );
-  }
-  // Nothing kept on a failed write: a later read of the book's progress
-  // (`fetchBookProgress`) keeps it.
-  if (progress)
-    await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
+  await fetchBookProgress(api, connectionId, libraryId, path, signal);
 }
 
 async function runOne(key: string) {
@@ -2385,7 +2375,7 @@ async function runOne(key: string) {
   patch({ status: 'downloading', progress: 0, bytes: 0 });
   void persist();
   // Beside the transfer: the place the download opens at offline.
-  void keepServerPlace(api, connectionId, libraryId, path, ctrl.signal);
+  void keepServerPlace(api, connectionId, libraryId, path, ctrl.signal).catch(() => {});
 
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];
