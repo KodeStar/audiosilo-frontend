@@ -229,6 +229,7 @@ import {
   refreshKeptMeta,
 } from '@/downloads/kept-offline';
 import { bookFileSpecs } from '@/playback/book-queue';
+import { readMirror } from '@/playback/progress-sync';
 import {
   downloadedCountFor,
   downloadedEntryOf,
@@ -1130,6 +1131,38 @@ describe("a download keeps its server's place", () => {
     expect(useDownloads.getState().entries[downloadKey('c1', 2, 'A/Book')]?.status).toBe(
       'downloaded',
     );
+  });
+
+  // The progress route failing while the files download (a 5xx, a timeout): the place the
+  // book page read is kept, its server's own row, so the book still opens there offline.
+  it("keeps the cached answer's server row when the progress read fails", async () => {
+    const server = {
+      library_id: 2,
+      path: 'A/Book',
+      position: 3570,
+      duration: 5100,
+      finished: false,
+      playback_speed: 1,
+      version: 3,
+      device_id: 'phone',
+      updated_at: '2026-10-28T20:00:00Z',
+    };
+    // The page showed this device's own newer place, with the server's row beside it.
+    const shown = { ...server, position: 3600, version: 0, device_id: 'me', server };
+    mockFetchServerProgress.mockRejectedValueOnce(new Error('HTTP 503'));
+    mockGetQueryData.mockImplementation((key: unknown) =>
+      Array.isArray(key) && key[0] === 'progress' ? shown : undefined,
+    );
+    client();
+    try {
+      await downloadIt();
+    } finally {
+      mockGetQueryData.mockImplementation(() => undefined);
+    }
+    expect(await readMirror('c1', 2, 'A/Book')).toMatchObject({
+      position: 3570,
+      device_id: 'phone',
+    });
   });
 
   it('tells the progress read which books are kept', async () => {

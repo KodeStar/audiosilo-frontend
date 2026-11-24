@@ -34,6 +34,12 @@ import { onStoredChange, tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock, webLocalStorage } from '@/lib/tab-lock';
 import { bookFileSpecs } from '@/playback/book-queue';
 import { fetchPercent, isAbsentEpisode } from '@/playback/episode-fetch-rules';
+import {
+  type PlacedProgress,
+  progressToSave,
+  serverRowOf,
+  writeMirror,
+} from '@/playback/progress-sync';
 import { type BookRef, bookRefOf } from '@/playback/types';
 import { webTranscodeFromCache } from '@/playback/transcode-capability';
 import { cachedEbookUri } from '@/reader/ebook-file';
@@ -2330,6 +2336,25 @@ async function runQueue() {
   }
 }
 
+/**
+ * A starting download's server place when its server's progress can't be read
+ * (`runOne`): the answer the app has cached (the book page read it), its server's own row
+ * (`serverRowOf`), into the progress mirror (keep-newest, so a newer save of this device's
+ * own stays). Nothing cached leaves the mirror as it is. Best effort.
+ */
+async function keepCachedServerPlace(
+  connectionId: string,
+  libraryId: number,
+  path: string,
+): Promise<void> {
+  const cached = queryClient.getQueryData<PlacedProgress | null>(
+    qk.progress(connectionId, libraryId, path),
+  );
+  if (!cached) return;
+  const row = serverRowOf(cached);
+  await writeMirror(progressToSave(connectionId, libraryId, path, row)).catch(() => {});
+}
+
 async function runOne(key: string) {
   const entry = useDownloads.getState().entries[key];
   if (!entry) return;
@@ -2362,9 +2387,12 @@ async function runOne(key: string) {
   // Beside the transfer, the place the download opens at offline (v2.5.1 PLAYER-01): the
   // book has a downloads entry now, so the server's answer goes into the progress mirror, and
   // the book's first offline save starts there instead of at 0 over the server's place. A
-  // server with no record, or one that can't be reached, leaves the mirror as it is; the
-  // book's next progress read keeps the place.
-  void fetchServerProgress(api, connectionId, libraryId, path, ctrl.signal).catch(() => {});
+  // server with no record leaves the mirror as it is. A read that fails (the progress route
+  // erring or timing out while the files still download) keeps the answer the app has
+  // cached instead (`keepCachedServerPlace`).
+  void fetchServerProgress(api, connectionId, libraryId, path, ctrl.signal).catch(() =>
+    ctrl.signal.aborted ? undefined : keepCachedServerPlace(connectionId, libraryId, path),
+  );
 
   // The files that finished, so a failure can keep them, and how many there are.
   const files: DownloadedFile[] = [];

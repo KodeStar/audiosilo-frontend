@@ -1,7 +1,7 @@
 /**
  * Facts of this device's downloads registry, for code the downloads store can't be
  * imported into (it imports the API hooks, which ask `isKeptOffline` and, after a Bridge
- * job, `refreshKeptMeta`: `fetchBookProgress`,
+ * job, `refreshKeptMeta`: `fetchServerProgress`,
  * the progress mirror, which asks `downloadEndsBefore`: `mirrorSpanEnd`, and the listening
  * outbox, which asks `downloadBookLength`: `resendMismatched`). The store
  * registers its checks as it loads; until it has, no book is kept and none ends early.
