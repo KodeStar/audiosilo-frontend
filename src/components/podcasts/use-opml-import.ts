@@ -12,7 +12,7 @@ import { onForeground } from '@/lib/when-active';
 import { mayActFor } from '@/stores/profiles';
 
 import { canRetryImportRow, followByUrlErrorKey, OPML_MAX_BYTES } from './find-shows-model';
-import { opmlText, outlineFeeds, rowFeedUrl } from './opml-feeds';
+import { opmlText, outlineFeeds, outlineTitles, rowFeedUrl } from './opml-feeds';
 import type { PickedOpml } from './opml-pick';
 import { isQueuedRow, OpmlWaves, type WaveState } from './opml-waves';
 
@@ -58,6 +58,8 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const [state, setState] = useState<WaveState | null>(null);
   /** The list's feed addresses by `outline_index`, once its bytes are read. */
   const [feeds, setFeeds] = useState<ReadonlyMap<number, string> | null>(null);
+  /** The list's own name for each row by `outline_index` (`outlineTitles`), once read. */
+  const [titles, setTitles] = useState<ReadonlyMap<number, string> | null>(null);
   // The rows followed again by hand, with the list they belong to (`list`, one more for
   // each new list or none): a follow answered after another list was picked must not land
   // on that list's row at the same place.
@@ -97,6 +99,7 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     setState(null);
     setProblem(why);
     setFeeds(null);
+    setTitles(null);
     setRetryState((r) => ({ list: r.list + 1, rows: {} }));
   }, []);
 
@@ -142,6 +145,11 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
         // follow request (the show list follows when it ends done: `myPodcastsQuery`). An
         // already queued one may be one the cache has not seen (another device's), and the
         // panel reads every queued row's request live, so either reads the requests again.
+        // No answer: the server may still be following the list's rows.
+        onNoAnswer: () => {
+          void qc.invalidateQueries({ queryKey: qk.podcastShows(connectionId, libraryId) });
+          void qc.invalidateQueries({ queryKey: qk.myPodcasts(connectionId) });
+        },
         onWave: ({ rows }) => {
           const followed = rows.some((r) => r.status === 'followed');
           if (followed) {
@@ -154,10 +162,13 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
       });
       waves.current = run;
       run.start();
-      // The addresses the rows' Try again follows (only while this list is the page's).
+      // The addresses the rows' Try again follows, and the rows' names (only while this
+      // list is the page's).
       void opmlText(file.body).then(
         (text) => {
-          if (waves.current === run) setFeeds(outlineFeeds(text));
+          if (waves.current !== run) return;
+          setFeeds(outlineFeeds(text));
+          setTitles(outlineTitles(text));
         },
         () => undefined,
       );
@@ -225,6 +236,8 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     }, [drop, reset]),
     stop: useCallback(() => waves.current?.stop(), []),
     retry: useCallback(() => waves.current?.retry(), []),
+    /** Each row's name in the list, by `outline_index` (`outlineTitles`). */
+    titles,
     /** The rows followed again by hand, by `outline_index` (`withRetries`). */
     retries,
     /** Whether retrying the same address can help and the list holds its address. */

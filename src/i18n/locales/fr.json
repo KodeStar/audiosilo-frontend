@@ -3091,7 +3091,8 @@
         "signed_out": "Vous êtes déconnecté de ce serveur. Reconnectez-vous, puis réessayez.",
         "no_access": "Ce compte n'a pas accès à cet épisode.",
         "proxy_refused": "Le proxy de connexion du serveur a refusé cet appareil. Mettez à jour les en-têtes de proxy dans Compte, puis réessayez.",
-        "other": "Un problème est survenu pendant la récupération. Réessayez plus tard."
+        "other": "Un problème est survenu pendant la récupération. Réessayez plus tard.",
+        "show_unreadable": "Votre serveur ne peut pas lire le dossier de cette émission, il ne peut donc pas récupérer d'épisodes. Demandez à la personne qui gère votre serveur de vérifier les droits du dossier."
       }
     },
     "find": {
@@ -3174,7 +3175,9 @@
         "tooLong": "Cette adresse est trop longue.",
         "following": "Vous suivez {{title}}.",
         "adding": "Ajout de l'émission en cours. Elle apparaîtra dans Émissions dès qu'elle sera prête.",
-        "followingPublic": "Vous suivez {{title}}. L'émission était déjà dans cette bibliothèque en tant que flux public, elle n'est donc pas privée."
+        "followingPublic": "Vous suivez {{title}}. L'émission était déjà dans cette bibliothèque en tant que flux public, elle n'est donc pas privée.",
+        "failed": "Impossible d'ajouter l'émission.",
+        "cancelled": "L'ajout de l'émission a été annulé."
       },
       "offline": "Vous êtes hors ligne. Reconnectez-vous pour rechercher ou ajouter des émissions.",
       "accessFailed": "Impossible de vérifier si vous pouvez ajouter des émissions."
@@ -3204,7 +3207,9 @@
         "feedError": "Le serveur du flux a répondu par une erreur. Réessayez plus tard.",
         "redirectLoop": "L'adresse du flux redirige trop de fois.",
         "interrupted": "L'ajout a été interrompu. Suivez à nouveau le flux pour réessayer."
-      }
+      },
+      "dismissLabel": "Retirer {{title}}",
+      "dismissFailed": "Le retrait n'a pas abouti. Réessayez."
     },
     "import": {
       "intro": "Récupérez les émissions que vous suivez dans une autre app de podcasts. Exportez-y un fichier OPML, puis choisissez-le ici. Les longues listes sont ajoutées par groupes de cinq.",
@@ -3237,7 +3242,9 @@
       "fail": {
         "notOpml": "Ce fichier n'est pas une liste OPML.",
         "tooLarge": "Cette liste est trop grande pour être importée.",
-        "other": "L'import n'a pas abouti. Réessayez."
+        "other": "L'import n'a pas abouti. Réessayez.",
+        "noAnswer": "Votre serveur n'a pas répondu à temps, mais il est peut-être encore en train d'ajouter les émissions de la liste. Regardez dans Émissions d'ici quelques minutes, ou réessayez : les émissions déjà ajoutées sont ignorées.",
+        "serverTimeout": "Votre serveur s'est arrêté avant la fin de la liste. Les émissions déjà ajoutées restent. Réessayez pour ajouter les autres."
       },
       "row": {
         "followed": "Suivie",
@@ -3277,7 +3284,11 @@
       "asked": "Vérification demandée au serveur",
       "recently": "Vérifiée il y a moins d'une minute. Réessayez dans un instant.",
       "cantNow": "Votre serveur ne peut pas vérifier les flux pour le moment. Réessayez plus tard.",
-      "failed": "Impossible de vérifier cette émission. Réessayez."
+      "failed": "Impossible de vérifier cette émission. Réessayez.",
+      "noNew": "Aucun nouvel épisode",
+      "found_one": "{{count}} nouvel épisode",
+      "found_other": "{{count}} nouveaux épisodes",
+      "lastChecked": "Vérifiée {{when}}"
     }
   },
   "reader": {

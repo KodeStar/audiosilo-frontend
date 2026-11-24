@@ -3091,7 +3091,8 @@
         "signed_out": "Sei disconnesso da questo server. Accedi di nuovo, poi riprova.",
         "no_access": "Questo account non ha accesso a questo episodio.",
         "proxy_refused": "Il proxy di accesso del server ha respinto questo dispositivo. Aggiorna le intestazioni proxy in Account, poi riprova.",
-        "other": "Qualcosa è andato storto durante il download. Riprova più tardi."
+        "other": "Qualcosa è andato storto durante il download. Riprova più tardi.",
+        "show_unreadable": "Il tuo server non riesce a leggere la cartella di questo programma, quindi non può scaricare episodi. Chiedi a chi gestisce il tuo server di controllare i permessi della cartella."
       }
     },
     "find": {
@@ -3174,7 +3175,9 @@
         "tooLong": "Questo indirizzo è troppo lungo.",
         "following": "Segui {{title}}.",
         "adding": "Il programma è in aggiunta. Comparirà in Programmi quando è pronto.",
-        "followingPublic": "Segui {{title}}. Era già in questa libreria come feed pubblico, quindi non è privato."
+        "followingPublic": "Segui {{title}}. Era già in questa libreria come feed pubblico, quindi non è privato.",
+        "failed": "Impossibile aggiungere il programma.",
+        "cancelled": "L'aggiunta del programma è stata annullata."
       },
       "offline": "Sei offline. Riconnettiti per cercare o aggiungere programmi.",
       "accessFailed": "Impossibile verificare se puoi aggiungere programmi."
@@ -3204,7 +3207,9 @@
         "feedError": "Il server del feed ha risposto con un errore. Riprova più tardi.",
         "redirectLoop": "L'indirizzo del feed reindirizza troppe volte.",
         "interrupted": "L'aggiunta si è interrotta. Segui di nuovo il feed per riprovare."
-      }
+      },
+      "dismissLabel": "Rimuovi {{title}}",
+      "dismissFailed": "Non è stato possibile rimuoverlo. Riprova."
     },
     "import": {
       "intro": "Porta qui i programmi che segui in un'altra app di podcast. Esporta lì un file OPML, poi sceglilo qui. Le liste lunghe vengono aggiunte a gruppi di cinque.",
@@ -3237,7 +3242,9 @@
       "fail": {
         "notOpml": "Questo file non è una lista OPML.",
         "tooLarge": "Questa lista è troppo grande da importare.",
-        "other": "Impossibile importare la lista. Riprova."
+        "other": "Impossibile importare la lista. Riprova.",
+        "noAnswer": "Il tuo server non ha risposto in tempo, ma potrebbe ancora aggiungere i programmi della lista. Guarda in Programmi tra qualche minuto, oppure riprova: i programmi già aggiunti vengono saltati.",
+        "serverTimeout": "Il tuo server si è fermato prima della fine della lista. I programmi già aggiunti restano. Riprova per aggiungere gli altri."
       },
       "row": {
         "followed": "Seguito",
@@ -3277,7 +3284,11 @@
       "asked": "Controllo chiesto al server",
       "recently": "Controllato meno di un minuto fa. Riprova tra poco.",
       "cantNow": "Il tuo server non può controllare i feed al momento. Riprova più tardi.",
-      "failed": "Impossibile controllare questo programma. Riprova."
+      "failed": "Impossibile controllare questo programma. Riprova.",
+      "noNew": "Nessun nuovo episodio",
+      "found_one": "{{count}} nuovo episodio",
+      "found_other": "{{count}} nuovi episodi",
+      "lastChecked": "Controllato {{when}}"
     }
   },
   "reader": {

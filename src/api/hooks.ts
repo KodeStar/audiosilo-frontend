@@ -125,6 +125,7 @@ import type {
   PageQuery,
   PodcastEpisodeOrder,
   PodcastEpisodePage,
+  PodcastFetchResponse,
   PodcastFetchStatus,
   PodcastShow,
   MyPodcasts,
@@ -3306,13 +3307,14 @@ async function storeFollowByUrl(qc: QueryClient, cid: string, answer: PodcastFol
 
 /** Follow a feed by its address in a podcast library (capability `podcasts`): a
  * directory result, a pasted address. `private` only when the listener says the feed is
- * theirs alone. The cache takes the answer (`storeFollowByUrl`). */
+ * theirs alone; `title` the show's name when the caller has it (a directory result), the
+ * request row's label. The cache takes the answer (`storeFollowByUrl`). */
 export function useFollowPodcastByUrl(connectionId?: string) {
   return useCapabilityMutation(
     'podcasts',
     connectionId,
-    (api, v: { libraryId: number; feedUrl: string; private?: boolean }) =>
-      api.followPodcastByUrl(v.libraryId, v.feedUrl, { private: v.private }),
+    (api, v: { libraryId: number; feedUrl: string; private?: boolean; title?: string }) =>
+      api.followPodcastByUrl(v.libraryId, v.feedUrl, { private: v.private, title: v.title }),
     ({ qc, cid }, answer) => storeFollowByUrl(qc, cid, answer),
   );
 }
@@ -3325,6 +3327,27 @@ export function useCheckPodcast(connectionId?: string) {
     'podcasts',
     connectionId,
     (api, v: { libraryId: number; path: string }) => api.checkPodcast(v.libraryId, v.path),
+  );
+}
+
+/** Dismiss the listener's own follow request once it failed or was cancelled (capability
+ * `podcast_request_dismiss`, not the module's): it leaves the cached follow requests. One
+ * the server no longer has (404) leaves them too; one it still holds open (409
+ * `request_open`) is the caller's to say. */
+export function useDismissPodcastRequest(connectionId?: string) {
+  return useCapabilityMutation(
+    'podcast_request_dismiss',
+    connectionId,
+    (api, v: { id: number }) =>
+      api.dismissPodcastRequest(v.id).catch((e: unknown) => {
+        if (!(e instanceof ApiError && e.status === 404 && e.fromServer)) throw e;
+      }),
+    ({ qc, cid }, _answer, v) =>
+      storeAnswer<MyPodcasts>(
+        qc,
+        qk.myPodcasts(cid),
+        (cached) => cached && { ...cached, requests: cached.requests.filter((r) => r.id !== v.id) },
+      ),
   );
 }
 
@@ -3390,6 +3413,24 @@ export function useUnfollowPodcast(connectionId?: string) {
   );
 }
 
+/** The server's `409 show_unreadable` (v2.7.0: it can't read the show's folder, so no
+ * fetch can help) as the status it amounts to, `unavailable` with that code: the episode
+ * page says why beside a disabled Play and offers no Try again (`canRetryFetch`). Any
+ * other failure is the query's. */
+function unreadableShowStatus(e: unknown): PodcastFetchResponse {
+  if (!(e instanceof ApiError && e.status === 409 && e.code === 'show_unreadable')) throw e;
+  return {
+    fetch: {
+      state: 'unavailable',
+      request_id: null,
+      bytes_received: 0,
+      bytes_total: null,
+      retry_after_seconds: 0,
+      error: { code: e.code, message: e.message },
+    },
+  };
+}
+
 /** An episode's fetch status, read once (capability `podcast_fetch`; never polled here:
  * the episode-fetch controller, `src/playback/episode-fetch.ts`, and a download's wait for
  * its episode, `watchEpisode` in `src/downloads/store.ts`, keep this entry up to date while
@@ -3403,7 +3444,8 @@ export function usePodcastFetchStatus(
   return useCapabilityQuery<PodcastFetchStatus>(
     'podcast_fetch',
     (cid) => qk.podcastFetch(cid, libraryId, path),
-    async (api, signal) => (await api.podcastFetchStatus(libraryId, path, signal)).fetch,
+    async (api, signal) =>
+      (await api.podcastFetchStatus(libraryId, path, signal).catch(unreadableShowStatus)).fetch,
     connectionId,
     { ready: path.length > 0 && enabled, retry: false },
   );

@@ -3091,7 +3091,8 @@
         "signed_out": "Tu sesión en este servidor se ha cerrado. Vuelve a iniciar sesión y reinténtalo.",
         "no_access": "Esta cuenta no tiene acceso a este episodio.",
         "proxy_refused": "El proxy de inicio de sesión del servidor ha rechazado este dispositivo. Actualiza las cabeceras de proxy en Cuenta y reinténtalo.",
-        "other": "Algo falló al descargarlo. Inténtalo de nuevo más tarde."
+        "other": "Algo falló al descargarlo. Inténtalo de nuevo más tarde.",
+        "show_unreadable": "Tu servidor no puede leer la carpeta de este programa, así que no puede descargar episodios. Pide a quien administra tu servidor que revise los permisos de la carpeta."
       }
     },
     "find": {
@@ -3174,7 +3175,9 @@
         "tooLong": "Esa dirección es demasiado larga.",
         "following": "Sigues {{title}}.",
         "adding": "Añadiendo el programa. Aparecerá en Programas cuando esté listo.",
-        "followingPublic": "Sigues {{title}}. Ya estaba en esta biblioteca como feed público, así que no es privado."
+        "followingPublic": "Sigues {{title}}. Ya estaba en esta biblioteca como feed público, así que no es privado.",
+        "failed": "No se pudo añadir el programa.",
+        "cancelled": "Se canceló la adición del programa."
       },
       "offline": "Sin conexión. Vuelve a conectarte para buscar o añadir programas.",
       "accessFailed": "No se pudo comprobar si puedes añadir programas."
@@ -3204,7 +3207,9 @@
         "feedError": "El servidor del feed respondió con un error. Inténtalo más tarde.",
         "redirectLoop": "La dirección del feed redirige demasiadas veces.",
         "interrupted": "Se interrumpió al añadirlo. Vuelve a seguir el feed para intentarlo de nuevo."
-      }
+      },
+      "dismissLabel": "Descartar {{title}}",
+      "dismissFailed": "No se pudo descartar. Inténtalo de nuevo."
     },
     "import": {
       "intro": "Trae los programas que sigues en otra app de podcasts. Exporta allí un archivo OPML y elígelo aquí. Las listas largas se añaden de cinco en cinco.",
@@ -3237,7 +3242,9 @@
       "fail": {
         "notOpml": "Ese archivo no es una lista OPML.",
         "tooLarge": "Esa lista es demasiado grande para importarla.",
-        "other": "No se pudo importar la lista. Inténtalo de nuevo."
+        "other": "No se pudo importar la lista. Inténtalo de nuevo.",
+        "noAnswer": "Tu servidor no respondió a tiempo, pero puede que siga añadiendo los programas de la lista. Mira en Programas dentro de unos minutos o inténtalo de nuevo: los programas ya añadidos se omiten.",
+        "serverTimeout": "Tu servidor se detuvo antes del final de la lista. Los programas ya añadidos se quedan. Inténtalo de nuevo para añadir el resto."
       },
       "row": {
         "followed": "Siguiendo",
@@ -3277,7 +3284,11 @@
       "asked": "Se pidió al servidor que lo compruebe",
       "recently": "Se comprobó hace menos de un minuto. Inténtalo de nuevo enseguida.",
       "cantNow": "Tu servidor no puede comprobar feeds ahora. Inténtalo más tarde.",
-      "failed": "No se pudo comprobar este programa. Inténtalo de nuevo."
+      "failed": "No se pudo comprobar este programa. Inténtalo de nuevo.",
+      "noNew": "No hay episodios nuevos",
+      "found_one": "{{count}} episodio nuevo",
+      "found_other": "{{count}} episodios nuevos",
+      "lastChecked": "Comprobado {{when}}"
     }
   },
   "reader": {

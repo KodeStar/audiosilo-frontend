@@ -1103,7 +1103,10 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   on the way back), and at `ready` reads the item and chapters again and starts it in place with
   `{fetched: true}`. It never POSTs by itself: only Try again does (`retryEpisodeFetch`). Any
   other start (and one that plays the episode itself, on its server by then), a profile switch
-  or a removed connection ends it; there is no client time cap. A start overtaken while it
+  or a removed connection ends it; there is no client time cap. The server's 409
+  `show_unreadable` (v2.7.0: it can't read the show's folder) ends it `unavailable` with the
+  reason and no Try again, and `usePodcastFetchStatus` reads that 409 as an `unavailable` status,
+  so the episode page says why instead of failing its read. A start overtaken while it
   looked its episode up hands nothing on (`isLatestStart`), and the `fetched` start plays only
   while the fetch is still `starting` (`isEpisodeFetchStarting`: a Cancel or another start wins).
   While it is on its way the full player shows `EpisodeFetchPanel` and the dock / mini player an
@@ -1174,7 +1177,9 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   on submit (never while typing), Apple Podcasts unless the server offers Podcast Index too
   (only then a picker), the device region for Apple only. Artwork loads only through the
   server's proxy with the media token (`discoveryArtworkUrl` refuses any other URL), and a
-  failed load mounts again on `artworkRetryDelay`'s schedule. All copy for refusals lives in
+  failed load asks the proxy why (`probeDiscoveryArtwork`, a GET) before it mounts again:
+  ready at once, a 429 / 503 after its `Retry-After` (1 to 60 s), a 4xx never, anything else
+  on `artworkRetryDelay`'s schedule (`artwork-retry.ts`). All copy for refusals lives in
   `find-shows-model.ts`; a code it does not know reads as the general line. A search read
   again that failed keeps its results under "Showing the last results" with the failure and
   Search again (fe#299), hidden while it is asked again.
@@ -1182,20 +1187,34 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   `/me/podcasts` every 5 s only while one of the library's requests is open (`queued`,
   `claimed`, `running`, `needs_attention`), `active` (its screen focused: the Shows mode stays
   mounted under a pushed Find shows) and the app in the foreground. A request ending `done`
-  reads its library's show list again (`myPodcastsQuery`).
+  reads its library's show list again (`myPodcastsQuery`). A row is named by `requestLabel`
+  (the added show's title, else the request's `title`, sent with a directory result's follow,
+  never for a private feed, else its redacted address). A failed or cancelled row has Dismiss
+  (`useDismissPodcastRequest`, capability `podcast_request_dismiss`, `DELETE
+  /podcasts/requests/{id}`; a server 404 dismisses it too). A follow by address keeps its
+  request id and turns "Adding" into Following, failed (with the reason) or cancelled once the
+  request ends (`requestEnd`).
 - **The OPML import is `OpmlWaves`**, a framework-free controller (its own timers, tested with
   fake timers; `useOpmlImport` wraps it at page level so it survives a section switch and ends
   with the page). It re-uploads the same bytes in waves (the server keeps nothing): after the
   last upload's own requests have ended, fewer than five are open and 30 s have passed;
   `Retry-After` on 429 / 503 `opml_busy`; a wave that moves no `limited` row is `stalled`; five
   busy answers in a row stop it; `mayActFor` before each upload; held in the background. A file
-  over 1 MiB is refused before any upload.
+  over 1 MiB is refused before any upload. An upload waits `OPML_IMPORT_TIMEOUT_MS` (330 s,
+  past the server's 5 min bound); no answer (a timeout, a network failure, a gateway's 502 /
+  504) is `no_answer`, which never claims the list failed (the server may still be following
+  it) and reads the shows and requests again, and a server 503 without a code is
+  `server_timeout`. The rows are named from the bytes the page holds (`outlineTitles`): the
+  server's answer never echoes the list.
 - **Export my shows** (`useExportShows`, capability `podcast_opml`, works with the module off,
   never the demo) reads `GET /podcasts/opml/export` with the Authorization header (never
   `?token=`), saves it the Journal's way (`saveExport`) and toasts the `X-OPML-*` counts; a
   count the browser cannot read (cross-origin without `Expose-Headers`) reads as unknown, and
   the toast always says private feeds are never exported. Check for new episodes
-  (`CheckEpisodesButton`) is for a followed show only, and reads the show again once, 15 s later.
+  (`CheckEpisodesButton`) is for a followed show only: it reads the show every 3 s until its
+  `last_checked` moves (two minutes at most), then says what it found by the episode count
+  ("2 new episodes", "No new episodes"; a failed check is the show page's line), and before
+  that when the feed was last checked.
 
 **The ebook reader (Bridge Phase 3b-1 web, 3b-2 app; `src/reader/`, the route `/read`).** On
 every platform (`canRead`: capability `ebooks` and `Book.ebook`; a download holding the EPUB

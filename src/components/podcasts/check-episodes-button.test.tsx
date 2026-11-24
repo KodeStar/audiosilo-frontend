@@ -97,6 +97,36 @@ describe('CheckEpisodesButton', () => {
     expect(screen.getByText('Check for new episodes')).toBeTruthy();
   });
 
+  it('says what the check found once it has ended, and nothing more for a failed one (fe#126)', async () => {
+    const show = {
+      ...checkedAt(podcastShow({ following: true }), '2026-10-27T10:00:00Z'),
+      episode_count: 5,
+    };
+    const view = await mount(show);
+    await fireEvent.press(screen.getByTestId('podcast-check'));
+    expect(screen.queryByTestId('podcast-check-result')).toBeNull();
+    const after = { ...checkedAt(show, '2026-10-27T10:00:14Z'), episode_count: 7 };
+    await view.rerender(tree(after));
+    expect(screen.getByTestId('podcast-check-result').props.children).toBe('2 new episodes');
+    await view.rerender(tree({ ...after, episode_count: 5 }));
+    expect(screen.getByTestId('podcast-check-result').props.children).toBe('No new episodes');
+    // A failed check is said by the show page's own line.
+    const failed = { ...after, status: { ...after.status, error: { code: 'x', message: '' } } };
+    await view.rerender(tree(failed));
+    expect(screen.queryByTestId('podcast-check-result')).toBeNull();
+  });
+
+  it('says when the feed was last checked until a check is asked', async () => {
+    jest.setSystemTime(Date.parse('2026-10-27T10:05:00Z'));
+    const view = await mount(checkedAt(podcastShow({ following: true }), '2026-10-27T10:00:00Z'));
+    expect(screen.getByTestId('podcast-check-result').props.children).toBe('Checked 5 minutes ago');
+    await fireEvent.press(screen.getByTestId('podcast-check'));
+    expect(screen.queryByTestId('podcast-check-result')).toBeNull();
+    await view.unmount();
+    await mount(checkedAt(podcastShow({ following: true }), null));
+    expect(screen.queryByTestId('podcast-check-result')).toBeNull();
+  });
+
   it('stops waiting after a while and reads the show and episodes once more', async () => {
     const show = checkedAt(podcastShow({ following: true }), '2026-10-27T10:00:00Z');
     const invalidate = jest.spyOn(qc, 'invalidateQueries');

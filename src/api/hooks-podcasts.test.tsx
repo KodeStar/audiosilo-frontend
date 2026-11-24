@@ -3,6 +3,7 @@ import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 import { AppState } from 'react-native';
 
+import { ApiError } from '@/api/client';
 import type { Capabilities, MyPodcasts, PodcastRequest, ServerInfo } from '@/api/types';
 import { podcastShow } from '@/testing/podcast-fixtures';
 import { golden2c3 } from '@/testing/podcast-fixtures-2c3';
@@ -26,6 +27,8 @@ function makeClient() {
       omittedUnavailable: 0,
     })),
     myPodcasts: jest.fn(async (): Promise<MyPodcasts> => ({ shows: [], requests: [] })),
+    dismissPodcastRequest: jest.fn(async (): Promise<void> => undefined),
+    podcastFetchStatus: jest.fn(),
   };
 }
 const mockClients: Record<string, ReturnType<typeof makeClient>> = {};
@@ -48,10 +51,12 @@ import {
   qk,
   useCapability,
   useCheckPodcast,
+  useDismissPodcastRequest,
   useExportOpml,
   useFollowPodcastByUrl,
   useFollowRequests,
   usePodcastDiscoveryProviders,
+  usePodcastFetchStatus,
   usePodcastSearch,
   type PodcastSearchParams,
 } from '@/api/hooks';
@@ -417,5 +422,103 @@ describe('useFollowRequests', () => {
     expect(qc.getQueryState(qk.podcastShows('c1', 9))?.isInvalidated).toBe(false);
     // Polling stops: nothing is open.
     expect(intervalOf(qc)()).toBe(false);
+  });
+});
+
+describe('useDismissPodcastRequest (fe#126)', () => {
+  const cached = (qc: QueryClient) =>
+    qc.getQueryData<MyPodcasts>(qk.myPodcasts('c1'))?.requests.map((r) => r.id);
+
+  it('sends nothing without podcast_request_dismiss', async () => {
+    const off = await mount({ podcasts: true }, () => ({
+      m: useDismissPodcastRequest(),
+      known: useCapability('podcast_request_dismiss'),
+    }));
+    await waitFor(() => expect(off.result.current.known).toBe(false));
+    let error: unknown;
+    await act(async () => {
+      await off.result.current.m.mutateAsync({ id: 81 }).catch((e: unknown) => (error = e));
+    });
+    expect(error).toBeInstanceOf(CapabilityError);
+    expect(mockClients.c1.dismissPodcastRequest).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['dismissed', undefined],
+    ['already gone (404)', new ApiError(404, 'gone', 'request_not_found', undefined, false, true)],
+  ])('takes a %s request out of the cached follow requests', async (_name, failure) => {
+    const on = await mount(
+      { podcast_request_dismiss: true },
+      () => ({ m: useDismissPodcastRequest(), known: useCapability('podcast_request_dismiss') }),
+      undefined,
+      (c) => {
+        if (failure) c.dismissPodcastRequest.mockRejectedValue(failure);
+      },
+    );
+    on.qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), {
+      shows: [],
+      requests: [request({ id: 81, state: 'failed' }), request({ id: 82, state: 'queued' })],
+    });
+    await waitFor(() => expect(on.result.current.known).toBe(true));
+    await act(async () => {
+      await on.result.current.m.mutateAsync({ id: 81 });
+    });
+    expect(mockClients.c1.dismissPodcastRequest).toHaveBeenCalledWith(81);
+    expect(cached(on.qc)).toEqual([82]);
+  });
+
+  it('keeps a request the server still holds open, or a proxy answered for', async () => {
+    for (const failure of [
+      new ApiError(409, 'open', 'request_open', undefined, false, true),
+      new ApiError(404, 'not found'),
+    ]) {
+      const on = await mount(
+        { podcast_request_dismiss: true },
+        () => ({ m: useDismissPodcastRequest(), known: useCapability('podcast_request_dismiss') }),
+        undefined,
+        (c) => c.dismissPodcastRequest.mockRejectedValue(failure),
+      );
+      on.qc.setQueryData<MyPodcasts>(qk.myPodcasts('c1'), {
+        shows: [],
+        requests: [request({ id: 81, state: 'failed' })],
+      });
+      await waitFor(() => expect(on.result.current.known).toBe(true));
+      let error: unknown;
+      await act(async () => {
+        await on.result.current.m.mutateAsync({ id: 81 }).catch((e: unknown) => (error = e));
+      });
+      expect(error).toBe(failure);
+      expect(cached(on.qc)).toEqual([81]);
+    }
+  });
+});
+
+describe('usePodcastFetchStatus', () => {
+  it("reads the server's 409 show_unreadable as unavailable, with its code", async () => {
+    const { result } = await mount(
+      { podcast_fetch: true },
+      () => usePodcastFetchStatus(5, 'S/e.mp3'),
+      undefined,
+      (c) =>
+        c.podcastFetchStatus.mockRejectedValue(
+          new ApiError(409, "Can't read the show.", 'show_unreadable', undefined, false, true),
+        ),
+    );
+    await waitFor(() => expect(result.current.data).toBeDefined());
+    expect(result.current.data).toMatchObject({
+      state: 'unavailable',
+      error: { code: 'show_unreadable' },
+    });
+  });
+
+  it('leaves any other refusal to the query', async () => {
+    const { result } = await mount(
+      { podcast_fetch: true },
+      () => usePodcastFetchStatus(5, 'S/e.mp3'),
+      undefined,
+      (c) => c.podcastFetchStatus.mockRejectedValue(new ApiError(409, 'off', 'module_off')),
+    );
+    await waitFor(() => expect(result.current.error).toBeInstanceOf(ApiError));
+    expect(result.current.data).toBeUndefined();
   });
 });

@@ -15,6 +15,7 @@ import {
   feedAddressProblem,
   followByUrlErrorKey,
   importFailureKey,
+  requestLabel,
   importProgress,
   importRowKey,
   importRowReasonKey,
@@ -139,6 +140,26 @@ describe('refusals in the listener words', () => {
     expect(importFailureKey('no_library_access')).toBe('podcasts.find.refusal.noAccess');
     expect(importFailureKey(null)).toBe('podcasts.import.fail.other');
     expect(importFailureKey('library_not_found')).toBe('podcasts.import.fail.other');
+    // No answer is no failure the listener can be told of: the import may still run.
+    expect(importFailureKey('no_answer')).toBe('podcasts.import.fail.noAnswer');
+    expect(importFailureKey('server_timeout')).toBe('podcasts.import.fail.serverTimeout');
+  });
+
+  it('names a follow request by its added show, else its given title, else its feed', () => {
+    const r = {
+      state: 'failed',
+      library_id: 7,
+      show_path: null,
+      title: 'From the list',
+      feed: 'https://f.example/...',
+    };
+    const shows = [{ path: 'Daily', title: 'The Daily' }];
+    expect(requestLabel(r, shows)).toBe('From the list');
+    expect(requestLabel({ ...r, title: null }, shows)).toBe('https://f.example/...');
+    expect(requestLabel({ ...r, title: undefined }, undefined)).toBe('https://f.example/...');
+    expect(requestLabel({ ...r, state: 'done', show_path: 'Daily' }, shows)).toBe('The Daily');
+    // A show the list doesn't hold yet keeps the given title.
+    expect(requestLabel({ ...r, state: 'done', show_path: 'Daily' }, [])).toBe('From the list');
   });
 
   it('says a refused export and check', () => {
@@ -387,7 +408,7 @@ describe('an import row that could not be added (BRIDGE-01)', () => {
 describe('artworkRetryDelay', () => {
   it('tries again after 3 s, 10 s and 30 s, then stops (four tries)', () => {
     expect(artworkRetryDelay(0)).toBeNull();
-    expect([1, 2, 3].map(artworkRetryDelay)).toEqual([3_000, 10_000, 30_000]);
+    expect([1, 2, 3].map((n) => artworkRetryDelay(n))).toEqual([3_000, 10_000, 30_000]);
     expect(artworkRetryDelay(4)).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { opmlText, outlineFeeds, rowFeedUrl } from './opml-feeds';
+import { opmlText, outlineFeeds, outlineTitles, rowFeedUrl } from './opml-feeds';
 
 const opml = (body: string) =>
   `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="2.0"><head><title>t</title></head><body>${body}</body></opml>`;
@@ -107,5 +107,30 @@ describe('opmlText', () => {
     const text = opml('<outline text="Café" xmlUrl="https://a.example/"/>');
     await expect(opmlText(new TextEncoder().encode(text))).resolves.toBe(text);
     await expect(opmlText({ text: async () => text } as Blob)).resolves.toBe(text);
+  });
+});
+
+describe('outlineTitles', () => {
+  it("reads each counted outline's title, else its text, on one line (fe#126)", () => {
+    const titles = outlineTitles(
+      opml(`
+        <outline text="News">
+          <outline title="A &amp; B" text="ignored" xmlUrl="https://a.example/feed"/>
+          <outline text="  Line\n\tbreak  " xmlUrl="https://b.example/feed"/>
+          <outline title="" text="" xmlUrl="https://c.example/feed"/>
+        </outline>
+        <outline TITLE="wrong case" xmlUrl="https://d.example/feed"/>`),
+    );
+    expect([...titles]).toEqual([
+      [1, 'News'],
+      [2, 'A & B'],
+      [3, 'Line break'],
+    ]);
+  });
+
+  it('bounds a long title, and gives none for markup it cannot read', () => {
+    const long = 'x'.repeat(600);
+    expect(outlineTitles(opml(`<outline title="${long}"/>`)).get(1)).toHaveLength(500);
+    expect([...outlineTitles('<opml><body><outline title="A" <broken></body></opml>')]).toEqual([]);
   });
 });

@@ -16,6 +16,7 @@ import {
   isServerBusyError,
   isSignedOutError,
   NetworkError,
+  OPML_IMPORT_TIMEOUT_MS,
   PodcastFetchPendingError,
   type ProxyRefusalStatus,
   ReadalongMapError,
@@ -3315,6 +3316,23 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     }
   });
 
+  it('asks a result artwork again with GET, reading the refusal and its Retry-After', async () => {
+    const url = client().discoveryArtworkUrl(golden2c3.itunes.results[0].artwork_url)!;
+    const m = installAnswers(() => ({ status: 200, text: 'jpeg' }));
+    await expect(client().probeDiscoveryArtwork(url)).resolves.toBeUndefined();
+    expect(call(m).url.toString()).toBe(url);
+    expect(call(m).init.method).toBe('GET');
+    // The token rides in the URL, as the image's does.
+    expect(headerValue(call(m).init, 'Authorization')).toBeUndefined();
+    refuse(429, 'provider_rate_limited', { 'Retry-After': '9' });
+    const e = await failure(client().probeDiscoveryArtwork(url));
+    expect([e.status, apiErrorKind(e), e.retryAfterSeconds]).toEqual([
+      429,
+      'provider_rate_limited',
+      9,
+    ]);
+  });
+
   it('follows by address with exactly {library_id, feed_url}, private only when asked', async () => {
     const m = installAnswers(() => ({
       status: 200,
@@ -3343,6 +3361,33 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
       feed_url: 'https://f/x',
       private: true,
     });
+    // A directory result's name labels the request (v2.7.0); a blank one is not sent.
+    await client().followPodcastByUrl(5, 'https://f/x', { title: ' The Show ' });
+    expect(JSON.parse(call(m, 3).init.body as string)).toEqual({
+      library_id: 5,
+      feed_url: 'https://f/x',
+      title: 'The Show',
+    });
+    await client().followPodcastByUrl(5, 'https://f/x', { title: '  ' });
+    expect(JSON.parse(call(m, 4).init.body as string)).toEqual({
+      library_id: 5,
+      feed_url: 'https://f/x',
+    });
+  });
+
+  it('dismisses a follow request with DELETE /podcasts/requests/{id}', async () => {
+    const m = installAnswers(() => ({ status: 204 }));
+    await expect(client().dismissPodcastRequest(81)).resolves.toBeUndefined();
+    expect(call(m).url.toString()).toBe('https://h/api/v1/podcasts/requests/81');
+    expect(call(m).init.method).toBe('DELETE');
+    for (const [status, code] of [
+      [409, 'request_open'],
+      [404, 'request_not_found'],
+    ] as const) {
+      refuse(status, code);
+      const e = await failure(client().dismissPodcastRequest(81));
+      expect([e.status, e.code]).toEqual([status, code]);
+    }
   });
 
   it('decodes a 202 subscribing and the follow-by-address refusals', async () => {
@@ -3432,7 +3477,7 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
     });
   });
 
-  it('gives an OPML upload 45 s before it times out', async () => {
+  it("gives an OPML upload past the server's 5 minute import bound before it times out", async () => {
     jest.useFakeTimers();
     try {
       globalThis.fetch = jest.fn(
@@ -3443,14 +3488,15 @@ describe('ApiClient finding shows (Bridge Phase 2d-2)', () => {
             );
           }),
       ) as unknown as typeof globalThis.fetch;
+      expect(OPML_IMPORT_TIMEOUT_MS).toBeGreaterThan(5 * 60_000);
       const p = failure(client().importOpml(7, new Uint8Array([1])));
-      jest.advanceTimersByTime(44_000);
+      jest.advanceTimersByTime(OPML_IMPORT_TIMEOUT_MS - 1_000);
       let settled = false;
       void p.then(() => (settled = true));
       await Promise.resolve();
       expect(settled).toBe(false);
       jest.advanceTimersByTime(1_000);
-      expect(await p).toMatchObject({ name: 'TimeoutError', timeoutMs: 45_000 });
+      expect(await p).toMatchObject({ name: 'TimeoutError', timeoutMs: OPML_IMPORT_TIMEOUT_MS });
     } finally {
       jest.useRealTimers();
     }

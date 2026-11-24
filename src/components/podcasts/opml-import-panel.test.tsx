@@ -45,6 +45,7 @@ function importer(over: Partial<OpmlImport> = {}): OpmlImport {
     state: null,
     problem: null,
     fileName: null,
+    titles: null,
     start: jest.fn(),
     unreadable: jest.fn(),
     stop: jest.fn(),
@@ -193,6 +194,31 @@ describe('OpmlImportPanel', () => {
     expect(screen.getByTestId('opml-status').props.children).toBe('All done.');
     expect(screen.queryByTestId('opml-stop')).toBeNull();
     expect(screen.queryByTestId('opml-retry')).toBeNull();
+  });
+
+  it("labels a row by the list's own name for it, else its show's folder (fe#126)", async () => {
+    await render(
+      <OpmlImportPanel
+        opml={importer({
+          titles: new Map([
+            [1, 'Morning Brief'],
+            [3, 'Night Owls'],
+          ]),
+          state: state({ kind: 'done' }, [
+            row(1, { path: 'Daily News' }),
+            row(2, { path: 'Tiny Tones' }),
+            row(3, { status: 'error' }),
+          ]),
+        })}
+        connectionId="c1"
+        libraryId={7}
+      />,
+    );
+    const r = (i: number) => within(screen.getByTestId(`opml-row-${i}`));
+    expect(r(1).getByText('Morning Brief')).toBeTruthy();
+    expect(r(1).queryByText('Daily News')).toBeNull();
+    expect(r(2).getByText('Tiny Tones')).toBeTruthy();
+    expect(r(3).getByText('Night Owls')).toBeTruthy();
   });
 
   it('numbers the feeds 1..n when a folder outline came first (BRIDGE-06)', async () => {

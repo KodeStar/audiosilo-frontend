@@ -3091,7 +3091,8 @@
         "signed_out": "You're signed out of this server. Sign in again, then try again.",
         "no_access": "This account doesn't have access to this episode.",
         "proxy_refused": "The server's sign-in proxy turned this device away. Update the proxy headers in Account, then try again.",
-        "other": "Something went wrong getting it. Try again in a while."
+        "other": "Something went wrong getting it. Try again in a while.",
+        "show_unreadable": "Your server can't read this show's folder, so it can't get episodes. Ask the person who runs your server to check the folder's permissions."
       }
     },
     "find": {
@@ -3174,7 +3175,9 @@
         "tooLong": "That address is too long.",
         "following": "You follow {{title}}.",
         "adding": "Adding the show. It appears in Shows once it's ready.",
-        "followingPublic": "You follow {{title}}. It was already in this library as a public feed, so it isn't private."
+        "followingPublic": "You follow {{title}}. It was already in this library as a public feed, so it isn't private.",
+        "failed": "Couldn't add the show.",
+        "cancelled": "Adding the show was cancelled."
       },
       "offline": "You're offline. Reconnect to find or add shows.",
       "accessFailed": "Couldn't check whether you can add shows."
@@ -3204,7 +3207,9 @@
         "feedError": "The feed's server answered with an error. Try again later.",
         "redirectLoop": "The feed's address redirects too many times.",
         "interrupted": "Adding it was interrupted. Follow the feed again to try once more."
-      }
+      },
+      "dismissLabel": "Dismiss {{title}}",
+      "dismissFailed": "Couldn't dismiss that. Try again."
     },
     "import": {
       "intro": "Bring the shows you follow in another podcast app. Export an OPML file there, then choose it here. Long lists are added in batches of five.",
@@ -3237,7 +3242,9 @@
       "fail": {
         "notOpml": "That file isn't an OPML list.",
         "tooLarge": "That list is too large to import.",
-        "other": "Couldn't import the list. Try again."
+        "other": "Couldn't import the list. Try again.",
+        "noAnswer": "Your server didn't answer in time, but it may still be adding the list's shows. Look in Shows in a few minutes, or try again: shows already added are skipped.",
+        "serverTimeout": "Your server stopped before the end of the list. Shows already added stay. Try again to add the rest."
       },
       "row": {
         "followed": "Following",
@@ -3277,7 +3284,11 @@
       "asked": "Asked the server to check",
       "recently": "Checked less than a minute ago. Try again shortly.",
       "cantNow": "Your server can't check feeds right now. Try again later.",
-      "failed": "Couldn't check this show. Try again."
+      "failed": "Couldn't check this show. Try again.",
+      "noNew": "No new episodes",
+      "found_one": "{{count}} new episode",
+      "found_other": "{{count}} new episodes",
+      "lastChecked": "Checked {{when}}"
     }
   },
   "reader": {

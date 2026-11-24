@@ -163,7 +163,7 @@ function ImportProgress({
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const { fileName, retries, canRetryRow, retryRow, stop: onStop, retry: onRetry } = opml;
+  const { fileName, titles, retries, canRetryRow, retryRow, stop: onStop, retry: onRetry } = opml;
   const rows = useMemo(
     () => liveImportRows(withRetries(state.rows, retries), requests),
     [state.rows, retries, requests],
@@ -214,6 +214,7 @@ function ImportProgress({
             <ImportRow
               key={row.outline_index}
               row={row}
+              title={titles?.get(row.outline_index) ?? null}
               number={i + 1}
               duplicateOf={
                 row.duplicate_of === null
@@ -255,6 +256,7 @@ function StatusText({ status, rows }: { status: WaveStatus; rows: readonly OpmlI
 
 const ImportRow = memo(function ImportRow({
   row,
+  title,
   number,
   duplicateOf,
   reasonKey,
@@ -262,6 +264,8 @@ const ImportRow = memo(function ImportRow({
   onRetry,
 }: {
   row: OpmlImportRow;
+  /** The list's own name for it (`outlineTitles`), when it has one. */
+  title: string | null;
   /** Its place in the list as shown (`entryNumbers`). */
   number: number;
   /** A duplicate's earlier entry, numbered the same way. */
@@ -276,7 +280,8 @@ const ImportRow = memo(function ImportRow({
   const { t } = useTranslation();
   // The server marks a list's private feeds; a row with no usable feed has none to mark.
   const hasFeed = row.feed !== null && row.status !== 'invalid' && row.status !== 'duplicate';
-  const label = row.path ?? row.feed;
+  // The list's own name for the show (fe#126), else its folder, else its redacted address.
+  const label = title || row.path || row.feed;
   return (
     <RowSurface
       testID={`opml-row-${row.outline_index}`}

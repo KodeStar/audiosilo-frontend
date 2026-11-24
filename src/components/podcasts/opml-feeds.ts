@@ -17,6 +17,39 @@ import { sameOrigin } from '@/lib/same-origin';
  */
 export function outlineFeeds(text: string): Map<number, string> {
   const out = new Map<number, string>();
+  return walkOutlines(text, (index, url) => {
+    if (url) out.set(index, url);
+  })
+    ? out
+    : new Map();
+}
+
+/** The longest title a row shows from its list (the server's `opml.MaxTitleBytes` bound
+ * on what it keeps). */
+const MAX_TITLE_CHARS = 500;
+
+/**
+ * Each subscription's own name in an OPML list, by the import rows' `outline_index`
+ * (fe#126): its `title` attribute, else its `text`, on one line. The server never echoes
+ * the list in its answer (a private feed's outline stays in memory), so a row's name is
+ * read from the bytes the page still holds, counted as `outlineFeeds` counts. Markup it
+ * can't read gives no titles (the rows show their address).
+ */
+export function outlineTitles(text: string): Map<number, string> {
+  const out = new Map<number, string>();
+  return walkOutlines(text, (index, _url, title) => {
+    if (title) out.set(index, title);
+  })
+    ? out
+    : new Map();
+}
+
+/** Visits each counted outline (`outlineFeeds`) with its index, its `xmlUrl` and its
+ * title; false when the markup can't be read (the caller keeps nothing). */
+function walkOutlines(
+  text: string,
+  visit: (index: number, url: string | null, title: string | null) => void,
+): boolean {
   const clean = text.replace(/<!--[\s\S]*?-->|<!\[CDATA\[[\s\S]*?\]\]>|<\?[\s\S]*?\?>/g, ' ');
   // A tag: its name, then attributes read value by value (a quoted value may hold `>`).
   const tag = /<(\/?)([^\s/>]+)((?:\s*[^\s=/>"']+\s*=\s*(?:"[^"]*"|'[^']*'))*)\s*(\/?)>/y;
@@ -27,29 +60,42 @@ export function outlineFeeds(text: string): Map<number, string> {
   for (let at = clean.indexOf('<'); at !== -1; at = clean.indexOf('<', tag.lastIndex)) {
     tag.lastIndex = at;
     const m = tag.exec(clean);
-    if (!m) return new Map();
+    if (!m) return false;
     const [, closing, name, attrs, selfClosing] = m;
     if (closing) {
       stack.pop();
       continue;
     }
     let url: string | null = null;
+    let title = '';
+    let label = '';
     for (let a = attr.exec(attrs); a; a = attr.exec(attrs)) {
       const key = a[1].toLowerCase();
+      const value = a[2] ?? a[3] ?? '';
       // A default namespace makes the element (and those below it) namespaced.
-      if (key === 'xmlns' && (a[2] ?? a[3])) return new Map();
-      if (key === 'xmlurl') url = decodeEntities(a[2] ?? a[3] ?? '').trim();
+      if (key === 'xmlns' && value) return false;
+      if (key === 'xmlurl') url = decodeEntities(value).trim();
+      // The server reads these two by their exact names.
+      else if (a[1] === 'title') title = oneLine(decodeEntities(value));
+      else if (a[1] === 'text') label = oneLine(decodeEntities(value));
     }
     attr.lastIndex = 0;
     const inTree =
       stack[0] === 'opml' && stack[1] === 'body' && stack.slice(2).every((n) => n === 'outline');
     if (name === 'outline' && inTree) {
       index++;
-      if (url) out.set(index, url);
+      visit(index, url, title || label || null);
     }
     if (!selfClosing) stack.push(name);
   }
-  return out;
+  return true;
+}
+
+/** A title on one line: control characters and runs of white space as one space, trimmed
+ * and bounded. */
+function oneLine(s: string): string {
+  const line = s.replace(/[\s\u0000-\u001f\u007f]+/g, ' ').trim();
+  return line.length > MAX_TITLE_CHARS ? line.slice(0, MAX_TITLE_CHARS).trimEnd() : line;
 }
 
 const NAMED: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" };

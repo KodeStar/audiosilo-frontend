@@ -1,12 +1,18 @@
 import type { ParseKeys } from 'i18next';
 
 import { ApiError, apiErrorKind } from '@/api/client';
-import type { OpmlImportRow, PodcastRequest } from '@/api/types';
+import type { OpmlImportRow, PodcastRequest, PodcastShow } from '@/api/types';
 import { FIND_SHOWS_SECTIONS, type FindShowsSection } from '@/lib/paths';
 import { isOpenRequest, requestShow } from '@/lib/podcast-requests';
 import { utf8 } from '@/lib/sha256';
 
-import { type AccountRefusal, canRetryImportFailure, isQueuedRow } from './opml-waves';
+import {
+  type AccountRefusal,
+  canRetryImportFailure,
+  isQueuedRow,
+  NO_ANSWER,
+  SERVER_TIMEOUT,
+} from './opml-waves';
 import { requestReasonKey } from './podcast-model';
 
 /**
@@ -133,7 +139,8 @@ export function followByUrlErrorKey(e: unknown): ParseKeys {
   }
 }
 
-/** Why an import stopped with `failed` (`code` the refusal's, null for no answer). */
+/** Why an import stopped with `failed` (`code` the refusal's, or this app's `no_answer` /
+ * `server_timeout`; null when it said none). */
 export function importFailureKey(code: string | null): ParseKeys {
   switch (code) {
     case 'invalid_opml':
@@ -141,6 +148,10 @@ export function importFailureKey(code: string | null): ParseKeys {
       return 'podcasts.import.fail.notOpml';
     case 'opml_limit':
       return 'podcasts.import.fail.tooLarge';
+    case NO_ANSWER:
+      return 'podcasts.import.fail.noAnswer';
+    case SERVER_TIMEOUT:
+      return 'podcasts.import.fail.serverTimeout';
     default:
       return accountRefusalKey(code) ?? 'podcasts.import.fail.other';
   }
@@ -251,6 +262,18 @@ export function requestStateKey(r: Pick<PodcastRequest, 'state'>): ParseKeys {
     default:
       return 'podcasts.requests.state.failed';
   }
+}
+
+/** What a follow request's row is called (fe#126): an added show's own title from the
+ * library's show list, else the name the directory or the imported list gave it, else its
+ * (redacted) feed address. */
+export function requestLabel(
+  r: Pick<PodcastRequest, 'state' | 'library_id' | 'show_path' | 'title' | 'feed'>,
+  shows: readonly Pick<PodcastShow, 'path' | 'title'>[] | undefined,
+): string {
+  const added = requestShow(r);
+  const title = added ? shows?.find((s) => s.path === added.path)?.title : undefined;
+  return title || r.title || r.feed;
 }
 
 /** How a follow request ended, read from the live follow requests: `null` while it is
