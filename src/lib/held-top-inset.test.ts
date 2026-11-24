@@ -22,5 +22,8 @@ describe('useHeldTopInset', () => {
     expect(result.current).toBe(0);
     await rerender({ top: 12, window: landscape });
     expect(result.current).toBe(12);
+    // Back to portrait with the status bar hidden: the room portrait held, not none.
+    await rerender({ top: 0, window: portrait });
+    expect(result.current).toBe(30);
   });
 });
