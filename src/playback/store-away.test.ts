@@ -103,6 +103,7 @@ const mockKept: number[] = [];
 jest.mock('./listening-outbox', () => {
   const actual = jest.requireActual('./listening-outbox');
   return {
+    recoverOpenSpan: jest.fn(async () => {}),
     spanToEvent: actual.spanToEvent,
     spanIsBareMove: actual.spanIsBareMove,
     spanSaysSomething: actual.spanSaysSomething,

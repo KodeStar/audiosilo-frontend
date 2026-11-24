@@ -74,6 +74,7 @@ import { bookSourceOf, downloadedSourceOf } from '@/playback/book-source';
 import { listenerSettings } from '@/playback/listener-settings';
 import { noteInteraction } from '@/playback/last-interaction';
 import { placeSavedAt, readLocalPlaces, resumeLookupOf } from '@/playback/progress-sync';
+import { spanRecovered } from '@/playback/span-recovery';
 import {
   engineHoldsOtherBook,
   engineOtherBook,
@@ -553,6 +554,9 @@ async function playSpecs(
   const out = new Map<string, CarPlaySpec | undefined>();
   const next: typeof specs = new Map();
   if (downloaded.length > 0) {
+    // Where a resume plays from: after a kill, the span it left recovered first, as
+    // `playBook` waits for it (a while at most).
+    await spanRecovered();
     const places = await readLocalPlaces();
     const { virtualChapterInterval } = useSettings.getState();
     const { defaultRate } = listenerSettings();

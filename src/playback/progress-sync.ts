@@ -37,7 +37,7 @@ import {
 import { onConnectionRemoved } from '@/stores/session';
 import { shallow } from 'zustand/shallow';
 
-import { FINISHED_TOLERANCE } from './book-queue';
+import { placeEndsBook } from './book-queue';
 import { connectionGeneration } from './connection-generation';
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
@@ -154,6 +154,14 @@ export type ResumeLookup =
 /** The durable mirror map (keyed by `contentKey`). */
 async function readMirrorMap(): Promise<Record<string, ProgressSave>> {
   return (await getItem<Record<string, ProgressSave>>(MIRROR_KEY)) ?? {};
+}
+
+/** `readMirrorMap` that rejects when storage could not be read, read once more first: a
+ * change that rejects is lost (a recovered span's place, whose stored span is cleared all
+ * the same; an offer's acknowledgement). */
+async function readMirrorMapStrict(): Promise<Record<string, ProgressSave>> {
+  const read = () => getItemStrict<Record<string, ProgressSave>>(MIRROR_KEY);
+  return (await read().catch(read)) ?? {};
 }
 
 /** The offline replay queue. */
@@ -1059,13 +1067,21 @@ export async function updateMirror(
   change: (save: ProgressSave) => ProgressSave | null,
   row?: Progress | null,
 ): Promise<void> {
-  await withMirrorLock(async () => {
-    const map = await readMirrorMap();
-    const key = contentKey(connectionId, libraryId, path);
-    const base = map[key] ?? (row ? progressToSave(connectionId, libraryId, path, row) : null);
-    if (!base) return;
-    const next = change(base);
-    if (next === (map[key] ?? null)) return; // unchanged (an acknowledgement already known)
+  return changeMirror(contentKey(connectionId, libraryId, path), (existing) => {
+    const base = existing ?? (row ? progressToSave(connectionId, libraryId, path, row) : null);
+    return base ? change(base) : null;
+  });
+}
+
+function changeMirror(
+  key: string,
+  change: (existing: ProgressSave | null) => ProgressSave | null,
+): Promise<void> {
+  return withMirrorLock(async () => {
+    const map = await readMirrorMapStrict();
+    const existing = map[key] ?? null;
+    const next = change(existing);
+    if (next === existing) return;
     if (next) map[key] = next;
     else delete map[key];
     await setItem(MIRROR_KEY, map);
@@ -1083,7 +1099,9 @@ export async function updateMirror(
  * - only a record OLDER than the span's end moves: a place written since stands (the
  *   listener's own move, which saves at once; another tab's play; a server row read since);
  * - only FORWARD: a span ending behind the record never moves a place back;
- * - never a finished book's, and never a book with no record (nothing to bring up);
+ * - a finished record stands. A span that says something (`create`: heard, or a move)
+ *   supplies the record when none exists yet, never finished: its length is the audio's
+ *   (`OpenSpan.duration`), not the book's a save measures the end by (`bookLengthOf`);
  * - never finished at the end of a queue that ends before its book (D3): one the record
  *   was captured in (`partial`), or this device's download of the book when it lacks the
  *   book's last file (`downloadEndsBefore`), unless the span ended in that file (streamed:
@@ -1092,34 +1110,44 @@ export async function updateMirror(
  *   capture carries no `partial`.
  * The record becomes this device's, with the span's file place (fe#188) or none.
  */
-export async function mirrorSpanEnd(span: OpenSpan): Promise<void> {
+export async function mirrorSpanEnd(span: OpenSpan, since: number, create: boolean): Promise<void> {
   const { pos, file, filePos } = span.to;
-  const endedAt = Date.parse(span.endedAt);
-  if (!Number.isFinite(pos) || !Number.isFinite(endedAt)) return;
-  const deviceId = await getDeviceId();
-  // Not known (the downloads registry not read): never finished there either (fe#273).
-  const shortEnd = await downloadEndsBefore(span.connectionId, span.libraryId, span.path).then(
-    (endsBefore) => endsBefore !== undefined && file !== endsBefore,
-    () => true,
-  );
-  const skew = await knownSkew(span.connectionId);
-  await updateMirror(span.connectionId, span.libraryId, span.path, (record) => {
-    if (record.finished || !(pos > record.position)) return record;
-    if (!(endedAt > localTimeOf(record, skew))) return record;
-    const { file: _file, file_pos: _filePos, server_clock: _clock, ...kept } = record;
+  const keptAt = Date.parse(span.endedAt);
+  if (!Number.isFinite(pos) || pos < 0 || !Number.isFinite(keptAt)) return;
+  // Never later than now (the clock set back since the keep): a record stamped ahead
+  // outranks every place saved after it, here and on other devices, until the clock passes.
+  const endedAt = Math.min(keptAt, Date.now());
+  const stamp = endedAt === keptAt ? span.endedAt : new Date(endedAt).toISOString();
+  const removed = () => connectionGeneration(span.connectionId) !== since;
+  if (removed()) return;
+  const [deviceId, shortEnd, skew] = await Promise.all([
+    getDeviceId(),
+    // Not known (the downloads registry not read): never finished there either (fe#273).
+    downloadEndsBefore(span.connectionId, span.libraryId, span.path).then(
+      (endsBefore) => endsBefore !== undefined && file !== endsBefore,
+      () => true,
+    ),
+    knownSkew(span.connectionId),
+  ]);
+  await changeMirror(contentKey(span.connectionId, span.libraryId, span.path), (record) => {
+    if (removed() || (!record && !create)) return record;
+    if (
+      record &&
+      (record.finished || pos <= record.position || !(endedAt > localTimeOf(record, skew)))
+    )
+      return record;
+    const { file: _file, file_pos: _filePos, server_clock: _clock, ...kept } = record ?? {};
+    const duration = record?.duration ?? (span.duration > 0 ? span.duration : 0);
     return {
+      ...bookRefOf(span),
+      ...(!record && span.baseVersion !== undefined ? { ack_version: span.baseVersion } : {}),
       ...kept,
       position: pos,
-      // A record taken in a queue ending before its book, or a download that does (D3):
-      // that end is not the book's.
-      finished:
-        !record.partial &&
-        !shortEnd &&
-        record.duration > 0 &&
-        pos >= record.duration - FINISHED_TOLERANCE,
-      playback_speed: span.speed > 0 ? span.speed : record.playback_speed,
+      duration,
+      finished: !!record && placeEndsBook(pos, duration, !!record.partial || shortEnd),
+      playback_speed: span.speed > 0 ? span.speed : (record?.playback_speed ?? 1),
       device_id: deviceId,
-      updated_at: span.endedAt,
+      updated_at: stamp,
       ...(file && Number.isFinite(filePos) ? { file, file_pos: filePos } : {}),
     };
   });

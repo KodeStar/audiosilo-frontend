@@ -13,6 +13,8 @@ export type BookQueue = {
   offsets: number[];
   /** Total book duration (seconds). */
   total: number;
+  /** Present when the queue lacks the book's last file. Its server length is 0 if unknown. */
+  partial?: { bookDuration: number };
   /** The audio's own length (seconds): the files' durations summed, from the server's file
    * list. Unlike `total` it never takes a chapter end past the audio, so it is what a Sync v2
    * event sends as its `duration` (the server refuses a span whose length is more than 10 s
@@ -47,9 +49,24 @@ export const DEFAULT_VIRTUAL_CHAPTER_INTERVAL = 30 * 60;
 
 /** Treat within 5 s of the end as finished (also where the credits' Play now finishes the
  * playing book rather than leaving it unfinished, and where a scrub never lands,
- * `scrubGuard`). Here, framework-free, so the transport maths can read it; the player
- * store re-exports it. */
+ * `scrubGuard`). */
 export const FINISHED_TOLERANCE = 5;
+
+/** Whether a place is within `FINISHED_TOLERANCE` of the whole book's end. Never at the end of
+ * a queue that ends before its book (`partial`, D3). */
+export function placeEndsBook(position: number, duration: number, partial: boolean): boolean {
+  return !partial && duration > 0 && position >= duration - FINISHED_TOLERANCE;
+}
+
+/** `placeEndsBook` for a place in `queue`. */
+export function queueEndsBook(queue: Pick<BookQueue, 'total' | 'partial'>, position: number) {
+  return placeEndsBook(position, queue.total, !!queue.partial);
+}
+
+/** The book's length for a percent heard: the queue's, but a partial queue's is the book's on
+ * its server when known (0 there is unknown, so the queue's). */
+export const bookLengthOf = (queue: Pick<BookQueue, 'total' | 'partial'>): number =>
+  queue.partial?.bookDuration || queue.total;
 
 /** A queue's files' lengths as the server measured them (`PlaybackTrack.duration`). */
 type FileLengths = { tracks: readonly { duration?: number }[] };

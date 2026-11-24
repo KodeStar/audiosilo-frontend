@@ -41,15 +41,12 @@ const mockStop = jest.fn();
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
   return {
-    FINISHED_TOLERANCE: 5,
     selectBookPosition: (s: { position: number }) => s.position,
-    selectEndsPartial: (s: { endsPartial?: boolean }) => !!s.endsPartial,
     usePlayer: create(() => ({
       nowPlaying: null,
       snapshot: { state: 'idle' },
       rate: 1,
       position: 0,
-      endsPartial: false,
       finishBook: () => mockFinishBook(),
       stop: () => mockStop(),
     })),
@@ -245,7 +242,6 @@ beforeEach(() => {
     snapshot: { state: 'idle' },
     rate: 1,
     position: 0,
-    endsPartial: false,
   });
   useAutoPlayHold.setState({ key: null });
 });
@@ -544,10 +540,14 @@ describe('EndCredits', () => {
     ] satisfies QueueEntry[]);
     // Its queue is the downloaded part: the place at its end is not the book's end.
     setPlayer({
-      nowPlaying: { connectionId: 'c1', libraryId: 1, path: PATH, queue: { total: 1000 } },
+      nowPlaying: {
+        connectionId: 'c1',
+        libraryId: 1,
+        path: PATH,
+        queue: { total: 1000, partial: { bookDuration: 3000 } },
+      },
       snapshot: { state: 'paused' },
       position: 1000,
-      endsPartial: true,
     });
     await mount();
     await fireEvent.press(screen.getByText('Play now'));

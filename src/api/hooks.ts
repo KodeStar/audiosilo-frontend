@@ -69,6 +69,7 @@ import {
   writeMirror,
   writeMirrors,
 } from '@/playback/progress-sync';
+import { spanRecovered } from '@/playback/span-recovery';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
 import { rememberLibraryNames } from '@/stores/library-names';
@@ -1579,6 +1580,9 @@ export async function fetchBookProgress(
   path: string,
   signal: AbortSignal,
 ): Promise<PlacedProgress | null> {
+  // Where Resume plays from, so after a kill only once the span it left is in the mirror (as
+  // `playBook` waits for it, a while at most), alongside the server's read.
+  const recovered = spanRecovered();
   let progress: Progress | null;
   try {
     progress = await api.getProgress(libraryId, path, signal);
@@ -1588,11 +1592,13 @@ export async function fetchBookProgress(
     // The server answered (any HTTP status) - propagate, never mask it with the mirror.
     if (e instanceof ApiError) throw e;
     noteFailure(connectionId, e);
+    await recovered;
     return await bookPlace(undefined, connectionId, libraryId, path);
   }
   if (progress && isKeptOffline(connectionId, libraryId, path)) {
     await writeMirror(progressToSave(connectionId, libraryId, path, progress)).catch(() => {});
   }
+  await recovered;
   // A local read that fails leaves the server's answer: it is still where the server is.
   return await bookPlace(progress, connectionId, libraryId, path).catch(() => progress);
 }

@@ -53,6 +53,7 @@ import * as reachability from '@/api/reachability';
 import { keepServerAnswer, keepServerFlag } from '@/api/server-snapshots';
 import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-offline';
 import { setConnectionAliases } from '@/lib/connection-id';
+import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
 import { connectionGeneration } from './connection-generation';
@@ -535,16 +536,112 @@ describe("a recovered span brings this device's record of the place up to its en
     expect(await record()).toEqual(further);
   });
 
-  it('leaves a finished book, and a book with no record', async () => {
+  it('leaves a finished book', async () => {
     const done = capture({ position: 300, finished: true });
     await writeMirror(done);
     await relaunch();
     expect(await record()).toEqual(done);
+  });
 
-    await AsyncStorage.clear();
-    await relaunch();
-    expect(await record()).toBeNull();
+  it('creates the first mirror at the recovered file place for an offline resume', async () => {
+    const left = span();
+    await relaunch(left);
+    expect(await record()).toEqual({
+      connectionId: 'c1',
+      libraryId: 3,
+      path: left.path,
+      position: left.to.pos,
+      file: left.to.file,
+      file_pos: left.to.filePos,
+      duration: left.duration,
+      finished: false,
+      playback_speed: left.speed,
+      updated_at: left.endedAt,
+      device_id: await getDeviceId(),
+      ack_version: left.baseVersion,
+    });
+    expect(resumeLookupOf(undefined, await readLocalPlaces(), 'c1', 3, left.path)).toMatchObject({
+      kind: 'progress',
+      file: { path: left.to.file, pos: left.to.filePos },
+    });
     expect(await outboxEvents('c1')).toHaveLength(1);
+  });
+
+  it('creates no first mirror from a span that heard nothing', async () => {
+    // A span begun again where the engine was as an offer's answer landed (`answerAfterSpan`):
+    // kept before the move reached the engine, it is no word on the place.
+    const at = { pos: 16800, file: 'Author/Book/05.mp3', filePos: 1203.9 };
+    const now = '2026-10-25T07:33:30.000Z';
+    await relaunch(span({ from: at, to: at, startedAt: now, endedAt: now, start: 'continue' }));
+    expect(await record()).toBeNull();
+    expect(await outboxEvents('c1')).toEqual([]);
+  });
+
+  it('never stamps the record later than now (the clock set back since the keep)', async () => {
+    await writeMirror(capture());
+    const ahead = new Date(Date.now() + 3_600_000).toISOString();
+    await relaunch(span({ endedAt: ahead }));
+    const moved = await record();
+    expect(moved).toMatchObject({ position: 16800 });
+    expect(Date.parse(moved!.updated_at)).toBeLessThanOrEqual(Date.now());
+  });
+
+  it('reads the mirror once more when a read fails, so the recovered place still lands', async () => {
+    await writeMirror(capture());
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    // Armed as the recovery asks the downloads registry, just before it changes the mirror.
+    let failNext = false;
+    let failed = false;
+    setDownloadEndCheck(async () => {
+      failNext = true;
+      return undefined;
+    });
+    getItem.mockImplementation((key: string) => {
+      if (key === PROGRESS_MIRROR_KEY && failNext) {
+        failNext = false;
+        failed = true;
+        return Promise.reject(new Error('busy'));
+      }
+      return read(key);
+    });
+    try {
+      await relaunch();
+    } finally {
+      getItem.mockImplementation(read);
+      setDownloadEndCheck(async () => undefined);
+    }
+    expect(failed).toBe(true);
+    expect(await record()).toMatchObject({ position: 16800 });
+  });
+
+  it('never creates a finished first mirror: the span measures the audio, not the book', async () => {
+    // Within 5 s of the audio's end, where a book whose chapters run past it is not finished.
+    await relaunch(span({ to: { pos: 61198, file: 'Author/Book/05.mp3', filePos: 3000 } }));
+    expect(await record()).toMatchObject({ position: 61198, finished: false });
+  });
+
+  it('a removal during recovery clears the old listen and leaves no mirror for the next sign-in', async () => {
+    let reading!: () => void;
+    let finishRead!: () => void;
+    const started = new Promise<void>((resolve) => (reading = resolve));
+    const ready = new Promise<void>((resolve) => (finishRead = resolve));
+    setDownloadEndCheck(async () => {
+      reading();
+      await ready;
+      return undefined;
+    });
+    try {
+      const recovering = relaunch();
+      await started;
+      const removing = Promise.all(purges.map((purge) => purge('c1')));
+      finishRead();
+      await Promise.all([recovering, removing]);
+      expect(await record()).toBeNull();
+      expect(await outboxEvents('c1')).toEqual([]);
+    } finally {
+      setDownloadEndCheck(async () => undefined);
+    }
   });
 
   it('drops the file place of the older capture when the span has none', async () => {
@@ -1025,6 +1122,41 @@ describe('flushOutbox', () => {
       row,
     );
     expect((await readMirror('c1', 3, 'Author/Book'))?.ack_version).toBe(42);
+  });
+
+  it('a mirror that cannot be read leaves the rest of the answer to land', async () => {
+    const deviceId = await getDeviceId();
+    await appendEvents('c1', [listen('a')]);
+    const row: Progress = {
+      library_id: 3,
+      path: 'Author/Book',
+      position: 16800,
+      duration: 61200,
+      finished: false,
+      playback_speed: 1.2,
+      version: 42,
+      device_id: deviceId,
+      updated_at: '2026-10-25T07:33:30.000Z',
+    };
+    client(async (body) => answer(body, () => ({ status: 'applied' }), [row]));
+    const told: unknown[] = [];
+    const stop = onSyncAnswer((_cid, rows) => told.push(rows));
+    const getItem = AsyncStorage.getItem as jest.Mock;
+    const read = getItem.getMockImplementation()!;
+    getItem.mockImplementation((key: string) =>
+      key === PROGRESS_MIRROR_KEY ? Promise.reject(new Error('unreadable')) : read(key),
+    );
+    try {
+      await flushOutbox('c1');
+    } finally {
+      getItem.mockImplementation(read);
+      stop();
+    }
+    expect(queryClient.setQueryData).toHaveBeenCalledWith(
+      ['progress', 'c1', 3, 'Author/Book'],
+      row,
+    );
+    expect(told).toEqual([[row]]);
   });
 
   it("caches this device's newer place, with the row, when the server kept another device's (fe#211)", async () => {

@@ -2725,16 +2725,25 @@ media GETs only.
     for book seconds, the range is 0.5x to 2x). On this device, any server, online or
     not: the mirror, **15 s**. On the sync path the open span is nearer, **5 s**: the
     next launch closes it into the outbox (`recoverOpenSpan`) and brings the mirror's
-    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`), so an
-    offline start resumes there, and online the span reaches the server with the launch's
-    send and the resume reads it back; a play that beats the launch's recovery has the
-    15 s. `mirrorSpanEnd` takes the span's end as the capture it would have been when it
-    was last kept, by the mirror's own rule (the newest record wins) and no further: only a
-    record older than the span's end, only forward, never a finished book's or a book with
-    no record, so a place written since stands (the listener's own move saves at once;
-    another tab's play; a server row). On the web it runs for a span another tab left
-    behind too, dated when that tab kept it, never now. The legacy path has no span: 15 s
-    here, and the server (so every other device) holds the last PUT, up to 60 s back,
+    record of its book up to its end (`mirrorSpanEnd` in `progress-sync.ts`). The readers
+    of the place a play starts from (`playBook`, for a resume's lookup and for an explicit
+    place's speed and finish, Previously on's `resumeWithOverlap`, the book page's
+    `fetchBookProgress`, the car's play specs) wait for that local recovery, including
+    when the server is offline, for 2 s at most from the first reader's wait, shared by
+    them all (`spanRecovered`): past it, they read the places as they are and the
+    recovery lands later. A book with no record gets its first one from
+    a span that says something (`spanSaysSomething`), with its last file, offset, speed and
+    capture time, never finished (the span's length is the audio's, not the book's); an
+    existing one moves only when it is older than the span's end, only forward, and never
+    when it is finished, so a place written since stands. A record is never stamped later
+    than now (a keep's time ahead of the clock, set back since). The mirror's changes read
+    it strictly, once more before they give up (`readMirrorMapStrict`). While a reconcile
+    holds saves, the keeper leaves the span at its previous place and time, and the save
+    loop, the background, a reconnect and the web's `hidden` leave it uncut (`savesHeld`):
+    the hold ending with no move makes the cut they asked for (`holdSaves`), a move cuts it
+    itself, and a sign-out takes it at once. On the web it runs for a span another tab left
+    behind too, dated when that tab kept it, never now. The legacy path has no span:
+    15 s here, and the server (so every other device) holds the last PUT, up to 60 s back,
     until this device saves again.
   - The pace is **read at every check**, not set by an event (`engineTicker`'s `period`):
     the next save is due that long after the LAST one, so a change mid-play (the hot-swap
@@ -3076,10 +3085,13 @@ media GETs only.
     (`answerAfterSpan`, `afterInTurn`; in turn with no span open too, behind a close already
     on its way), so what was heard before the answer never goes on the row's version (the
     place left behind would replace the other device's newer one, sent alone after a kill;
-    fe#285); the span the cut opens begins again where the engine is once the answer is in,
-    and is stored then (what it heard meanwhile would close on the row's at the old place, a
-    keep's copy too after a kill); the move goes on the row's (`decide` makes it only if the
-    book and the listener's moves are as they were). The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
+    fe#285); the span the cut opens begins again where the engine is once the answer is in
+    (what it heard meanwhile would close on the row's at the old place, a keep's copy too
+    after a kill); the move (`answerAfterSpan`'s `move`) is made right then, and that span is
+    stored only when no move took it: a copy at the old place stamped after the answer,
+    recovered after a kill before the move's own span was stored, moved this device's record
+    back there over the row just answered. The move goes on the row's (`decide` makes it only
+    if the book and the listener's moves are as they were). The Wear OS app does the same (`SpanRecorder.move`'s `acknowledge`); the Apple Watch
     still acknowledges before the move.
   - *Storage* (all connection-scoped, in `SCOPED_STORAGE_KEYS` and the identity migration, purged
     with the connection): `audiosilo.listeningOutbox` (closed events with their `connectionId`,
@@ -3088,7 +3100,10 @@ media GETs only.
     playing, each with its `owner` and `keptAt`; a bare span is the pre-W2 form; a kill's
     leftover is closed into the outbox at the next launch, `recoverOpenSpan` (the mirror's
     record brought up to its end, `mirrorSpanEnd`: *The periodic save's pace*), and on the web
-    another tab's span is left to it while it is live, 30 s either side of now (a tab on an
+    a reload recovers its previous document's span immediately. `audiosilo.openSpanOwner`
+    in sessionStorage names that document. Its Web Lock protects a live tab when another
+    inherits its sessionStorage. Without Web Locks the early sweep requires a reload.
+    Other tabs' spans stay live for 30 s either side of now (a tab on an
     older build, no `owner`, while its `endedAt` is under 45 s old); a tab whose last copy
     another tab took that way plays on under a new id from where the copy ended,
     `takenFrom`/`goingOnFrom`, so what it played since is not a `duplicate`),
@@ -3743,7 +3758,7 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     (streaming what the download lacks) and the engine reloaded into it: it streams on, and a
     file the server no longer has is gone from the book. Offline (or no answer), a queue built
     from a download that ENDS EARLY (it lacks the book's last file, as the engine's order or
-    the server's last answer names it) is partial (`partialQueues`). A download missing only
+    the server's last answer names it) is partial (`BookQueue.partial`). A download missing only
     an earlier file (an intro) is not: it holds the book's end, and reaching that end
     finishes the book as usual (credits, `finish`, the finished save). The fact is kept on
     the download (`DownloadManifest.endsBefore`: set by every server chapters answer,
@@ -3777,14 +3792,17 @@ the full write-up is the docs' `docs-developers/frontend/native-integrations.md`
     queue's length**: its own audio is the downloaded part's, more than 10 s off the indexed
     book's whenever a whole file is missing, and the server refused every listen over it
     (`duration_mismatch`). Each partial queue carries the book's length on its server
-    (`partialQueues` maps it: `DownloadManifest.bookDuration`, kept from the chapters answer
+    (`queue.partial.bookDuration` comes from `DownloadManifest.bookDuration`, kept from the chapters answer
     that set `endsBefore`, else a server answer the start was given naming that end, else 0):
     a span sends it as its `duration` (0 sends none, and the server checks none) and a save
-    as its `duration`, so a percent read from the mirror is of the book. A listen refused
+    as its `duration` (`bookLengthOf`), so a percent read from the mirror is of the book. A
+    forced finish records that length as both position and duration. Every check of whether
+    a place ends the book goes through `placeEndsBook` (`queueEndsBook` for a queue). A
+    listen refused
     `duration_mismatch` over such a download goes back to the outbox at that length (or none)
     on every `flushAllOutboxes` (`resendMismatched`, through `downloadBookLength` in
     `kept-offline.ts`), once per length, so one refused again stays on the list. The end
-    credits' Play now never finishes such a book by its place (`selectEndsPartial`): it
+    credits' Play now never finishes such a book by its place (`queueEndsBook`): it
     stops, unfinished. Regression tests: `store-adopt.test.ts`, `store-listening.test.ts`
     (its length), `end-credits.test.tsx`, `listening-outbox.test.ts` (span recovery, the
     resend), `downloads/store.test.ts` (`endsBefore`, `bookDuration`).
@@ -5637,8 +5655,9 @@ under their empty state).
   when its book was last played 12+ days ago and a community recap reaches the listener (the Story so
   far gate); "Resume, with 30 seconds of overlap" (`resumeWithOverlap`) starts 30 s before the NEWEST
   saved place at its speed: the resume lookup (`loadInitialProgress`: the server, the local mirror and
-  the offline queue) against Home's server row, since a start at an explicit position skips the
-  store's own reconciliation. The card is dark in both themes through `ScopedThemeColors`
+  the offline queue, once `recoverOpenSpan` has brought the mirror up to a span a kill left, 2 s at
+  most: `spanRecovered`) against
+  Home's server row, since a start at an explicit position skips the store's own reconciliation. The card is dark in both themes through `ScopedThemeColors`
   (`use-theme-colors.tsx`), which also hands the dark colours to `useThemeColors` below it, so colour
   props (a Button's spinner, icons) follow the scope as classes do.
 - **Command palette (web only)**: `CommandPalette` (`command-palette.tsx`), mounted once by the web

@@ -14,6 +14,7 @@ import {
   type FileSpec,
   locate,
   nextChapterEnd,
+  placeEndsBook,
   restreamTracks,
   shortOfFileEnd,
   synthesizeChapters,
@@ -61,6 +62,13 @@ function chapter(p: Partial<Chapter>): Chapter {
     ...p,
   };
 }
+
+it('only a place within five seconds of a known whole-book end finishes it', () => {
+  expect(placeEndsBook(94.9, 100, false)).toBe(false);
+  expect(placeEndsBook(95, 100, false)).toBe(true);
+  expect(placeEndsBook(100, 100, true)).toBe(false);
+  expect(placeEndsBook(100, 0, false)).toBe(false);
+});
 
 describe('bookFileSpecs', () => {
   it('prefers the explicit file list, sorted by seq', () => {
