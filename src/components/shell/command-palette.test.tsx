@@ -16,8 +16,20 @@ jest.mock('expo-router', () => ({
 jest.mock('@/lib/layout', () => ({ useLayout: () => 'desktop' }));
 jest.mock('@/downloads/engine', () => ({ engine: { supported: true } }));
 jest.mock('@/api/provider', () => ({
-  useApi: () => ({ coverUrl: () => 'https://x/cover', authHeaders: () => ({}) }),
+  useApi: () => ({
+    coverUrl: (_lib: number, path: string, o?: { version?: string }) =>
+      `https://x/cover?path=${path}${o?.version ? `&v=${o.version}` : ''}`,
+    authHeaders: () => ({}),
+  }),
   useApis: () => [{ connection: { id: 'c1', name: 'Hearthside' } }],
+}));
+// Each cover's image URL, by its label.
+const mockCoverUris = new Map<string, string | undefined>();
+jest.mock('@/components/ui/cover', () => ({
+  Cover: ({ source, label }: { source?: { uri?: string }; label: string }) => {
+    mockCoverUris.set(label, source?.uri);
+    return null;
+  },
 }));
 
 const mockSetPref = jest.fn();
@@ -38,11 +50,13 @@ const mockHolmes = {
   rel_path: 'Doyle/The Adventures of Sherlock Holmes',
   title: 'The Adventures of Sherlock Holmes',
   author: 'Arthur Conan Doyle',
+  cover_version: 'cvH',
 };
 const mockHound = {
   ...mockHolmes,
   rel_path: 'Doyle/The Hound',
   title: 'The Hound of the Baskervilles',
+  cover_version: undefined,
 };
 const mockSource = { connectionId: 'c1', connectionName: 'Hearthside', libraryId: 1 };
 const mockIdle = { supported: true, isLoading: false, isError: false, retry: jest.fn() };
@@ -108,6 +122,9 @@ const mockProgressOptions = jest.fn();
 // Each Continue listening book's `/item`, by path (PLAYER-03: titled by it): none known
 // unless a test says so.
 let mockItemTitles: Record<string, string> = {};
+// Each one's `cover_version`, by path; and the progress row's own (an older server: none).
+let mockItemVersions: Record<string, string> = {};
+let mockRowVersion: string | undefined = 'cvA';
 const mockItemReads = jest.fn();
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual('@tanstack/react-query'),
@@ -116,13 +133,14 @@ jest.mock('@tanstack/react-query', () => ({
     combine,
   }: {
     queries: { queryKey: unknown[]; enabled?: boolean }[];
-    combine: (r: { data?: { title: string } }[]) => unknown;
+    combine: (r: { data?: { title?: string; cover_version?: string } }[]) => unknown;
   }) => {
     mockItemReads(queries.map((q) => ({ path: q.queryKey[3], enabled: q.enabled })));
     return combine(
       queries.map((q) => {
         const title = mockItemTitles[q.queryKey[3] as string];
-        return { data: title ? { title } : undefined };
+        const cover_version = mockItemVersions[q.queryKey[3] as string];
+        return { data: title || cover_version ? { title, cover_version } : undefined };
       }),
     );
   },
@@ -146,6 +164,7 @@ jest.mock('@/api/hooks', () => ({
         duration: 1200,
         finished: false,
         updated_at: '2026-10-05T10:00:00Z',
+        cover_version: mockRowVersion,
       },
     ],
     isLoading: false,
@@ -224,6 +243,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   mockItemTitles = {};
+  mockItemVersions = {};
+  mockRowVersion = 'cvA';
   mockUpNext = { supported: undefined, count: 0 };
   usePalette.setState({ open: false, query: '' });
   useRecentSearches.setState({ recent: [] });
@@ -287,6 +308,32 @@ describe('CommandPalette', () => {
     });
     expect(usePalette.getState().open).toBe(false);
     expect(useRecentSearches.getState().recent).toEqual(['holmes']);
+  });
+
+  it("versions each cover's URL by its row's cover_version", async () => {
+    mockCoverUris.clear();
+    await openWith();
+    // A Continue listening row: its progress row's own version.
+    expect(mockCoverUris.get('Alice')).toBe('https://x/cover?path=Carroll/Alice&v=cvA');
+    await fireEvent.changeText(screen.getByTestId('palette-input'), 'holmes');
+    await act(async () => {
+      jest.advanceTimersByTime(250);
+    });
+    expect(mockCoverUris.get('The Adventures of Sherlock Holmes')).toBe(
+      'https://x/cover?path=Doyle/The Adventures of Sherlock Holmes&v=cvH',
+    );
+    // A book without one (an older server) asks without a version.
+    expect(mockCoverUris.get('The Hound of the Baskervilles')).toBe(
+      'https://x/cover?path=Doyle/The Hound',
+    );
+  });
+
+  it("versions a Continue listening row without its own by its book's, as Home does", async () => {
+    mockRowVersion = undefined;
+    mockItemVersions = { 'Carroll/Alice': 'cvItem' };
+    mockCoverUris.clear();
+    await openWith();
+    expect(mockCoverUris.get('Alice')).toBe('https://x/cover?path=Carroll/Alice&v=cvItem');
   });
 
   it("bolds the match at the line's own label size", async () => {

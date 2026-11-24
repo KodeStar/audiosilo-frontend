@@ -419,6 +419,10 @@ export type FsEntry = {
   /** The end of a range position (an omnibus of 1-3), as on a `Book`. */
   series_index_end?: number;
   duration?: number;
+  /** The book's `Book.cover_version` (the cover URL's cache buster) on an indexed book
+   * entry; absent otherwise and on older servers. Mirrored for wire parity: the player's
+   * folder rows draw no cover. */
+  cover_version?: string;
   /** Per-folder detection override ("book" | "collection"); empty when auto-detected.
    * An admin-console concern - the player browses read-only - but mirrored for completeness. */
   override?: string;
@@ -1038,6 +1042,11 @@ export type Progress = {
    * row (`listening_sync` servers). Kept on the row until a device that saw it carries on
    * (or Jumps there), so the device that never saw the sync answer can still offer it. */
   other_place?: ListeningOtherPlace;
+  /** The book's `Book.cover_version` (the cover URL's cache buster). Sent on
+   * GET /me/progress rows whose path is an indexed book only: absent on a single
+   * book's progress, a save's echo, a sync answer and on older servers. Never sent
+   * back: the server ignores it on a PUT. */
+  cover_version?: string;
 };
 
 /** A listening place the server did not keep (Sync v2): the losing side of a diverged
@@ -1286,6 +1295,9 @@ export type Favourite = {
   /** The end of a range position (an omnibus of 1-3), as on a `Book`. */
   series_index_end?: number;
   duration: number;
+  /** The book's `Book.cover_version` (the cover URL's cache buster) when `is_book`;
+   * absent otherwise and on older servers. */
+  cover_version?: string;
   created_at: string;
 };
 
@@ -1542,6 +1554,9 @@ export type HouseListeningRow = {
   chapter_index: number | null;
   /** The newest save, fixed-width UTC milliseconds (`2026-10-09T19:59:30.000Z`). */
   updated_at: string;
+  /** The book's `Book.cover_version` (the cover URL's cache buster) when the row's path
+   * is an indexed book; absent otherwise and on older servers. */
+  cover_version?: string;
 };
 
 /** Response of GET /household/listening (capability `household`). Reciprocal:

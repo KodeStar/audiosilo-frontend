@@ -4,9 +4,10 @@ import type { BookMetaRecap, Progress } from '@/api/types';
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+let mockLayout = 'phone';
 jest.mock('@/lib/layout', () => ({
   ...jest.requireActual('@/lib/layout'),
-  useLayout: () => 'phone',
+  useLayout: () => mockLayout,
 }));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,
@@ -14,7 +15,13 @@ jest.mock('@/api/provider', () => ({
 jest.mock('@/playback/store', () => ({
   usePlayer: (sel: (s: object) => unknown) => sel({ nowPlaying: null }),
 }));
-jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
+const mockCoverVersions: (string | undefined)[] = [];
+jest.mock('@/components/library/book-cover', () => ({
+  BookCover: ({ coverVersion }: { coverVersion?: string }) => {
+    mockCoverVersions.push(coverVersion);
+    return null;
+  },
+}));
 // book-meta (the generated mark) pulls in CoverFrame, whose shadow hook reads the theme.
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 const mockClient = { name: 'the book’s own client' };
@@ -84,6 +91,8 @@ const found = (over: Partial<Progress>) => ({
 });
 
 beforeEach(() => {
+  mockLayout = 'phone';
+  mockCoverVersions.length = 0;
   mockGenerated = undefined;
   mockLookup.mockReset();
   mockStart.mockReset().mockResolvedValue(true);
@@ -191,5 +200,17 @@ describe('PreviouslyOnCard', () => {
     const generated = { ...at, path: 'Sanderson/Skyward' };
     await render(<PreviouslyOnCard at={generated} saved={{ ...saved, path: generated.path }} />);
     expect(screen.getByText('Generated on this server')).toBeTruthy();
+  });
+
+  // Home's Now card beside it asks for the row's version; the same URL here, before
+  // and after the book loads, is one fetch.
+  it("draws the cover at Home's row's version", async () => {
+    mockLayout = 'tablet';
+    const other = { ...at, path: 'Sanderson/Elantris-cover' };
+    await render(
+      <PreviouslyOnCard at={other} saved={{ ...saved, path: other.path, cover_version: 'v7' }} />,
+    );
+    expect(mockCoverVersions.length).toBeGreaterThan(0);
+    expect(new Set(mockCoverVersions)).toEqual(new Set(['v7']));
   });
 });

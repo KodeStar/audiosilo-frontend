@@ -2490,6 +2490,10 @@ export function useEditProgress(connectionId?: string) {
       });
       const same = (p: Progress) =>
         p.library_id === progress.library_id && p.path === progress.path;
+      // The echo is a single book's read, which never carries `cover_version`: the list's
+      // row keeps its own, so its cover URL does not change with the edit.
+      const edited = (p: Progress): Progress =>
+        p.cover_version === undefined ? progress : { ...progress, cover_version: p.cover_version };
       return Promise.all([
         storeAnswer(qc, qk.progress(cid, progress.library_id, progress.path), () => progress),
         storeAnswer<Progress[]>(
@@ -2497,7 +2501,7 @@ export function useEditProgress(connectionId?: string) {
           qk.allProgress(cid),
           (list) =>
             list &&
-            (list.some(same) ? list.map((p) => (same(p) ? progress : p)) : [progress, ...list]),
+            (list.some(same) ? list.map((p) => (same(p) ? edited(p) : p)) : [progress, ...list]),
         ),
       ]);
     },

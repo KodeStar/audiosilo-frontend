@@ -86,6 +86,17 @@ describe('HouseRow', () => {
     );
   });
 
+  it("passes the row's cover_version as the cover's cache buster", async () => {
+    share('a', [row({ cover_version: 'cv9' }), row({ user_id: 4, username: 'maya' })]);
+    await render(<HouseRow connections={[conn('a', 'Hearthside')]} />);
+    const versions = mockBookCover.mock.calls.map(
+      ([p]) => (p as { coverVersion?: string }).coverVersion,
+    );
+    // A row from an older server (no cover_version) asks for the cover without one.
+    expect(versions).toContain('cv9');
+    expect(versions).toContain(undefined);
+  });
+
   it('shows each housemate with the book, a state line and a spoken sentence', async () => {
     share('a', [
       row(),

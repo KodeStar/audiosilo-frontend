@@ -21,16 +21,20 @@ jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   useDeviceOnline: () => mockDeviceOnline,
 }));
-// The grid and its tiles have their own tests; here, only which state the page is in.
+// The grid and its tiles have their own tests; here, which state the page is in and
+// what each cover is handed (recorded by layout).
+const mockCover = jest.fn((_layout: 'grid' | 'list', _props: { coverVersion?: string }) => null);
 jest.mock('@/components/library/cover-grid', () => {
   const { Text, View } = jest.requireActual('react-native');
   return {
     CoverGrid: ({
       data,
+      renderItem,
       ListHeaderComponent,
       ListEmptyComponent,
     }: {
       data: readonly SourcedFavourite[];
+      renderItem: (f: SourcedFavourite, tile: number) => ReactElement;
       ListHeaderComponent: ReactElement;
       ListEmptyComponent: ReactElement | null;
     }) => (
@@ -38,20 +42,26 @@ jest.mock('@/components/library/cover-grid', () => {
         {ListHeaderComponent}
         {data.length === 0
           ? ListEmptyComponent
-          : data.map((f) => <Text key={f.path}>{f.title}</Text>)}
+          : data.map((f) => (
+              <View key={f.path}>
+                <Text>{f.title}</Text>
+                {renderItem(f, 120)}
+              </View>
+            ))}
       </View>
     ),
     CoverGridSkeleton: () => <Text>loading grid</Text>,
-    CoverListRow: () => null,
+    CoverListRow: (p: { coverVersion?: string }) => mockCover('list', p),
   };
 });
 jest.mock('@/components/library/cover-tile', () => ({
-  CoverTile: () => null,
+  CoverTile: (p: { coverVersion?: string }) => mockCover('grid', p),
   useServerFlag: () => () => undefined,
 }));
 jest.mock('@/components/library/books/books-controls', () => ({ LayoutToggle: () => null }));
+let mockBooksLayout: 'grid' | 'list' = 'grid';
 jest.mock('@/components/library/books/books-layout-store', () => ({
-  useBooksLayout: () => ['grid', jest.fn()],
+  useBooksLayout: () => [mockBooksLayout, jest.fn()],
 }));
 
 type Favourites = {
@@ -93,6 +103,8 @@ const read = (state: Partial<Favourites> = {}): Favourites => ({
 beforeEach(() => {
   mockDeviceOnline = true;
   mockFavourites = read();
+  mockBooksLayout = 'grid';
+  mockCover.mockClear();
 });
 
 describe('FavouritesScreen', () => {
@@ -145,6 +157,19 @@ describe('FavouritesScreen', () => {
     expect(screen.getByText('1 item')).toBeTruthy();
     expect(screen.queryByText("Couldn't load your favourites")).toBeNull();
   });
+
+  it.each(['grid', 'list'] as const)(
+    "hands the %s cover the favourite's cover_version as its cache buster",
+    async (layout) => {
+      mockBooksLayout = layout;
+      const older = { ...book, path: 'Tolkien/Silmarillion', title: 'The Silmarillion' };
+      mockFavourites = read({ favourites: [{ ...book, cover_version: 'cv3' }, older] });
+      await render(<FavouritesScreen />);
+      const handed = mockCover.mock.calls.filter(([l]) => l === layout).map(([, p]) => p);
+      // A favourite from an older server (no cover_version) asks without one.
+      expect(handed.map((p) => p.coverVersion)).toEqual(['cv3', undefined]);
+    },
+  );
 
   it('keeps showing the favourites it has while another server is held', async () => {
     mockFavourites = read({ favourites: [book], offline: true });

@@ -121,6 +121,7 @@ function HouseCard({
         width={COVER}
         title={copy.title}
         author={row.author ?? undefined}
+        coverVersion={row.cover_version}
         noArt={row.outside_grant}
       />
     </>

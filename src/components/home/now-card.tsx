@@ -256,7 +256,7 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
         connectionId={at.connectionId}
         libraryId={libraryId}
         path={path}
-        coverVersion={book?.cover_version}
+        coverVersion={saved?.cover_version ?? book?.cover_version}
         width={compact ? 108 : 220}
         title={title}
         author={book?.author}

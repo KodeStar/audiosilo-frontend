@@ -16,8 +16,14 @@ import type { Destination, TabName } from './destinations';
 export type PaletteGroupKey =
   'actions' | 'continue' | 'books' | 'series' | 'authors' | 'narrators' | 'characters' | 'goTo';
 
-/** A book row's cover: resolved against its own server by the row. */
-export type PaletteCover = { connectionId: string; libraryId: number; path: string };
+/** A book row's cover: resolved against its own server by the row. `version` is the book's
+ * `cover_version` (the URL's cache buster), when the row carries one. */
+export type PaletteCover = {
+  connectionId: string;
+  libraryId: number;
+  path: string;
+  version?: string;
+};
 
 export type PaletteItem = {
   /** Unique within the palette; also the option's DOM id suffix. */

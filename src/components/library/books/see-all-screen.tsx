@@ -168,7 +168,7 @@ function FinishedTile({
       title={bookTitle(book?.title, p.path)}
       book={book}
       author={book?.author}
-      coverVersion={book?.cover_version}
+      coverVersion={p.cover_version ?? book?.cover_version}
       caption={t('library.books.finishedWhen', {
         when: formatRelative(p.finished_at ?? p.updated_at, i18n.language || 'en', now),
       })}

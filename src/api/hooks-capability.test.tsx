@@ -1291,6 +1291,24 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
   });
 
+  it("a progress edit keeps the listed row's cover_version (the echo carries none)", async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    const stored = row('A/Book', { position: 30 });
+    mockClients.c1.editProgress.mockResolvedValueOnce(stored as never);
+    qc.setQueryData(qk.allProgress('c1'), [row('A/Book', { position: 10, cover_version: 'cv1' })]);
+    await act(async () => {
+      await result.current.m.mutateAsync({ libraryId: 2, path: 'A/Book', edit: { position: 30 } });
+    });
+    await waitFor(() => expect(result.current.m.isSuccess).toBe(true));
+    expect(qc.getQueryData(qk.allProgress('c1'))).toEqual([{ ...stored, cover_version: 'cv1' }]);
+    // The single book's entry is the echo as it came.
+    expect(qc.getQueryData(qk.progress('c1', 2, 'A/Book'))).toEqual(stored);
+  });
+
   it('clearing a finish date also refreshes the stats and goal', async () => {
     const { result, qc } = await mountMutation(
       { progress_edit: true },
