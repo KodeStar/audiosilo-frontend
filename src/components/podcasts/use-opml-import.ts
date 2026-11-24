@@ -1,17 +1,22 @@
-import { useQueryClient } from '@tanstack/react-query';
+import { hashKey, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { apiErrorKind } from '@/api/client';
 import { CapabilityError, myPodcastsQuery, qk, useFollowPodcastByUrl } from '@/api/hooks';
 import { useOptionalApi } from '@/api/provider';
-import type { OpmlImportRow } from '@/api/types';
+import type { MyPodcasts, OpmlImportRow, PodcastRequest } from '@/api/types';
 import { toast } from '@/components/ui/toast';
 import { FOLLOW_REQUEST_POLL_MS } from '@/lib/podcast-requests';
 import { onForeground } from '@/lib/when-active';
 import { mayActFor } from '@/stores/profiles';
 
-import { canRetryImportRow, followByUrlErrorKey, OPML_MAX_BYTES } from './find-shows-model';
+import {
+  canRetryImportRow,
+  followByUrlErrorKey,
+  OPML_MAX_BYTES,
+  rememberEnded,
+} from './find-shows-model';
 import { opmlText, outlineEntries, rowFeedUrl } from './opml-feeds';
 import type { PickedOpml } from './opml-pick';
 import { isQueuedRow, OpmlWaves, type WaveState } from './opml-waves';
@@ -34,6 +39,8 @@ export function withRetries(
 /** An import the page could not start: the file is over the limit, or could not be
  * read. */
 export type OpmlLocalProblem = 'tooLarge' | 'unreadable';
+
+const NO_ENDED: ReadonlyMap<number, PodcastRequest> = new Map();
 
 /** The page's import (`useOpmlImport`). */
 export type OpmlImport = ReturnType<typeof useOpmlImport>;
@@ -77,6 +84,21 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
   const retrying = useRef(new Set<string>());
   const [problem, setProblem] = useState<OpmlLocalProblem | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  // The follow requests seen ended while an import is the page's, by id (fe#126), whichever
+  // section shows: a row whose request the list no longer holds (dismissed in the requests
+  // list, or on another device) stays as it ended (`withEndedRequests`), never queued again.
+  // Read off the shared cache entry, so it asks nothing and renders nothing until one ends.
+  const [ended, setEnded] = useState(NO_ENDED);
+  const importing = state !== null;
+  useEffect(() => {
+    if (!importing) return;
+    const hash = hashKey(qk.myPodcasts(connectionId));
+    return qc.getQueryCache().subscribe((e) => {
+      if (e.query.queryHash !== hash) return;
+      const requests = (e.query.state.data as MyPodcasts | undefined)?.requests;
+      if (requests) setEnded((seen) => rememberEnded(seen, requests));
+    });
+  }, [importing, qc, connectionId]);
   const waves = useRef<OpmlWaves | null>(null);
   const drop = useCallback(() => {
     waves.current?.dispose();
@@ -94,12 +116,14 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     };
   }, [drop]);
 
-  // A new list (or none): its rows, held addresses and row retries start over.
+  // A new list (or none): its rows, held addresses, row retries and ended requests start
+  // over.
   const reset = useCallback((why: OpmlLocalProblem | null) => {
     setState(null);
     setProblem(why);
     setOutline(null);
     setRetryState((r) => ({ list: r.list + 1, rows: {} }));
+    setEnded(NO_ENDED);
   }, []);
 
   // The page moved to another connection or library: the import was the other one's, so
@@ -237,6 +261,8 @@ export function useOpmlImport(connectionId: string, libraryId: number) {
     retry: useCallback(() => waves.current?.retry(), []),
     /** Each row's name in the list, by `outline_index` (`outlineTitles`). */
     titles,
+    /** The follow requests seen ended during the import, by id (`withEndedRequests`). */
+    ended,
     /** The rows followed again by hand, by `outline_index` (`withRetries`). */
     retries,
     /** Whether retrying the same address can help and the list holds its address. */

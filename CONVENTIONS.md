@@ -1210,7 +1210,11 @@ library: `cachedPodcastLibrary`, `useIsPodcastLibrary`).
   504) is `no_answer`, which never claims the list failed (the server may still be following
   it) and reads the shows and requests again, and a server 503 without a code is
   `server_timeout`. The rows are named from the bytes the page holds (`outlineTitles`): the
-  server's answer never echoes the list.
+  server's answer never echoes the list. A queued row is read live from the follow requests
+  (`liveImportRows`), and `useOpmlImport` remembers each request it saw end, whichever
+  section shows (`rememberEnded`, off the shared cache entry): one dismissed since (the
+  requests list, another device) keeps its row as it ended (`withEndedRequests`), never
+  queued again.
 - **Export my shows** (`useExportShows`, capability `podcast_opml`, works with the module off,
   never the demo) reads `GET /podcasts/opml/export` with the Authorization header (never
   `?token=`), saves it the Journal's way (`saveExport`) and toasts the `X-OPML-*` counts; a

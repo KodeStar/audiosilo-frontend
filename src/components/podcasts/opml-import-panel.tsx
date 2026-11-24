@@ -22,6 +22,7 @@ import {
   importRowReasonKey,
   liveImportRows,
   stillAdding,
+  withEndedRequests,
 } from './find-shows-model';
 import { pickOpml } from './opml-pick';
 import {
@@ -163,10 +164,22 @@ function ImportProgress({
   const { t } = useTranslation();
   const focused = useIsFocused();
   const { data: requests } = useFollowRequests(libraryId, { active: focused }, connectionId);
-  const { fileName, titles, retries, canRetryRow, retryRow, stop: onStop, retry: onRetry } = opml;
+  const {
+    fileName,
+    titles,
+    ended,
+    retries,
+    canRetryRow,
+    retryRow,
+    stop: onStop,
+    retry: onRetry,
+  } = opml;
+  // A row's request dismissed since it ended (another section's list, another device) is
+  // read as it ended, not as the queued row the import answered (fe#126).
+  const known = useMemo(() => withEndedRequests(requests, ended), [requests, ended]);
   const rows = useMemo(
-    () => liveImportRows(withRetries(state.rows, retries), requests),
-    [state.rows, retries, requests],
+    () => liveImportRows(withRetries(state.rows, retries), known),
+    [state.rows, retries, known],
   );
   const numbers = useMemo(() => entryNumbers(rows), [rows]);
   const { settled, total } = importProgress(rows);
@@ -221,7 +234,7 @@ function ImportProgress({
                   ? null
                   : (numbers.get(row.duplicate_of) ?? row.duplicate_of)
               }
-              reasonKey={importRowReasonKey(row, requests)}
+              reasonKey={importRowReasonKey(row, known)}
               busy={retries[row.outline_index]?.kind === 'busy'}
               onRetry={online && canRetryRow(row) ? retryRow : undefined}
             />

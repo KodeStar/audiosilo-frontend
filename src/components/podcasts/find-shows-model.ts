@@ -313,11 +313,40 @@ export function feedAddressesOf(feedUrl: string): string[] {
   return [feedUrl, `${other}://${feedUrl.slice(m[0].length)}`];
 }
 
+/** `seen` with each request of `requests` that has ended and `seen` does not hold yet
+ * (`seen` itself when there is none, so a read that ended nothing new changes nothing). */
+export function rememberEnded(
+  seen: ReadonlyMap<number, PodcastRequest>,
+  requests: readonly PodcastRequest[],
+): ReadonlyMap<number, PodcastRequest> {
+  let next: Map<number, PodcastRequest> | null = null;
+  for (const r of requests) {
+    if (isOpenRequest(r) || seen.has(r.id)) continue;
+    next ??= new Map(seen);
+    next.set(r.id, r);
+  }
+  return next ?? seen;
+}
+
+/** The follow requests read live with each one seen ended (`rememberEnded`) that they no
+ * longer hold (fe#126: dismissed since, in another section or on another device), so an
+ * import row whose request ended stays as it ended (`liveImportRows`), never queued again.
+ * The live list wins for a request it holds; a list not read yet stays unread. */
+export function withEndedRequests(
+  requests: readonly PodcastRequest[] | undefined,
+  ended: ReadonlyMap<number, PodcastRequest>,
+): readonly PodcastRequest[] | undefined {
+  if (!requests || ended.size === 0) return requests;
+  const held = new Set(requests.map((r) => r.id));
+  const gone = [...ended.values()].filter((r) => !held.has(r.id));
+  return gone.length ? [...requests, ...gone] : requests;
+}
+
 /** An import's rows with each queued one's request read live: followed once it ended
  * done, cancelled, or an error (with the request's error) once it ended otherwise. A
  * request the list does not hold stands as the import's answer said: the import's own
  * requests are newer than any list's cut-off, and a list read before a wave's requests
- * landed must not end them. */
+ * landed must not end them (one dismissed since it ended is kept: `withEndedRequests`). */
 export function liveImportRows(
   rows: readonly OpmlImportRow[],
   requests: readonly PodcastRequest[] | undefined,

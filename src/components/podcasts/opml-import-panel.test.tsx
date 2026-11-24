@@ -46,6 +46,7 @@ function importer(over: Partial<OpmlImport> = {}): OpmlImport {
     problem: null,
     fileName: null,
     titles: null,
+    ended: new Map(),
     start: jest.fn(),
     unreadable: jest.fn(),
     stop: jest.fn(),
@@ -313,6 +314,24 @@ describe('OpmlImportPanel', () => {
     );
     expect(screen.getByTestId('opml-summary').props.children).toBe(
       '2 of 3 shows followed or being added',
+    );
+  });
+
+  it('keeps a row as its request ended once the list no longer holds it (dismissed, fe#126)', async () => {
+    const rows = [row(1, { status: 'queued', request_id: 5 })];
+    const gone = {
+      id: 5,
+      state: 'failed',
+      library_id: 7,
+      show_path: null,
+      error: { code: 'not_a_feed', message: 'x' },
+    } as PodcastRequest;
+    mockRequests = [];
+    const opml = importer({ state: state({ kind: 'done' }, rows), ended: new Map([[5, gone]]) });
+    await render(<OpmlImportPanel opml={opml} connectionId="c1" libraryId={7} />);
+    expect(within(screen.getByTestId('opml-row-1')).getByText("Couldn't add")).toBeTruthy();
+    expect(screen.getByTestId('opml-status').props.children).toBe(
+      "Import finished. 1 show wasn't added. See its status below.",
     );
   });
 

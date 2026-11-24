@@ -20,10 +20,12 @@ import {
   importRowKey,
   importRowReasonKey,
   liveImportRows,
+  rememberEnded,
   requestEnd,
   requestStateKey,
   resolveSection,
   searchErrorCopy,
+  withEndedRequests,
 } from './find-shows-model';
 import { requestReasonKey } from './podcast-model';
 
@@ -359,6 +361,35 @@ describe('follow requests read live', () => {
     expect(live.map((r) => r.status)).toEqual(['cancelled', 'error', 'queued']);
     // The failed row carries its request's reason, for the row's line.
     expect(live[1].error).toMatchObject({ code: 'not_a_feed' });
+  });
+
+  it('keeps a request seen ended once the list no longer holds it (dismissed, fe#126)', () => {
+    const failed = req({ id: 5, state: 'failed', error: { code: 'not_a_feed', message: '' } });
+    const open = req({ id: 6, state: 'running' });
+    // Only ended requests are remembered, and a read that ends nothing new changes nothing.
+    const seen = rememberEnded(new Map(), [failed, open]);
+    expect([...seen.keys()]).toEqual([5]);
+    expect(rememberEnded(seen, [failed, open])).toBe(seen);
+    // Dismissed: the list no longer holds it, so the remembered one stands in.
+    expect(withEndedRequests([open], seen)?.map((r) => r.id)).toEqual([6, 5]);
+    // The live list wins for one it holds; a list not read yet stays unread.
+    const listed = [req({ id: 5, state: 'cancelled' })];
+    expect(withEndedRequests(listed, seen)).toBe(listed);
+    expect(withEndedRequests(undefined, seen)).toBeUndefined();
+    const row = {
+      outline_index: 1,
+      status: 'queued',
+      feed: 'https://a.example/...',
+      private: false,
+      path: null,
+      request_id: 5,
+      duplicate_of: null,
+      error: null,
+    } as OpmlImportRow;
+    expect(liveImportRows([row], withEndedRequests([open], seen))[0]).toMatchObject({
+      status: 'error',
+      error: { code: 'not_a_feed' },
+    });
   });
 });
 
