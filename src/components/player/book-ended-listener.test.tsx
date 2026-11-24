@@ -350,6 +350,31 @@ describe('the end-of-book flow', () => {
     expect(mockPush).not.toHaveBeenCalled();
   });
 
+  it('after several ends while away, opens one credits screen: the last book’s (fe#354)', async () => {
+    appState = 'background';
+    mockResolve.mockResolvedValue({ next: null });
+    await playThenEnd();
+    await waitFor(() => expect(appStateListeners).toHaveLength(1));
+    // The car starts another book, and it ends too before the app is opened.
+    const second = { ...FINISHED, path: 'Other/Book', title: 'Other' };
+    mockFinishBook.mockReturnValue(second);
+    await act(async () => {
+      setPlayer({
+        nowPlaying: { connectionId: 'c1', libraryId: 1, path: second.path },
+        snapshot: { state: 'playing' },
+      });
+    });
+    await act(async () => {
+      setPlayer({ snapshot: { state: 'ended' } });
+    });
+    await act(async () => {
+      setPlayer({ nowPlaying: null, snapshot: { state: 'idle' } });
+    });
+    await waitFor(() => expect(appStateListeners).toHaveLength(2));
+    await becomeActive();
+    expect(mockPush.mock.calls).toEqual([[finishedHref('c1', 1, second.path, true)]]);
+  });
+
   it('does not open the deferred credits over a book started meanwhile', async () => {
     appState = 'background';
     mockResolve.mockResolvedValue({ next: null });
