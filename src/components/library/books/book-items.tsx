@@ -10,12 +10,7 @@ import { useLocale } from '@/i18n/locale';
 import { bookSubtitle, formatDuration, formatRelative } from '@/lib/format';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
-import {
-  listenedWords,
-  percentOf,
-  progressFractionRemaining,
-  savedProgressView,
-} from '@/lib/progress-view';
+import { listenedWords, percentOf, savedProgressView } from '@/lib/progress-view';
 import { useMinuteClock } from '@/lib/use-now';
 import { tabularNums } from '@/theme/tabular-nums';
 import { useThemeColors } from '@/theme/use-theme-colors';
@@ -127,7 +122,8 @@ function ProgressCell({
       </Text>
     );
   }
-  const { fraction } = progressFractionRemaining(progress!.position, book.duration);
+  // The phone line's rule (`savedProgressView`): the row's own length, else the book's.
+  const { fraction } = savedProgressView(progress, book.duration);
   return (
     <View className="gap-1">
       <ProgressBar fraction={fraction} />

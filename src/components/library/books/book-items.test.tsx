@@ -1,6 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 
-import type { Book } from '@/api/types';
+import type { Book, Progress } from '@/api/types';
 
 jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
@@ -47,5 +47,39 @@ describe('BookListRow', () => {
   it('numbers a single position as before (an older server sends no end)', async () => {
     await render(<BookListRow connectionId="c" libraryId={1} book={omnibus} columns="some" />);
     expect(screen.getByText('Brandon Sanderson · Mistborn #1')).toBeTruthy();
+  });
+
+  // fe#313: the phone line and the progress column read a saved place by one rule
+  // (`savedProgressView`: the row's own length, else the book's), so a row never says two
+  // percents between layouts.
+  it('says the same percent in the phone line and the progress column', async () => {
+    const progress = {
+      library_id: 1,
+      path: omnibus.rel_path,
+      position: 1800,
+      duration: 7200,
+      finished: false,
+      updated_at: '2026-10-01T00:00:00Z',
+    } as Progress;
+    await render(
+      <BookListRow
+        connectionId="c"
+        libraryId={1}
+        book={omnibus}
+        progress={progress}
+        columns="none"
+      />,
+    );
+    expect(screen.getByText('Brandon Sanderson · Mistborn #1 · 1h · 25% listened')).toBeTruthy();
+    await render(
+      <BookListRow
+        connectionId="c"
+        libraryId={1}
+        book={omnibus}
+        progress={progress}
+        columns="some"
+      />,
+    );
+    expect(screen.getByText('25%')).toBeTruthy();
   });
 });
