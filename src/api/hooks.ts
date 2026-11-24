@@ -1998,6 +1998,10 @@ export type ToggleFavouriteVars = {
  * a heart's read is still out reaches the server after the add, never before it; and
  * only the last of a run reads the list again, so an earlier one's answer can't flip
  * the heart back while a later toggle is still waiting. */
+/** The connections whose current run of favourite toggles began with their list unread
+ * (`useToggleFavourite`): the list it leaves is the toggles' own, never an answer. */
+const favouritesUnreadRun = new Set<string>();
+
 export function useToggleFavourite(connectionId?: string, onFailure?: () => void) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
@@ -2034,6 +2038,7 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
     onMutate: async ({ libraryId, path, on, pendingBook }) => {
       await qc.cancelQueries({ queryKey: qk.favourites(cid) });
       const prev = qc.getQueryData<Favourite[]>(qk.favourites(cid));
+      if (!prev) favouritesUnreadRun.add(cid);
       qc.setQueryData<Favourite[]>(qk.favourites(cid), (cur) => {
         const list = cur ?? [];
         if (!on) return list.filter((f) => !(f.library_id === libraryId && f.path === path));
@@ -2058,10 +2063,11 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
       // An optimistic removal can already have unmounted the button that sent it.
       onFailure?.();
       if (!ctx) return;
-      if (!ctx.prev && qc.isMutating({ mutationKey }) === 1) {
-        // Nothing was read before the toggle (the list waits for the network, or failed):
-        // the optimistic list is no answer, and kept it would show the heart as saved
-        // until the list is next read. Back to unread.
+      if (favouritesUnreadRun.has(cid) && qc.isMutating({ mutationKey }) === 1) {
+        // Nothing was read before the run's first toggle (the list waits for the network, or
+        // failed): the optimistic list is no answer, and kept it would show the heart as
+        // saved, or no favourites at all, until the list is next read. Back to unread. A
+        // later toggle's snapshot is an earlier one's optimistic list, so the run decides.
         void qc.resetQueries({ queryKey: qk.favourites(cid), exact: true });
         return;
       }
@@ -2081,10 +2087,11 @@ export function useToggleFavourite(connectionId?: string, onFailure?: () => void
     },
     // This mutation still counts itself here; a later toggle queued behind it reads
     // the list when it settles.
-    onSettled: () =>
-      qc.isMutating({ mutationKey }) === 1
-        ? qc.invalidateQueries({ queryKey: qk.favourites(cid) })
-        : undefined,
+    onSettled: () => {
+      if (qc.isMutating({ mutationKey }) !== 1) return undefined;
+      favouritesUnreadRun.delete(cid);
+      return qc.invalidateQueries({ queryKey: qk.favourites(cid) });
+    },
   });
 }
 

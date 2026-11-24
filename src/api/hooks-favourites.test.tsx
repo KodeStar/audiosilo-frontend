@@ -257,6 +257,41 @@ describe('useToggleFavourite', () => {
       expect(paths()).toEqual(['Kept']);
     });
 
+    // fe#358: with the list unread, the second toggle's snapshot is the first's optimistic
+    // list; when both fail the list goes back to unread, not an empty answer.
+    it('with both overlapping toggles failing over an unread list, leaves it unread', async () => {
+      let failFirst!: () => void;
+      let failSecond!: () => void;
+      mockAdd
+        .mockImplementationOnce(
+          () => new Promise((_, reject) => (failFirst = () => reject(new Error('down')))),
+        )
+        .mockImplementationOnce(
+          () => new Promise((_, reject) => (failSecond = () => reject(new Error('down')))),
+        );
+      const { result } = await renderHook(() => useToggleFavourite(), { wrapper });
+      let first!: Promise<unknown>;
+      let second!: Promise<unknown>;
+      await act(async () => {
+        first = result.current.mutateAsync({ libraryId: 1, path: 'A', on: true });
+        second = result.current.mutateAsync({ libraryId: 1, path: 'B', on: true });
+      });
+      await act(async () => {
+        failFirst();
+        await first.catch(() => undefined);
+      });
+      await act(async () => {
+        failSecond();
+        await second.catch(() => undefined);
+      });
+      expect(qc.getQueryData(qk.favourites('c'))).toBeUndefined();
+      // The next run over a read list takes back only its own edit again.
+      const kept = [{ library_id: 1, path: 'Kept' } as Favourite];
+      qc.setQueryData(qk.favourites('c'), kept);
+      await fail({ libraryId: 1, path: 'C', on: true });
+      expect(qc.getQueryData(qk.favourites('c'))).toEqual(kept);
+    });
+
     it('puts an unheart that fails back in its place', async () => {
       const list = ['X', 'Y', 'Z'].map((path) => ({ library_id: 1, path }) as Favourite);
       qc.setQueryData(qk.favourites('c'), list);
