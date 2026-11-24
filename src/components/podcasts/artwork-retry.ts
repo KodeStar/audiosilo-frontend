@@ -1,4 +1,4 @@
-import { ApiError } from '@/api/client';
+import { ApiError, isRefusedForGood } from '@/api/client';
 
 /**
  * When a directory result's artwork tries again after it failed to load (Bridge Phase
@@ -34,9 +34,7 @@ export async function probeArtwork(probe: () => Promise<void>): Promise<ArtworkP
         ? { kind: 'unknown' }
         : { kind: 'wait', seconds: e.retryAfterSeconds };
     }
-    return e.status >= 400 && e.status < 500 && e.status !== 408
-      ? { kind: 'gone' }
-      : { kind: 'unknown' };
+    return isRefusedForGood(e) ? { kind: 'gone' } : { kind: 'unknown' };
   }
 }
 

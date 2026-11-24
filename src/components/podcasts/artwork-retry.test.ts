@@ -18,6 +18,9 @@ describe('probeArtwork', () => {
     for (const status of [408, 500, 502]) {
       expect(await probeArtwork(refused(status))).toEqual({ kind: 'unknown' });
     }
+    // A proxy's own refusal passes once its headers are fixed: never gone for good.
+    const proxy = () => Promise.reject(new ApiError(403, 'proxy', undefined, undefined, true));
+    expect(await probeArtwork(proxy)).toEqual({ kind: 'unknown' });
     expect(await probeArtwork(() => Promise.reject(new TypeError('offline')))).toEqual({
       kind: 'unknown',
     });
