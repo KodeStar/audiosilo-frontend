@@ -278,6 +278,12 @@ describe('smartShelves', () => {
   it('shows no section for a single shelf', () => {
     expect(smartShelves({ inProgress: ip, recent: [], now })).toEqual([]);
   });
+  it("versions an in-progress cover by its row's cover_version", () => {
+    const rows = [progress('p1', '2026-10-04T00:00:00Z', { cover_version: 'cv1' }), ip[1]];
+    const shelves = smartShelves({ inProgress: rows, recent, now });
+    // A row from an older server (no cover_version) has none to give.
+    expect(shelves[0].covers.map((c) => c.coverVersion)).toEqual(['cv1', undefined]);
+  });
 });
 
 describe('links', () => {

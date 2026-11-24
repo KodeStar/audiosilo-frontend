@@ -325,9 +325,11 @@ export function smartShelves(input: {
     out.push({
       id: 'progress',
       count: input.inProgress.length,
-      covers: input.inProgress
-        .slice(0, FAN)
-        .map((p) => ({ ...progressAt(p), title: pathLeaf(p.path) })),
+      covers: input.inProgress.slice(0, FAN).map((p) => ({
+        ...progressAt(p),
+        title: pathLeaf(p.path),
+        coverVersion: p.cover_version,
+      })),
     });
   }
   // "Short" as the Library's length filter reads it (`len=short`), which the shelf opens.

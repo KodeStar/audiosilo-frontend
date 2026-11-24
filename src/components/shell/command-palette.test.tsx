@@ -122,6 +122,9 @@ const mockProgressOptions = jest.fn();
 // Each Continue listening book's `/item`, by path (PLAYER-03: titled by it): none known
 // unless a test says so.
 let mockItemTitles: Record<string, string> = {};
+// Each one's `cover_version`, by path; and the progress row's own (an older server: none).
+let mockItemVersions: Record<string, string> = {};
+let mockRowVersion: string | undefined = 'cvA';
 const mockItemReads = jest.fn();
 jest.mock('@tanstack/react-query', () => ({
   ...jest.requireActual('@tanstack/react-query'),
@@ -130,13 +133,14 @@ jest.mock('@tanstack/react-query', () => ({
     combine,
   }: {
     queries: { queryKey: unknown[]; enabled?: boolean }[];
-    combine: (r: { data?: { title: string } }[]) => unknown;
+    combine: (r: { data?: { title?: string; cover_version?: string } }[]) => unknown;
   }) => {
     mockItemReads(queries.map((q) => ({ path: q.queryKey[3], enabled: q.enabled })));
     return combine(
       queries.map((q) => {
         const title = mockItemTitles[q.queryKey[3] as string];
-        return { data: title ? { title } : undefined };
+        const cover_version = mockItemVersions[q.queryKey[3] as string];
+        return { data: title || cover_version ? { title, cover_version } : undefined };
       }),
     );
   },
@@ -160,7 +164,7 @@ jest.mock('@/api/hooks', () => ({
         duration: 1200,
         finished: false,
         updated_at: '2026-10-05T10:00:00Z',
-        cover_version: 'cvA',
+        cover_version: mockRowVersion,
       },
     ],
     isLoading: false,
@@ -239,6 +243,8 @@ beforeEach(() => {
   jest.useFakeTimers();
   jest.clearAllMocks();
   mockItemTitles = {};
+  mockItemVersions = {};
+  mockRowVersion = 'cvA';
   mockUpNext = { supported: undefined, count: 0 };
   usePalette.setState({ open: false, query: '' });
   useRecentSearches.setState({ recent: [] });
@@ -320,6 +326,14 @@ describe('CommandPalette', () => {
     expect(mockCoverUris.get('The Hound of the Baskervilles')).toBe(
       'https://x/cover?path=Doyle/The Hound',
     );
+  });
+
+  it("versions a Continue listening row without its own by its book's, as Home does", async () => {
+    mockRowVersion = undefined;
+    mockItemVersions = { 'Carroll/Alice': 'cvItem' };
+    mockCoverUris.clear();
+    await openWith();
+    expect(mockCoverUris.get('Alice')).toBe('https://x/cover?path=Carroll/Alice&v=cvItem');
   });
 
   it("bolds the match at the line's own label size", async () => {

@@ -192,6 +192,20 @@ describe('pickSuggestions', () => {
     expect(out).toEqual([{ kind: 'progress', ref: { library_id: 1, path: 'Other' }, percent: 30 }]);
   });
 
+  it("hands a book in progress its row's cover_version", () => {
+    const out = pickSuggestions({
+      next: undefined,
+      current: undefined,
+      queued: [],
+      inProgress: [{ ...prog('Other', 30, 100), cover_version: 'cv2' }, prog('Older', 10, 100)],
+    });
+    // A row from an older server (no cover_version) has none to hand.
+    expect(out.map((s) => (s.kind === 'progress' ? s.coverVersion : null))).toEqual([
+      'cv2',
+      undefined,
+    ]);
+  });
+
   // A book nested in the loaded (or shown) book's folder is a book of its own when the
   // server says so (`book`); a path the server sent without one may be a part.
   it('offers a next book nested in the loaded book, never one that names the loaded book', () => {

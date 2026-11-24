@@ -317,6 +317,7 @@ function SuggestionRow({
       cid={cid}
       libraryId={s.ref.library_id}
       path={s.ref.path}
+      coverVersion={s.kind === 'progress' ? s.coverVersion : undefined}
       reason={
         s.kind === 'next'
           ? s.series
@@ -337,6 +338,7 @@ function SuggestedBook({
   cid,
   libraryId,
   path,
+  coverVersion,
   reason,
   onOpen,
   onQueue,
@@ -344,6 +346,9 @@ function SuggestedBook({
   cid: string;
   libraryId: number;
   path: string;
+  /** A progress row's own `cover_version`, ahead of its book's: the cover URL then stays
+   * the same as the book loads. */
+  coverVersion?: string;
   reason: string;
   onOpen: () => void;
   onQueue: () => void;
@@ -370,7 +375,7 @@ function SuggestedBook({
           connectionId={cid}
           libraryId={libraryId}
           path={path}
-          coverVersion={book?.cover_version}
+          coverVersion={coverVersion ?? book?.cover_version}
           width={44}
           title={title}
           author={book?.author}
