@@ -4,7 +4,7 @@ jest.mock('@/playback/store', () =>
 );
 
 /* eslint-disable import/first */
-import { chapterRowHeight, openingIndex } from './chapters-panel';
+import { chapterRowHeight, inlineRows } from './chapters-panel';
 /* eslint-enable import/first */
 
 describe('chapterRowHeight', () => {
@@ -16,13 +16,27 @@ describe('chapterRowHeight', () => {
   });
 });
 
-describe('openingIndex', () => {
-  it('opens at the row only when the rows from it on fill the window', () => {
-    // Four files, on Part 4 (two above it is Part 2): the list can't scroll there, so it
-    // opens at its top and Part 1 is drawn (it stayed blank on Android).
-    expect(openingIndex(1, 4, 52, 800)).toBeUndefined();
-    expect(openingIndex(50, 100, 52, 800)).toBe(50);
-    expect(openingIndex(90, 100, 52, 800)).toBeUndefined();
-    expect(openingIndex(0, 100, 52, 800)).toBeUndefined();
+describe('inlineRows', () => {
+  // A thousand rows of 50 in a page 800 high.
+  it('draws the rows from the top before the list is measured', () => {
+    expect(inlineRows(1000, 50, null, 0, 800)).toEqual([0, 40]);
+  });
+
+  it('draws the rows a page height either side of the visible part, in steps of 20', () => {
+    // The list starts 1000 into the page, scrolled 26000: row 500 is at the top.
+    expect(inlineRows(1000, 50, 1000, 26_000, 800)).toEqual([480, 540]);
+    // A little further on stays in the same step, so the list is not redrawn.
+    expect(inlineRows(1000, 50, 1000, 26_200, 800)).toEqual([480, 540]);
+  });
+
+  it('draws no rows while the list is far below or above the visible part', () => {
+    expect(inlineRows(1000, 50, 5000, 0, 800)).toEqual([0, 0]);
+    expect(inlineRows(1000, 50, 0, 60_000, 800)).toEqual([1000, 1000]);
+  });
+
+  it('keeps to the list at its ends', () => {
+    expect(inlineRows(1000, 50, 1000, 0, 800)).toEqual([0, 20]);
+    expect(inlineRows(30, 50, 0, 0, 800)).toEqual([0, 30]);
+    expect(inlineRows(1000, 50, 0, 49_200, 800)).toEqual([960, 1000]);
   });
 });
