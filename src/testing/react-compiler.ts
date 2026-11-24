@@ -1,6 +1,6 @@
-/** Whether `code` is the React Compiler's output: it opens a memo cache. */
-export function compiledByCompiler(code: string): boolean {
-  return /compilerRuntime\.c\)\(\d+\)/.test(code);
+/** How many memo caches `code` opens: one per component or hook the React Compiler built. */
+export function memoCaches(code: string): number {
+  return code.match(/compilerRuntime\.c\)\(\d+\)/g)?.length ?? 0;
 }
 
 /**
@@ -11,5 +11,5 @@ export function compiledByCompiler(code: string): boolean {
  * whatever the code does.
  */
 export function builtByCompiler(fn: (...args: never[]) => unknown): boolean {
-  return compiledByCompiler(String(fn));
+  return memoCaches(String(fn)) > 0;
 }

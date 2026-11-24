@@ -8,5 +8,10 @@
     "targets/*/expo-target.config.js"
   ],
   "ignore": ["reader/vendor/**", "scripts/glyphs/**"],
-  "ignoreDependencies": ["babel-preset-expo", "expo-modules-core"]
+  "ignoreDependencies": [
+    "babel-jest",
+    "babel-plugin-react-compiler",
+    "babel-preset-expo",
+    "expo-modules-core"
+  ]
 }

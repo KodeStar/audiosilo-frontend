@@ -22,7 +22,9 @@ function reactCompilerPlugin() {
   });
   const compiler = plugins.find((plugin) => plugin.key === 'react-forget');
   if (!compiler) throw new Error('babel-preset-expo added no React Compiler plugin');
-  return [require.resolve('babel-plugin-react-compiler'), compiler.options];
+  // The preset's own copy of the compiler (the app doesn't list it), so Jest runs what ships.
+  const preset = require.resolve('babel-preset-expo');
+  return [require.resolve('babel-plugin-react-compiler', { paths: [preset] }), compiler.options];
 }
 
 module.exports = {
