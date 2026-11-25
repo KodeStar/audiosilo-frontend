@@ -1,6 +1,8 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
+import type { LegacyExchangeUnansweredError } from '@/api/client';
+import type { PairingPayload } from '@/api/types';
 import { type InviteScan, inviteKey } from '@/lib/pairing';
 import { type ConnectBook, connectBookParams } from '@/lib/paths';
 import { sameUrl } from '@/lib/server-address';
@@ -61,6 +63,36 @@ export function takeInviteCode(server: string | null): string | undefined {
   const code = server ? peekInviteCode(server) : undefined;
   held = null;
   return code;
+}
+
+/** What an invite's exchange that got no answer left to retry with: its pairing token, or
+ * an old server's unanswered exchange, which ends the retries. */
+export type UnansweredInvite = PairingPayload | LegacyExchangeUnansweredError;
+
+/** The invite code redeemed last whose exchange got no answer (memory only). */
+let unanswered: { server: string; key: string; kept: UnansweredInvite } | null = null;
+
+/**
+ * Keep what an invite's lost exchange left (`code` at `server`), so a later sign-in step for
+ * the same invite retries the exchange instead of redeeming the code again, which could spend
+ * another of its uses: a step left by Back and opened again by the same link or code too, not
+ * only the one that sent it. Only the last such invite is kept; leaving the connect flow
+ * drops it (`dropConnectHandoffs`).
+ */
+export function keepUnansweredInvite(server: string, code: string, kept: UnansweredInvite): void {
+  unanswered = { server, key: inviteKey(code), kept };
+}
+
+/** What `keepUnansweredInvite` kept for `code` at `server`, if anything. */
+export function unansweredInvite(server: string, code: string): UnansweredInvite | null {
+  return unanswered && sameUrl(unanswered.server, server) && unanswered.key === inviteKey(code)
+    ? unanswered.kept
+    : null;
+}
+
+/** The kept invite signed in: its token is spent, nothing is left to retry. */
+export function forgetUnansweredInvite(): void {
+  unanswered = null;
 }
 
 /** The connection the scanner was opened to re-pair (memory only). */
@@ -157,6 +189,7 @@ export function peekReconnect(server: string | null): string | undefined {
  * code again). */
 export function dropConnectHandoffs(): void {
   held = null;
+  unanswered = null;
   scanFor = undefined;
   scanned = null;
   reconnecting = null;

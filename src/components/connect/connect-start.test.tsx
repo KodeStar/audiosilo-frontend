@@ -16,7 +16,7 @@ import { seedProfile } from '@/testing/seed-profile';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
-import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
+import { dropConnectHandoffs, holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
 import { dropOidcIntent, resumeOidcIntent, takeOidcResumed } from './oidc-intent';
 import { OIDC_DONE_MS } from './oidc-sign-in';
 
@@ -118,6 +118,8 @@ const os = Platform.OS;
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  // A held invite no step took would turn the next test's paste of it into a no-op.
+  dropConnectHandoffs();
   mockBases.length = 0;
   mockProxies.length = 0;
   mockParams = {};

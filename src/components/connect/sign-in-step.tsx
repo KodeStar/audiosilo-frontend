@@ -13,7 +13,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { onlyOwnServer, productionWebOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
-import { hostOf, inviteKey } from '@/lib/pairing';
+import { hostOf } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
 import { getSignInKey } from '@/lib/sign-in-key';
 import { useLatest } from '@/lib/use-latest';
@@ -22,7 +22,13 @@ import { useSession } from '@/stores/session';
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
-import { openScanner } from './invite-handoff';
+import {
+  forgetUnansweredInvite,
+  keepUnansweredInvite,
+  openScanner,
+  type UnansweredInvite,
+  unansweredInvite,
+} from './invite-handoff';
 import { holdOidcIntent } from './oidc-intent';
 import { oidcButtonName } from './oidc-sign-in';
 import { refusalWaitOver, type SignInStage, signInErrorText } from './sign-in-error';
@@ -33,7 +39,6 @@ type Mode = 'code' | 'password';
 const MODE_VALUES: Mode[] = ['code', 'password'];
 
 type Field = 'code' | 'username' | 'password';
-type UnansweredInvite = PairingPayload | LegacyExchangeUnansweredError;
 
 /** The first field this mode needs that is still empty (a name of spaces is empty), or
  * null when the sign-in can be sent. */
@@ -172,10 +177,6 @@ export function SignInStep({
   // must not redeem the code a second time while one is on its way, which could spend
   // another of the invite's uses.
   const submitting = useRef(false);
-  // The code redeemed last whose exchange got no answer (`inviteKey`), the server it was
-  // redeemed at, and what `signInWithCode` kept: its pairing token, or an old server's
-  // unanswered exchange, which ends the retries.
-  const redeemed = useRef<{ server: string; code: string; payload: UnansweredInvite } | null>(null);
   const onSubmit = useLatest(async () => {
     if (!serverRead || submitting.current) return;
     setError(null);
@@ -196,27 +197,35 @@ export function SignInStep({
     try {
       const deviceId = await getSignInKey(server);
       if (mode === 'code') {
-        const key = inviteKey(code);
-        const last = redeemed.current;
-        const kept = last?.server === server && last.code === key ? last.payload : null;
-        if (!kept) redeemed.current = null;
+        // An exchange of this invite whose answer was lost, here or in an earlier step
+        // (`keepUnansweredInvite`). Another code tried meanwhile leaves it, so going back to
+        // this one never redeems it again.
+        const kept = unansweredInvite(server, code);
         const { payload, session } = await signInWithCode(
           client,
           code.trim(),
           deviceId,
           kept,
-          (p) => (redeemed.current = { server, code: key, payload: p }),
+          (p) => keepUnansweredInvite(server, code, p),
           (next) => (stage = next),
         );
-        await finishConnect({
-          serverUrl: server,
-          session,
-          linkAddresses: payload.addresses,
-          name: payload.server_name || serverName,
-          reconnectId,
-          book,
-          carried,
-        });
+        if (kept) forgetUnansweredInvite();
+        try {
+          await finishConnect({
+            serverUrl: server,
+            session,
+            linkAddresses: payload.addresses,
+            name: payload.server_name || serverName,
+            reconnectId,
+            book,
+            carried,
+          });
+        } catch (e) {
+          // The invite is spent on a session this device could not keep: the next try
+          // exchanges the same token again, never redeeming the code a second time.
+          keepUnansweredInvite(server, code, payload);
+          throw e;
+        }
       } else {
         const session = await client.login(username.trim(), password, getDeviceName(), deviceId);
         await finishConnect({
