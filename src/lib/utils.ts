@@ -3,11 +3,17 @@ import { extendTailwindMerge, validators } from 'tailwind-merge';
 
 // Teach tailwind-merge the theme names it can't know: the Stacks radii and overlay
 // shadow (src/global.css), so `cn('rounded-control', 'rounded-full')` resolves to one.
-const twMerge = extendTailwindMerge({
+// The display sizes (`text-display-N`, global.css) replace a named size and are replaced
+// by one, but set no line height, so unlike a named size they keep an earlier leading.
+const twMerge = extendTailwindMerge<'display-size'>({
   extend: {
     classGroups: {
-      'font-size': [{ 'text-display': [validators.isInteger] }],
+      'display-size': [{ 'text-display': [validators.isInteger] }],
       leading: [{ 'leading-display': [validators.isInteger] }],
+    },
+    conflictingClassGroups: {
+      'display-size': ['font-size'],
+      'font-size': ['display-size'],
     },
     theme: {
       radius: ['cover', 'control', 'menu', 'card', 'dialog', 'sheet'],
