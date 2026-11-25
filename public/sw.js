@@ -284,7 +284,8 @@ function repairBuild() {
 async function installBuild() {
   const scope = self.registration.scope;
   const shell = await fetch(new Request(scope, { cache: 'no-cache' }));
-  if (!cacheable(shell) || !(await matchesBuild(shell.clone()))) {
+  // A redirected root would be refused as the answer to an offline navigation.
+  if (!cacheable(shell) || shell.redirected || !(await matchesBuild(shell.clone()))) {
     throw new Error('Offline shell does not match build');
   }
 

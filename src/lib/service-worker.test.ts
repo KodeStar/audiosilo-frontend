@@ -83,6 +83,8 @@ function browser() {
   const { api, caches, writes } = makeCaches();
   const site = new Map<string, string>();
   const offline = new Set<string>();
+  // Answered after a redirect (a proxy sending the root on to another address).
+  const redirected = new Set<string>();
   const fetched: string[] = [];
   const requests = { active: 0, max: 0 };
   const fetch = async (req: Request | string) => {
@@ -94,9 +96,11 @@ function browser() {
     if (offline.has(url)) throw new TypeError('offline');
     const body = site.get(url);
     if (body === undefined) return new Response('', { status: 404 });
-    return new Response(body, {
+    const response = new Response(body, {
       headers: url.endsWith('.ttf') ? { vary: 'Origin' } : undefined,
     });
+    if (redirected.has(url)) Object.defineProperty(response, 'redirected', { value: true });
+    return response;
   };
   function worker(id: string, language = 'fr') {
     const manifest = build(id);
@@ -136,7 +140,7 @@ function browser() {
     };
   }
   const cached = (id: string) => [...(caches.get(cacheName(id))?.keys() ?? [])];
-  return { api, caches, cached, writes, site, offline, fetched, requests, worker };
+  return { api, caches, cached, writes, site, offline, redirected, fetched, requests, worker };
 }
 
 it('precaches the chosen language first, caps transfers, and fetches other catalogs only on use', async () => {
@@ -325,6 +329,14 @@ it('revalidates a runtime image while using the cached bytes', async () => {
   expect(await (await sw.serveAsset(request, new URL(url))).text()).toBe('png');
   await sw.serveAsset(request, new URL(url));
   expect(t.fetched).toEqual([url, url]);
+});
+
+it('refuses a redirected root, which an offline navigation could not be answered with', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  t.redirected.add(SCOPE);
+  await expect(sw.installBuild()).rejects.toThrow('does not match build');
+  expect(t.caches.has(cacheName('a'))).toBe(false);
 });
 
 it('stops taking files once a required one fails, so a failed install downloads no more', async () => {
