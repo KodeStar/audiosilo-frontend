@@ -5675,7 +5675,10 @@ in the full player). Each side column is sized for its actions with the sleep pi
 running "10:05:00" or "Keep going"): `SIDE_ALL` and `SIDE_TABLET` are px estimates at the default text
 size. The dock scales these estimates with text and reserves the transport's scaled width. When large
 text leaves too little space for equal sides, the transport sits below the book and actions and the
-row grows in height. At default text size (fe#244), the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
+row grows in height. From 800 the scrubber row never squeezes or hides its track: `SCRUBBER_MIN` (120)
+plus its labels (`SCRUBBER_LABELS`, about 180 at the default size, scaled with text, so the two fill
+`CENTRE_MIN` and the default layout is unchanged); where larger text leaves less between the side
+columns, the transport and scrubber take their own row, up to `CENTRE_MAX` wide. At default text size (fe#244), the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
 sides) and the middle column's width comes from `dockLayout` (`centre`), so the transport is centred on
 the bar whatever the title, actions or sleep countdown. The one exception is `dockLayout`'s `centred:
 false`, a bar of 640 to 731: with no scrubber row an equal side column, (width - 292) / 2, is narrower

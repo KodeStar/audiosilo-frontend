@@ -197,7 +197,7 @@ describe('dockLayout', () => {
 
   it('puts the transport below the book and actions only where large text leaves no equal columns', () => {
     expect(dockLayout(640, 2)).toMatchObject({ centred: false, stacked: true });
-    expect(dockLayout(1280, 2)).toMatchObject({ centred: true, stacked: false });
+    expect(dockLayout(1440, 2)).toMatchObject({ centred: true, stacked: false });
     // The default size gives up the centre at 640 but keeps one row.
     expect(dockLayout(640)).toMatchObject({ centred: false, stacked: false });
   });
@@ -214,6 +214,46 @@ describe('dockLayout', () => {
       expect(dockLayout(width, 0.85).stacked).toBe(false);
     }
   });
+
+  it('never squeezes or hides the scrubber from 800: larger text stacks it instead', () => {
+    // A 32 px font at 1280 left the scrubber a 30 px stub between its labels; a 20 px font
+    // hid it on 800 and 832 docks, which show it at the default size.
+    expect(dockLayout(1280, 2)).toEqual({
+      allActions: false,
+      scrubber: true,
+      centre: 560,
+      centred: false,
+      stacked: true,
+    });
+    expect(dockLayout(800, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: true });
+    expect(dockLayout(832, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: true });
+    // Where it fits beside the side columns it stays there, as at the default size.
+    expect(dockLayout(1280, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: false });
+    // Its track keeps 120 beside its labels (180 at the default size, grown with the text).
+    for (const scale of [1, 1.1, 1.25, 1.5, 2, 3.1]) {
+      for (let width = 800; width <= 1880; width += 4) {
+        const { scrubber, centre } = dockLayout(width, scale);
+        expect(scrubber).toBe(true);
+        expect(centre - 180 * scale).toBeGreaterThanOrEqual(120);
+      }
+    }
+    // Below 800 the dock has no scrubber at any size.
+    expect(dockLayout(799, 2).scrubber).toBe(false);
+  });
+
+  it('lays out the default size as before the scrubber minimum, at every width', () => {
+    // The scrubber row's minimum (120 + 180) is the default's CENTRE_MIN: nothing moves.
+    for (let width = 600; width <= 1880; width += 2) {
+      const inner = width - 64;
+      const { allActions, scrubber, centre, centred, stacked } = dockLayout(width);
+      expect(allActions).toBe(inner - 780 >= 300);
+      expect(scrubber).toBe(width >= 800);
+      const side = allActions ? 390 : 220;
+      expect(centre).toBe(scrubber ? Math.min(560, Math.max(300, inner - 2 * side)) : 228);
+      expect(centred).toBe(scrubber || inner - 228 >= 2 * side);
+      expect(stacked).toBe(false);
+    }
+  });
 });
 
 describe('DockedPlayer', () => {
@@ -225,6 +265,18 @@ describe('DockedPlayer', () => {
       expect(screen.getByLabelText('Play')).toHaveStyle({ height: 66, width: 66 });
       expect(screen.getByTestId('dock-row').props.className).not.toContain('flex-row');
       expect(screen.getByTestId('dock-row')).toHaveStyle({ minHeight: 84 });
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
+  it('gives the transport and a full-size scrubber their own row where the text leaves no room', async () => {
+    try {
+      await setFontScale(2);
+      await renderAt(1280);
+      expect(screen.getByTestId('dock-centre')).toHaveStyle({ width: 560 });
+      expect(screen.getByTestId('dock-row').props.className).not.toContain('flex-row');
+      expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
     } finally {
       await setFontScale(1);
     }

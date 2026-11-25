@@ -412,7 +412,9 @@ actions and the transport sits off the centre). Right: speed, sleep (shows its c
 `--brand-soft` while running), bookmark, output, Up next, expand. After a jump the Undo chip floats just above
 the bar, centred on the bar (over the transport wherever the columns are equal); the bar never re-lays out for
 it. The transport grows with the text size, up to 1.5x. On a narrow dock where larger text leaves the book
-too little room (or under large text no equal columns), it moves below the book and actions.
+too little room (or under large text no equal columns), it moves below the book and actions. From 800 wide
+the chapter scrubber's track never drops below 120; where larger text leaves it less between the book and
+the actions, the transport and scrubber take their own row below them.
 Click the book to open the full player.
 
 ### Mini player (phone) *custom*

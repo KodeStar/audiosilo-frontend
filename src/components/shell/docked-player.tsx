@@ -63,6 +63,12 @@ const SIDE_CONTENT = 'shrink-0 basis-auto';
  * wider (a long track on a wide window is a long way to drag). */
 const CENTRE_MIN = 300;
 const CENTRE_MAX = 560;
+/** The chapter scrubber's track is never narrower than this: a shorter one is too fine to
+ * drag. Beside it, its time labels (the elapsed time's 44 and "10h 15m left at 1.25x",
+ * with the two gaps: about 180 at the default text size, an ESTIMATE like `SIDE_ALL`)
+ * grow with the text. The two fill `CENTRE_MIN` at the default size. */
+const SCRUBBER_MIN = 120;
+const SCRUBBER_LABELS = 180;
 /** The book column's room beside the transport and a content-sized tablet set on the
  * narrowest dock (640, the tablet layout's `TABLET_MIN_WIDTH`) at the default text size:
  * larger text that leaves the book less than this gives the transport its own row
@@ -97,7 +103,9 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
  * centred. Larger text needs more room for the actions and transport. Where large text
  * leaves them no equal columns, or text above the default leaves the book less room than
  * the narrowest dock gives it at the default size (`BOOK_MIN`), the transport sits below
- * the book and actions (`stacked`).
+ * the book and actions (`stacked`). From 800, text above the default that leaves the
+ * scrubber row less than its minimum (`SCRUBBER_MIN` and its labels) between the side
+ * columns stacks too, the transport and scrubber on their own row up to `CENTRE_MAX` wide.
  */
 export function dockLayout(
   width: number,
@@ -112,17 +120,32 @@ export function dockLayout(
   const inner = width - 2 * DOCK_PAD - 2 * DOCK_GAP;
   const text = Math.max(1, fontScale);
   const transport = scaledTransportWidth('sm', controlScale('sm', fontScale));
-  const centreMin = Math.max(CENTRE_MIN, transport);
+  // The middle column with the scrubber row holds the transport and a usable scrubber.
+  const scrubberRow = SCRUBBER_MIN + SCRUBBER_LABELS * text;
+  const centreMin = Math.max(CENTRE_MIN, transport, scrubberRow);
   const allActions = inner - 2 * SIDE_ALL * text >= centreMin;
-  const scrubber = width >= 800 && (text === 1 || inner - 2 * SIDE_TABLET * text >= centreMin);
   const side = (allActions ? SIDE_ALL : SIDE_TABLET) * text;
-  const centre = scrubber ? Math.min(CENTRE_MAX, Math.max(centreMin, inner - 2 * side)) : transport;
-  const centred = scrubber || inner - centre >= 2 * side;
+  if (width >= 800) {
+    // The default size keeps the scrubber beside the tablet set from 800, where the side
+    // columns are about 218 (`SIDE_TABLET` is a rounded-up estimate).
+    if (text === 1 || inner - 2 * SIDE_TABLET * text >= centreMin) {
+      const centre = Math.max(centreMin, Math.min(CENTRE_MAX, inner - 2 * side));
+      return { allActions, scrubber: true, centre, centred: true, stacked: false };
+    }
+    // Larger text leaves the scrubber row no room between the book and the actions: the
+    // transport and the scrubber take their own row rather than shrink or hide it.
+    const row = width - 2 * DOCK_PAD;
+    if (row >= scrubberRow) {
+      const centre = Math.min(row, Math.max(centreMin, CENTRE_MAX));
+      return { allActions, scrubber: true, centre, centred: false, stacked: true };
+    }
+  }
+  const centred = inner - transport >= 2 * side;
   // Off the centre the book takes the squeeze; the transport and the actions grow with any
   // text above the default, so below large text too the book may run out of room.
-  const book = inner - centre - side;
+  const book = inner - transport - side;
   const stacked = !centred && (isLargeText(fontScale) || (text > 1 && book < BOOK_MIN));
-  return { allActions, scrubber, centre, centred, stacked };
+  return { allActions, scrubber: false, centre: transport, centred, stacked };
 }
 
 /** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
