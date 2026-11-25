@@ -1875,6 +1875,45 @@ describe.each([
         };
       }
 
+      // A confirmed seek landed only on a report within two seconds of its place: with sparse
+      // reports (a hidden tab's) the deadline held a book playing at the right place in error.
+      it('a confirmed move whose first report is past its place lands at the deadline', async () => {
+        await playedPast(a, b);
+        b.engine.at(900);
+        await b.player().pause();
+        await until(() => listens().length === 2, "B's span on the server");
+        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const seek = slowSeek();
+        try {
+          await a.player().toggle();
+          seek.restore();
+          await sleep(10);
+          seek.accept(); // the call confirms; no report at the place
+          await sleep(0);
+          a.engine.at(906);
+          await sleep(0);
+          const now = Date.now;
+          const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() + 15_000);
+          try {
+            a.engine.at(908);
+            await sleep(0);
+          } finally {
+            clock.mockRestore();
+          }
+          expect(a.player().snapshot.state).toBe('playing');
+          a.engine.at(915);
+          await a.player().pause();
+          await until(() => listens().some((e) => e.to_pos === 915), "A's span to 915");
+          expect(heard()).toContainEqual([900, 915, 'resume']);
+          expect(heard().filter(([from, , start]) => from === 30 && start === 'resume')).toEqual(
+            [],
+          );
+        } finally {
+          seek.restore();
+          warned.mockRestore();
+        }
+      });
+
       it.each([
         { cast: false, target: 900 },
         { cast: false, target: 40 },

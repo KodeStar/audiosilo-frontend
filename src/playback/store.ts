@@ -3501,6 +3501,11 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
         // Whether the book was held in error at the place (not once the move went stale).
         const fail = (): boolean => {
           if (lateTabSeek !== late) return false;
+          // Confirmed and playing on from the place: it landed, never an error.
+          if (playedOnFromLateTabPlace(late)) {
+            adoptLateTabPlace(late);
+            return false;
+          }
           clearLateTabSeek();
           return refused(late.np, late.place);
         };
@@ -3563,6 +3568,13 @@ function landTabPlaceLate(prev?: PlaybackSnapshot) {
     const played = isPlayingState(prev.state) ? elapsed * prev.rate : 0;
     if (step >= -SAME_PLACE_S && step <= played + SAME_PLACE_S) return 'unconfirmed';
   }
+  adoptLateTabPlace(late);
+}
+
+/** The late move `late` landed (`landTabPlaceLate`, `playedOnFromLateTabPlace`): the book is
+ * at its place, and the listening and its saves begin there. */
+function adoptLateTabPlace(late: NonNullable<typeof lateTabSeek>) {
+  const { np, place } = late;
   clearLateTabSeek();
   dropListening();
   adoptTabPlace(np, place);
@@ -3571,9 +3583,26 @@ function landTabPlaceLate(prev?: PlaybackSnapshot) {
   void persist();
   rebase(saveLoop);
   rebase(placeLoop);
-  if (!isPlayingState(snapshot.state)) return;
+  if (!isPlayingState(usePlayer.getState().snapshot.state)) return;
   beginHistory();
   openListeningSpan(endAt(np, place.index, place.positionInTrack) ?? undefined);
+}
+
+/**
+ * At its deadline, whether the confirmed late move `late` (its call resolved, or the receiver
+ * told the place) landed although no report came within `SAME_PLACE_S` of its place: the
+ * book plays on from there, ahead of the place by no more than it could have played since
+ * the move was asked. With sparse reports (a hidden tab's) the first one after the landing
+ * can be past the place, and the book, playing at the right place, was held in error.
+ */
+function playedOnFromLateTabPlace(late: NonNullable<typeof lateTabSeek>): boolean {
+  const { nowPlaying, snapshot, loadingBook } = usePlayer.getState();
+  if (!late.confirmed || catchingUp || loadingBook || nowPlaying !== late.np) return false;
+  if (!isPlayingState(snapshot.state)) return false;
+  const pos = toBookPosition(late.np.queue.offsets, snapshot.trackIndex, snapshot.position);
+  const ahead = pos - late.place.pos;
+  const playable = (Math.max(0, Date.now() - late.askedAt) / 1000) * snapshot.rate;
+  return ahead >= -SAME_PLACE_S && ahead <= playable + SAME_PLACE_S;
 }
 
 function atLateTabPlace(np: NowPlaying, index: number, position: number) {

@@ -3360,7 +3360,9 @@ media GETs only.
     answer or a late landing. The old place produces no save, listening span or handoff
     answer. A landing starts the listening at the shared place (`landTabPlaceLate`).
     With no landing within 10 s of the ask (`ASK_SETTLE_MAX_MS`), the engine pauses
-    and Retry holds the shared place. The landing report opens the span before that
+    and Retry holds the shared place. A confirmed move (its call resolved) whose book plays
+    on ahead of the place, by no more than it could have played since the ask, landed there
+    (`playedOnFromLateTabPlace`: sparse reports can skip the two seconds around it). The landing report opens the span before that
     report's save tick can cut it. A Cast status can confirm
     the same landing before the receiver publishes its position, while the call could still
     land (`ASK_SETTLE_MAX_MS` from the ask): a Cast move there later is the listener's own. This
