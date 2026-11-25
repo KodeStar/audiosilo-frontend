@@ -173,6 +173,7 @@ describe('dockLayout', () => {
         scrubber: false,
         centre: 228,
         centred: false,
+        stacked: false,
       });
     },
   );
@@ -184,6 +185,7 @@ describe('dockLayout', () => {
       scrubber: false,
       centre: 228,
       centred: true,
+      stacked: false,
     });
     // And at every width above it, with or without the scrubber row, whatever the actions.
     const offCentre: number[] = [];
@@ -191,6 +193,13 @@ describe('dockLayout', () => {
       if (!dockLayout(width).centred) offCentre.push(width);
     }
     expect(offCentre).toEqual([]);
+  });
+
+  it('puts the transport below the book and actions only where large text leaves no equal columns', () => {
+    expect(dockLayout(640, 2)).toMatchObject({ centred: false, stacked: true });
+    expect(dockLayout(1280, 2)).toMatchObject({ centred: true, stacked: false });
+    // The default size gives up the centre at 640 but keeps one row.
+    expect(dockLayout(640)).toMatchObject({ centred: false, stacked: false });
   });
 });
 

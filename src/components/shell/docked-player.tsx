@@ -71,17 +71,16 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
  * the desktop drawer; a tablet, a split view or a narrow browser window is less), and how
  * wide its middle column is: every action (speed, bookmark, output, cast) once both side
- * columns have room for them beside a scrubber row at its minimum width (at default text
- * size, from 1144, where
- * the middle column is `CENTRE_MIN`); below it the tablet set, whose hidden actions are
- * all in the full player; below 800 the chapter scrubber row goes too (the transport
- * alone is the middle column).
+ * columns have room for them beside a scrubber row at its minimum width (at the default
+ * text size, from 1144, where the middle column is `CENTRE_MIN`); below it the tablet
+ * set, whose hidden actions are all in the full player; below 800 the chapter scrubber
+ * row goes too (the transport alone is the middle column).
  *
  * Three columns (fe#244): the book and the actions are equal side columns and the
  * transport sits between them, so it is centred on the bar whatever the title, the
- * actions or the sleep countdown (`centred`). Width and text scale determine the layout. The Undo
- * chip floats above the bar (`DockedPlayer`), so a jump never moves or resizes the
- * scrubber under the pointer that made it.
+ * actions or the sleep countdown (`centred`). Only the width and the text scale decide
+ * any of it: the Undo chip floats above the bar (`DockedPlayer`), so a jump never moves
+ * or resizes the scrubber under the pointer that made it.
  *
  * `centred` is false on a bar too narrow for that, below 732 (the dock starts at 640):
  * without the scrubber row an equal side column is (width - 292) / 2, less than the
@@ -90,8 +89,8 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
  * takes the squeeze, and the transport sits wherever that leaves it (off the centre).
  * With the scrubber row the middle column's minimum has first call on the width, so at
  * 800 to 803 a side column is 218 or 219, which the tablet set (about 210) still fits:
- * centred. Larger text needs more room for the actions and transport. Where they cannot
- * share the row, the transport sits below the book and actions.
+ * centred. Larger text needs more room for the actions and transport. Where large text
+ * leaves them no equal columns, the transport sits below the book and actions (`stacked`).
  */
 export function dockLayout(
   width: number,
@@ -101,6 +100,7 @@ export function dockLayout(
   scrubber: boolean;
   centre: number;
   centred: boolean;
+  stacked: boolean;
 } {
   const inner = width - 2 * DOCK_PAD - 2 * DOCK_GAP;
   const text = Math.max(1, fontScale);
@@ -111,7 +111,8 @@ export function dockLayout(
   const side = (allActions ? SIDE_ALL : SIDE_TABLET) * text;
   const centre = scrubber ? Math.min(CENTRE_MAX, Math.max(centreMin, inner - 2 * side)) : transport;
   const centred = scrubber || inner - centre >= 2 * side;
-  return { allActions, scrubber, centre, centred };
+  const stacked = isLargeText(fontScale) && !centred;
+  return { allActions, scrubber, centre, centred, stacked };
 }
 
 /** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
@@ -291,11 +292,10 @@ export function DockedPlayer() {
   // window's, which the bar spans. A guess by form factor (1280 on desktop) drew every
   // action over the scrubber, and mounted the Cast button, for one frame on a window of
   // 1024 to 1143.
-  const { allActions, scrubber, centre, centred } = dockLayout(
+  const { allActions, scrubber, centre, centred, stacked } = dockLayout(
     (size?.width ?? Dimensions.get('window').width) - insets.left - insets.right,
     fontScale,
   );
-  const stacked = isLargeText(fontScale) && !centred;
   const { queue, title, author } = nowPlaying;
   // Under a chapter heading the book and its author; when the heading is already the
   // title (a chapterless book, an episode) only the author or show, never the title twice.
