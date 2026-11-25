@@ -1086,8 +1086,10 @@ while it is on AND its Bridge requirement is met (`contributions` is the first,
 - **Slots** take an optional `modules` prop (default the registry; tests pass a fake) and
   read flags through `WithActiveModules` (`active-modules.tsx`), which asks nothing with an
   empty list, so a slot renders exactly as before: Home's `ModuleRails` (after Next in your
-  series; each rail over only the connections whose server has its module on), the You hub (`youSections` after Account on a phone, after Journal in the wide
-  sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
+  series; each rail over only the connections whose server has its module on), the You hub
+  (which reads its flags from `useUpcomingEligibility`, the same `/server` reads Upcoming
+  waits on, through `activeModules`; `youSections` after Account on a phone, after Journal in
+  the wide sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
   hub's own is ignored, an off module's link opens Stats, once every server's flags answered (until then the hub
   shows a spinner, so a module's link is not lost to Stats while they load); a module section is a column the
   hub scrolls; a section's `label` is a function of `t`, so it follows the language) and

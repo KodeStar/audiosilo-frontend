@@ -542,7 +542,7 @@
       "hint": "Confirma a escrita e que o servidor está online. Um endereço de casa como 192.168.1.20:8080 só funciona na mesma rede que o servidor.",
       "homeHint": "É um endereço da rede de casa, por isso só responde na mesma rede que o servidor. Confirma que este dispositivo está nessa rede, e a escrita.",
       "selfSignedHint": "Se o servidor usar o seu próprio certificado (autoassinado), atualiza-o ou, na rede de casa, escreve o endereço sem https://.",
-      "wrongApi": "A API do AudioSilo deve estar disponível em /api/v1/server neste endereço. Verifique o endereço e as configurações do proxy.",
+      "wrongApi": "A API do AudioSilo deve estar disponível em /api/v1/server neste endereço. Verifique o endereço e as definições do proxy.",
       "errorTitle": "O servidor respondeu com um erro",
       "errorBody": "Mensagem: {{message}}"
     },
