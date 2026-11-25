@@ -1,6 +1,7 @@
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 
 import { STARTUP_CACHE_KEY } from '@/lib/storage-keys';
+import { startupMeta } from './startup-reads';
 
 // The web: a page with localStorage (jest runs the native platform otherwise).
 jest.mock('react-native', () => ({ Platform: { OS: 'web' } }));
@@ -10,7 +11,6 @@ jest.mock('@/lib/version', () => ({ APP_VERSION: '9.9.9' }));
 import {
   forget,
   PROGRESS_BOOKS,
-  isStartupQuery,
   restore,
   SAVE_DELAY_MS,
   save,
@@ -51,7 +51,7 @@ const newClient = () =>
   new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
 const stored = () => JSON.parse(items.get(STARTUP_CACHE_KEY) ?? 'null');
 
-describe('isStartupQuery', () => {
+describe('startupMeta', () => {
   it('keeps what the first screens paint from', () => {
     for (const key of [
       ['server', C],
@@ -63,7 +63,7 @@ describe('isStartupQuery', () => {
       ['myListening', C, '1y'],
       ['libraryBooks', C, 1, { sort: 'recent' }, { pageSize: 200 }],
     ]) {
-      expect([key, isStartupQuery(key)]).toEqual([key, true]);
+      expect([key, startupMeta(key)?.startup === true]).toEqual([key, true]);
     }
   });
 
@@ -78,7 +78,7 @@ describe('isStartupQuery', () => {
       ['myListening', C, '30d'],
       [42],
     ]) {
-      expect([key, isStartupQuery(key)]).toEqual([key, false]);
+      expect([key, startupMeta(key)?.startup === true]).toEqual([key, false]);
     }
   });
 });
@@ -275,6 +275,7 @@ describe('snapshot and restore', () => {
     await qc
       .fetchQuery({
         queryKey: ['libraries', C],
+        meta: { startup: true },
         queryFn: async () => {
           throw new Error('down');
         },
@@ -490,13 +491,21 @@ describe('startSaving', () => {
     jest.useFakeTimers();
     const qc = newClient();
     const stop = startSaving(qc);
-    await qc.fetchQuery({ queryKey: ['libraries', C], queryFn: async () => [{ id: 1 }] });
+    await qc.fetchQuery({
+      queryKey: ['libraries', C],
+      meta: { startup: true },
+      queryFn: async () => [{ id: 1 }],
+    });
     expect(items.has(STARTUP_CACHE_KEY)).toBe(false);
     jest.advanceTimersByTime(SAVE_DELAY_MS);
     expect(stored().entries).toHaveLength(1);
 
     // Another answer, then the page goes away before the delay is up.
-    await qc.fetchQuery({ queryKey: ['server', C], queryFn: async () => ({ server_id: 'srv' }) });
+    await qc.fetchQuery({
+      queryKey: ['server', C],
+      meta: { startup: true },
+      queryFn: async () => ({ server_id: 'srv' }),
+    });
     listeners.get('pagehide')?.();
     expect(stored().entries).toHaveLength(2);
 

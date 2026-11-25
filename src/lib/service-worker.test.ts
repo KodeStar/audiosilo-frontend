@@ -6,8 +6,9 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 // public/sw.js run in a sandbox with an in-memory Cache Storage and a fake network: its
-// precache of the split web build (`precacheBuild`) and the cache-first serving of the
-// build's hashed files (`cacheFirst`).
+// precache of the split web build from its manifest (`installBuild`), the retirement of
+// older builds (`retireBuilds`) and the cache-first serving of the build's hashed files
+// (`cacheFirst`).
 
 const SCOPE = 'https://box.test/web/';
 const SW_SOURCE = fs.readFileSync(path.join(__dirname, '../../public/sw.js'), 'utf8');
@@ -17,6 +18,7 @@ type Req = string | { url: string; headers?: Headers };
 
 function makeCaches() {
   const caches = new Map<string, Store>();
+  const writes: { before?: (url: string) => Promise<void> } = {};
   const urlOf = (r: Req) => (typeof r === 'string' ? r : r.url);
   const headersOf = (r: Req) =>
     typeof r === 'string' ? new Headers() : (r.headers ?? new Headers());
@@ -38,6 +40,7 @@ function makeCaches() {
         return new Response(hit.body, { headers: hit.headers });
       },
       put: async (r: Req, res: Response) => {
+        await writes.before?.(urlOf(r));
         store.set(urlOf(r), {
           body: await res.text(),
           headers: [...res.headers],
@@ -48,312 +51,337 @@ function makeCaches() {
       delete: async (r: { url: string }) => store.delete(r.url),
     };
   };
-  return { api: { open, keys: async () => [...caches.keys()] }, caches };
+  return {
+    api: {
+      open,
+      keys: async () => [...caches.keys()],
+      delete: async (name: string) => caches.delete(name),
+    },
+    caches,
+    writes,
+  };
 }
 
-/** `site`: what the server answers per url; `headers`: the headers it adds to some. */
-function load(site: Record<string, string>, headers: Record<string, Record<string, string>> = {}) {
-  const fetched: string[] = [];
-  const offline = new Set<string>();
-  const fetch = jest.fn(async (r: string | Request) => {
-    const url = typeof r === 'string' ? r : r.url;
-    fetched.push(url);
-    if (offline.has(url)) throw new TypeError('offline');
-    const body = site[url];
-    return body === undefined
-      ? new Response('', { status: 404 })
-      : new Response(body, { headers: headers[url] });
-  });
-  const { api, caches } = makeCaches();
-  const self = {
-    location: new URL(`${SCOPE}sw.js?build=index-e1`),
-    registration: { scope: SCOPE },
-    addEventListener: () => {},
-    skipWaiting: async () => {},
-    clients: { claim: async () => {} },
-  };
-  const ctx = vm.createContext({ self, caches: api, fetch, Request, Response, URL, Headers });
-  vm.runInContext(SW_SOURCE, ctx);
-  const sw = ctx as unknown as {
-    precacheBuild: (fresh?: boolean) => Promise<void>;
-    cacheFirst: (r: Request | FetchedAs) => Promise<Response>;
-    staleWhileRevalidate: (r: Request | FetchedAs) => Promise<Response>;
-    serveAsset: (r: Request | FetchedAs, url: URL) => Promise<Response>;
-  };
-  const cached = () => [...(caches.get('audiosilo-shell-v1') ?? new Map()).keys()].sort();
-  /** A page `handleNavigation` cached while online. */
-  const cachePage = async (url: string, html: string) =>
-    (await api.open('audiosilo-shell-v1')).put(
-      url,
-      new Response(html, { headers: { 'content-type': 'text/html; charset=utf-8' } }),
-    );
-  return { sw, fetched, offline, cached, cachePage, site };
-}
-
-/** A request as the page sends it: Node's `Request` has no destination and no Origin. */
 type FetchedAs = { url: string; destination: string; headers: Headers };
+const js = (p: string) => '_expo/static/js/web/' + p + '.js';
+const font = 'assets/fonts/Stacks.abcd.ttf';
+const scopeUrl = (p: string) => SCOPE + p;
+const cacheName = (id: string) => 'audiosilo-shell-build-' + id;
 
-const js = (p: string) => `https://box.test/web/_expo/static/js/web/${p}.js`;
-const css = 'https://box.test/web/_expo/static/css/global-c1.css';
-
-/** A build: the shell names its scripts and stylesheet; the entry names the route chunks
- * (Expo's chunk map), and one chunk names another. */
 function build(id: string) {
   return {
-    [SCOPE]: `<link rel="preload" href="/web/_expo/static/css/global-c1.css" as="style">
-      <script src="/web/_expo/static/js/web/__common-${id}.js" defer></script>
-      <script src="/web/_expo/static/js/web/index-${id}.js" defer></script>`,
-    [css]: 'body{}',
-    [js(`__common-${id}`)]: '__d(function(){})',
-    [js(`index-${id}`)]:
-      `var paths={"1":"/web/_expo/static/js/web/book-${id}.js","2":"/web/_expo/static/js/web/scan-${id}.js"}`,
-    [js(`book-${id}`)]: '__d(function(){})',
-    [js(`scan-${id}`)]: `x("/web/_expo/static/js/web/zxing-${id}.js")`,
-    [js(`zxing-${id}`)]: '__d(function(){})',
+    id,
+    start: [js('entry-' + id), '_expo/static/css/site.css'],
+    routes: [js('book-' + id), js('scan-' + id), js('settings-' + id), js('reader-' + id)],
+    fonts: [font],
+    catalogs: { fr: js('fr-' + id), de: js('de-' + id) },
   };
 }
 
-describe('service worker: precacheBuild', () => {
-  it('caches the shell and every chunk the build names, transitively', async () => {
-    const { sw, cached } = load(build('a'));
-    await sw.precacheBuild(true);
-    expect(cached()).toEqual(
-      [
-        SCOPE,
-        `${SCOPE}__precached-build`,
-        css,
-        js('__common-a'),
-        js('index-a'),
-        js('book-a'),
-        js('scan-a'),
-        js('zxing-a'),
-      ].sort(),
-    );
-  });
-
-  it('does nothing more for a build it has precached, when the app asks', async () => {
-    const { sw, fetched } = load(build('a'));
-    await sw.precacheBuild(true);
-    fetched.length = 0;
-    await sw.precacheBuild();
-    expect(fetched).toEqual([SCOPE]);
-  });
-
-  it('writes every file again at install, even one cached already', async () => {
-    const { sw, fetched } = load(build('a'));
-    await sw.precacheBuild();
-    fetched.length = 0;
-    await sw.precacheBuild(true);
-    expect(fetched).toContain(js('book-a'));
-  });
-
-  it("takes a new build's chunks, keeps the one before one deploy longer, drops older", async () => {
-    const t = load(build('a'));
-    await t.sw.precacheBuild(true);
-    Object.assign(t.site, build('b'));
-    await t.sw.precacheBuild();
-    expect(t.cached()).toContain(js('zxing-b'));
-    // A tab still running build a (another tab installed b) opens its pages from these.
-    expect(t.cached()).toContain(js('scan-a'));
-    // Installing b again (the same build) keeps a.
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).toContain(js('scan-a'));
-    Object.assign(t.site, build('c'));
-    await t.sw.precacheBuild();
-    expect(t.cached().filter((u) => u.endsWith('-a.js'))).toEqual([]);
-    expect(t.cached()).toContain(js('scan-b'));
-    expect(t.cached()).toContain(js('scan-c'));
-  });
-
-  it("drops the pages an earlier build cached, so offline the shell boots this one's", async () => {
-    const t = load(build('a'));
-    await t.sw.precacheBuild(true);
-    const page = (id: string) =>
-      `<script src="/web/_expo/static/js/web/__common-${id}.js" defer></script>`;
-    await t.cachePage('https://box.test/web/settings', page('a'));
-    await t.cachePage('https://box.test/web/reader.html', '<p>reader</p>');
-    Object.assign(t.site, build('b'));
-    await t.sw.precacheBuild();
-    expect(t.cached()).not.toContain('https://box.test/web/settings');
-    expect(t.cached()).toContain('https://box.test/web/reader.html');
-    await t.cachePage('https://box.test/web/library', page('b'));
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).toContain('https://box.test/web/library');
-  });
-
-  it('drops a page kept under an address with a one-time value, though it names this build', async () => {
-    // A worker from before the rule handles the first page load after the deploy that
-    // brings it, and keeps that page with this build's own HTML.
-    const t = load(build('a'));
-    const page = '<script src="/web/_expo/static/js/web/__common-a.js" defer></script>';
-    const landing = 'https://box.test/web/connect?oidc=1&flow=aZ09-_aZ09-_aZ09';
-    const pairing = 'https://box.test/web/connect?token=pair-tok';
-    await t.cachePage(landing, page);
-    await t.cachePage(pairing, page);
-    await t.cachePage('https://box.test/web/settings', page);
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).not.toContain(landing);
-    expect(t.cached()).not.toContain(pairing);
-    expect(t.cached()).toContain('https://box.test/web/settings');
-  });
-
-  it("precaches the shell's fonts, so an offline cold start draws its text (fe#177)", async () => {
-    const font = (id: string) => `https://box.test/web/assets/fonts/Figtree_400.${id}.ttf`;
-    const withFont = (id: string) => {
-      const site = build(id);
-      site[SCOPE] +=
-        `<link rel="preload" href="/web/assets/fonts/Figtree_400.${id}.ttf" as="font" crossorigin="">
-        <style>@font-face{font-family:"Figtree";src:url("/web/assets/fonts/Figtree_400.${id}.ttf")}
-        @font-face{font-family:"Other";src:url("//cdn.test/other.woff2")}</style>`;
-      return { ...site, [font(id)]: 'font-bytes' };
+/** Each install runs a different worker over the same browser's Cache Storage. */
+function browser() {
+  const { api, caches, writes } = makeCaches();
+  const site = new Map<string, string>();
+  const offline = new Set<string>();
+  // Answered after a redirect (a proxy sending the root on to another address).
+  const redirected = new Set<string>();
+  const fetched: string[] = [];
+  const requests = { active: 0, max: 0 };
+  const fetch = async (req: Request | string) => {
+    const url = typeof req === 'string' ? req : req.url;
+    fetched.push(url);
+    requests.max = Math.max(requests.max, ++requests.active);
+    await new Promise((done) => setTimeout(done, 1));
+    requests.active--;
+    if (offline.has(url)) throw new TypeError('offline');
+    const body = site.get(url);
+    if (body === undefined) return new Response('', { status: 404 });
+    const response = new Response(body, {
+      headers: url.endsWith('.ttf') ? { vary: 'Origin' } : undefined,
+    });
+    if (redirected.has(url)) Object.defineProperty(response, 'redirected', { value: true });
+    return response;
+  };
+  /** `registration`: the registration's other workers (`installing`: a newer one). */
+  function worker(id: string, language = 'fr', registration: { installing?: object } = {}) {
+    const manifest = build(id);
+    const shell = manifest.start
+      .map((file) => '<script src="/web/' + file + '"></script>')
+      .join('');
+    site.set(SCOPE, shell);
+    for (const file of [
+      ...manifest.start,
+      ...manifest.routes,
+      ...manifest.fonts,
+      ...Object.values(manifest.catalogs),
+      'reader.html',
+    ])
+      site.set(scopeUrl(file), file);
+    const self = {
+      location: new URL(SCOPE + 'sw.js?lang=' + language),
+      registration: { scope: SCOPE, ...registration },
+      addEventListener: () => {},
     };
-    const t = load(withFont('a'));
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).toContain(font('a'));
-    expect(t.fetched).not.toContain('https://cdn.test/other.woff2');
-    t.offline.add(font('a'));
-    const served = await t.sw.cacheFirst(new Request(font('a')));
-    expect(await served.text()).toBe('font-bytes');
-    // A font two builds old goes, like the build's chunks.
-    Object.assign(t.site, withFont('b'));
-    await t.sw.precacheBuild();
-    Object.assign(t.site, withFont('c'));
-    await t.sw.precacheBuild();
-    expect(t.cached()).not.toContain(font('a'));
-    expect(t.cached()).toContain(font('b'));
-    expect(t.cached()).toContain(font('c'));
-  });
-
-  it('serves a precached font offline to the page, though the server varies it by Origin (fe#177)', async () => {
-    const font = 'https://box.test/web/assets/fonts/Figtree_400.v1.ttf';
-    const site = build('a');
-    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.v1.ttf" as="font">`;
-    const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
-    await t.sw.precacheBuild(true);
-    t.offline.add(font);
-    // Cached under the worker's request, which has no Origin; the page's font request has one.
-    const page = (destination: string): FetchedAs => ({
-      url: font,
-      destination,
-      headers: new Headers({ Origin: 'https://box.test' }),
-    });
-    const served = await t.sw.cacheFirst(page('font'));
-    expect(served.status).toBe(200);
-    expect(await served.text()).toBe('font-bytes');
-    // Anything else keeps to Vary: an Origin-varied answer is never served to another origin.
-    expect((await t.sw.staleWhileRevalidate(page('image'))).status).toBe(504);
-    await expect(t.sw.cacheFirst(page('image'))).rejects.toThrow('offline');
-  });
-
-  it('never fetches again at the precache a font the page cached under its own request (fe#177)', async () => {
-    const font = 'https://box.test/web/assets/fonts/Figtree_400.p1.ttf';
-    const site = build('a');
-    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.p1.ttf" as="font">`;
-    const t = load({ ...site, [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
-    // The page drew its text in it before the worker's precache ran.
-    await t.sw.cacheFirst({
-      url: font,
-      destination: 'font',
-      headers: new Headers({ Origin: 'https://box.test' }),
-    });
-    t.fetched.length = 0;
-    await t.sw.precacheBuild(true);
-    expect(t.fetched).not.toContain(font);
-    expect(t.cached()).toContain(font);
-  });
-
-  it('keeps a cached font at the next install, never fetching it again', async () => {
-    const font = 'https://box.test/web/assets/fonts/Figtree_400.f1.ttf';
-    const site = build('a');
-    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Figtree_400.f1.ttf" as="font">`;
-    const t = load({ ...site, [font]: 'font-bytes' });
-    await t.sw.precacheBuild(true);
-    // The next install (each deploy's) writes the scripts again, not the font: a fetch of it
-    // that failed then would have dropped the copy the last build cached.
-    t.fetched.length = 0;
-    t.offline.add(font);
-    await t.sw.precacheBuild(true);
-    expect(t.fetched).not.toContain(font);
-    expect(t.fetched).toContain(js('index-a'));
-    expect(t.cached()).toContain(font);
-  });
-
-  it('caches the shell for offline when a font of it is refused, the font left out', async () => {
-    const site = build('a');
-    site[SCOPE] += `<link rel="preload" href="/web/assets/fonts/Missing.ttf" as="font">`;
-    const t = load(site);
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).toContain(SCOPE);
-    expect(t.cached()).toContain(`${SCOPE}__precached-build`);
-    expect(t.cached()).not.toContain('https://box.test/web/assets/fonts/Missing.ttf');
-  });
-
-  it('caches the shell only once its own files are in', async () => {
-    const t = load(build('a'));
-    t.offline.add(js('index-a'));
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).not.toContain(SCOPE);
-  });
-
-  it('stops when the network goes part way, and finishes on the next ask', async () => {
-    const t = load(build('a'));
-    t.offline.add(js('scan-a'));
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).not.toContain(`${SCOPE}__precached-build`);
-    expect(t.cached()).not.toContain(js('zxing-a'));
-    t.offline.clear();
-    await t.sw.precacheBuild();
-    expect(t.cached()).toContain(js('zxing-a'));
-    expect(t.cached()).toContain(`${SCOPE}__precached-build`);
-  });
-
-  it('leaves the cache as it was when the shell cannot be reached', async () => {
-    const t = load(build('a'));
-    t.offline.add(SCOPE);
-    await t.sw.precacheBuild(true);
-    expect(t.cached()).toEqual([]);
-  });
-});
-
-describe('service worker: serveAsset', () => {
-  const asked = (url: string, destination: string): FetchedAs => ({
-    url,
-    destination,
-    headers: new Headers({ Origin: 'https://box.test' }),
-  });
-
-  // fe#358: a font is named by its content too, so once cached it is never read again (it
-  // was read behind every load, twice: its preload and its @font-face).
-  it('serves a cached font with no request, as a build file', async () => {
-    const font = 'https://box.test/web/assets/fonts/Figtree_400.f1.ttf';
-    const t = load({ [font]: 'font-bytes' }, { [font]: { Vary: 'Origin' } });
-    expect(await (await t.sw.serveAsset(asked(font, 'font'), new URL(font))).text()).toBe(
-      'font-bytes',
+    const ctx = vm.createContext({ self, caches: api, fetch, Request, Response, URL, Headers });
+    vm.runInContext(
+      SW_SOURCE.replace('/* precache manifest */ null', JSON.stringify(manifest)),
+      ctx,
     );
-    expect(t.fetched).toEqual([font]);
-    t.fetched.length = 0;
-    const again = await t.sw.serveAsset(asked(font, 'font'), new URL(font));
-    expect(await again.text()).toBe('font-bytes');
-    expect(t.fetched).toEqual([]);
-  });
+    return ctx as unknown as {
+      installBuild(): Promise<void>;
+      retireBuilds(): Promise<void>;
+      handleNavigation(
+        r: Request,
+        shellFallback: boolean,
+        event: { waitUntil: (p: Promise<void>) => void },
+      ): Promise<Response>;
+      cacheFirst(r: Request | FetchedAs): Promise<Response>;
+      staleWhileRevalidate(r: FetchedAs): Promise<Response>;
+      serveAsset(r: FetchedAs, url: URL): Promise<Response>;
+    };
+  }
+  const cached = (id: string) => [...(caches.get(cacheName(id))?.keys() ?? [])];
+  return { api, caches, cached, writes, site, offline, redirected, fetched, requests, worker };
+}
 
-  it('reads anything else again behind its cached copy', async () => {
-    const icon = 'https://box.test/web/icons/icon-192.png';
-    const t = load({ [icon]: 'png' });
-    expect(await (await t.sw.serveAsset(asked(icon, 'image'), new URL(icon))).text()).toBe('png');
-    await t.sw.serveAsset(asked(icon, 'image'), new URL(icon));
-    expect(t.fetched).toEqual([icon, icon]);
-  });
+it('precaches the chosen language first, caps transfers, and fetches other catalogs only on use', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  await sw.installBuild();
+  const m = build('a');
+  expect(t.fetched.slice(0, 2)).toEqual([SCOPE, scopeUrl(m.catalogs.fr)]);
+  expect(t.requests.max).toBe(4);
+  expect(t.cached('a')).toEqual(
+    expect.arrayContaining([SCOPE, ...m.routes.map(scopeUrl), scopeUrl(font)]),
+  );
+  expect(t.fetched).not.toContain(scopeUrl(m.catalogs.de));
+  const german = new Request(scopeUrl(m.catalogs.de));
+  expect(await (await sw.cacheFirst(german)).text()).toBe(m.catalogs.de);
+  t.offline.add(german.url);
+  expect(await (await sw.cacheFirst(german)).text()).toBe(m.catalogs.de);
 });
 
-describe('service worker: cacheFirst', () => {
-  it('serves a cached build file without the network, and caches one it fetches', async () => {
-    const t = load(build('a'));
-    const first = await t.sw.cacheFirst(new Request(js('book-a')));
-    expect(await first.text()).toBe('__d(function(){})');
-    expect(t.cached()).toContain(js('book-a'));
-    t.fetched.length = 0;
-    await t.sw.cacheFirst(new Request(js('book-a')));
-    expect(t.fetched).toEqual([]);
-  });
+it('preserves the current offline build through a partial update and retries on the next install', async () => {
+  const t = browser();
+  const a = t.worker('a');
+  await a.installBuild();
+  const old = t.cached('a');
+  const b = t.worker('b');
+  t.offline.add(scopeUrl(js('scan-b')));
+  await expect(b.installBuild()).rejects.toThrow('offline');
+  expect(t.cached('a')).toEqual(old);
+  expect(t.caches.has(cacheName('b'))).toBe(false);
+  t.offline.clear();
+  await b.installBuild();
+  await b.retireBuilds();
+  expect(t.cached('b')).toContain(SCOPE);
+  expect(t.cached('a')).not.toContain(SCOPE);
+  t.offline.add(scopeUrl(js('scan-a')));
+  expect(await (await b.cacheFirst(new Request(scopeUrl(js('scan-a'))))).text()).toBe(js('scan-a'));
+  // A same-build language change keeps the old tab's files too.
+  const again = t.worker('b', 'de');
+  t.fetched.length = 0;
+  await again.installBuild();
+  await again.retireBuilds();
+  expect(t.fetched).toEqual([SCOPE, scopeUrl(build('b').catalogs.de), scopeUrl('reader.html')]);
+  expect(t.cached('a')).toContain(scopeUrl(js('scan-a')));
+  const c = t.worker('c');
+  await c.installBuild();
+  await c.retireBuilds();
+  expect(t.caches.has(cacheName('a'))).toBe(false);
+  expect(t.cached('b')).toContain(scopeUrl(js('scan-b')));
+});
+
+it('cleans up an uncommitted build when the final shell write fails, preserving both generations on a rollback', async () => {
+  const t = browser();
+  const a = t.worker('a');
+  await a.installBuild();
+  const b = t.worker('b');
+  await b.installBuild();
+  await b.retireBuilds();
+  t.writes.before = async (url) => {
+    if (url === SCOPE) throw new Error('quota');
+  };
+  await expect(t.worker('c').installBuild()).rejects.toThrow('quota');
+  expect(t.caches.has(cacheName('c'))).toBe(false);
+  // A failed rollback may have reopened the retired build's cache, which has no root.
+  await expect(t.worker('a').installBuild()).rejects.toThrow('quota');
+  expect(t.cached('a')).toContain(scopeUrl(js('scan-a')));
+  expect(t.cached('b')).toContain(SCOPE);
+});
+
+it('upgrades the legacy worker, removing its record and private or stale pages while keeping downloads and old tab assets', async () => {
+  const t = browser();
+  const legacy = await t.api.open('audiosilo-shell-v1');
+  const oldScript = scopeUrl(js('old'));
+  for (const url of [
+    SCOPE,
+    oldScript,
+    SCOPE + '__precached-build',
+    SCOPE + 'library',
+    SCOPE + 'connect?token=one',
+    SCOPE + 'connect?oidc=1&flow=two',
+    oldScript + '?token=secret',
+  ]) {
+    await legacy.put(url, new Response('old'));
+  }
+  const media = await t.api.open('audiosilo-media-v1');
+  const track = SCOPE + '_offline/track';
+  await media.put(track, new Response('audio'));
+  await t.api.open('other-app');
+  const a = t.worker('a');
+  await a.installBuild();
+  await a.retireBuilds();
+  expect(await legacy.keys()).toEqual([{ url: oldScript }]);
+  expect(await (await a.cacheFirst(new Request(oldScript))).text()).toBe('old');
+  expect(await (await media.match(track))?.text()).toBe('audio');
+  expect(t.caches.has('other-app')).toBe(true);
+  const b = t.worker('b');
+  await b.installBuild();
+  await b.retireBuilds();
+  expect(t.caches.has('audiosilo-shell-v1')).toBe(false);
+});
+
+it('carries a working offline reader and its policy forward when its update request fails', async () => {
+  const t = browser();
+  const url = scopeUrl('reader.html');
+  const legacy = await t.api.open('audiosilo-shell-v1');
+  await legacy.put(
+    url,
+    new Response('<reader>', { headers: { 'Content-Security-Policy': "connect-src 'none'" } }),
+  );
+  t.offline.add(url);
+  const sw = t.worker('a');
+  await sw.installBuild();
+  await sw.retireBuilds();
+  const response = await sw.handleNavigation(new Request(url), false, { waitUntil: () => {} });
+  expect(response.headers.get('content-security-policy')).toBe("connect-src 'none'");
+  expect(await response.text()).toBe('<reader>');
+});
+
+it('copies an Origin-varied font into the new build without refetching and serves it offline', async () => {
+  const t = browser();
+  const url = scopeUrl(font);
+  const request = {
+    url,
+    destination: 'font',
+    headers: new Headers({ Origin: 'https://box.test' }),
+  };
+  const legacy = await t.api.open('audiosilo-shell-v1');
+  await legacy.put(request, new Response('font-bytes', { headers: { Vary: 'Origin' } }));
+  const sw = t.worker('a');
+  t.offline.add(url);
+  await sw.installBuild();
+  await sw.retireBuilds();
+  expect(t.fetched).not.toContain(url);
+  expect(await (await sw.serveAsset(request, new URL(url))).text()).toBe('font-bytes');
+  // A varied image never receives the answer kept for a different request.
+  const image = { ...request, destination: 'image' };
+  expect((await sw.staleWhileRevalidate(image)).status).toBe(504);
+});
+
+it('installs without an unavailable font and keeps a working shell when a deployment changes mid-install', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  t.offline.add(scopeUrl(font));
+  await sw.installBuild();
+  expect(t.cached('a')).toContain(SCOPE);
+  expect(t.cached('a')).not.toContain(scopeUrl(font));
+  const b = t.worker('b');
+  t.site.set(SCOPE, '<p>newer deploy</p>');
+  await expect(b.installBuild()).rejects.toThrow('does not match build');
+  expect(t.cached('a')).toContain(SCOPE);
+  expect(t.caches.has(cacheName('b'))).toBe(false);
+});
+
+it('streams a fresh navigation even if saving its offline copy is slow and fails', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  await sw.installBuild();
+  const page = SCOPE + 'library';
+  t.site.set(page, t.site.get(SCOPE)!);
+  let release!: () => void;
+  t.writes.before = () =>
+    new Promise<void>((_, reject) => {
+      release = () => reject(new Error('quota'));
+    });
+  const writes: Promise<void>[] = [];
+  const event = { waitUntil: (work: Promise<void>) => writes.push(work) };
+  const response = await sw.handleNavigation(new Request(page), true, event);
+  expect(await response.text()).toBe(t.site.get(SCOPE));
+  expect(writes).toHaveLength(1);
+  await new Promise((done) => setTimeout(done, 0));
+  release();
+  await Promise.all(writes);
+  expect(t.cached('a')).not.toContain(page);
+  t.writes.before = async () => {
+    throw new Error('quota');
+  };
+  const german = build('a').catalogs.de;
+  expect(await (await sw.cacheFirst(new Request(scopeUrl(german)))).text()).toBe(german);
+});
+
+it('revalidates a runtime image while using the cached bytes', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  const url = SCOPE + 'icons/icon-192.png';
+  t.site.set(url, 'png');
+  const request = { url, destination: 'image', headers: new Headers() };
+  expect(await (await sw.serveAsset(request, new URL(url))).text()).toBe('png');
+  await sw.serveAsset(request, new URL(url));
+  expect(t.fetched).toEqual([url, url]);
+});
+
+it('refuses a redirected root, which an offline navigation could not be answered with', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  t.redirected.add(SCOPE);
+  await expect(sw.installBuild()).rejects.toThrow('does not match build');
+  expect(t.caches.has(cacheName('a'))).toBe(false);
+});
+
+it('leaves the builds alone while a newer worker installs, so its unfinished cache survives', async () => {
+  const t = browser();
+  await t.worker('a').installBuild();
+  const b = t.worker('b', 'fr', { installing: {} });
+  await b.installBuild();
+  // The newer worker's install has begun: its cache has files but no root yet.
+  await (await t.api.open(cacheName('c'))).put(scopeUrl(js('entry-c')), new Response('c'));
+  await b.retireBuilds();
+  expect(t.cached('c')).toEqual([scopeUrl(js('entry-c'))]);
+  expect(t.cached('a')).toContain(SCOPE);
+});
+
+it('stops taking files once a required one fails, so a failed install downloads no more', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  const m = build('a');
+  t.offline.add(scopeUrl(m.start[0]));
+  await expect(sw.installBuild()).rejects.toThrow('offline');
+  // The reader comes last: four transfers can take at most one more file each.
+  expect(t.fetched).not.toContain(scopeUrl('reader.html'));
+  expect(t.fetched).not.toContain(scopeUrl(m.routes[3]));
+  expect(t.caches.has(cacheName('a'))).toBe(false);
+});
+
+it("installs its build again when another worker deleted the build's cache", async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  await sw.installBuild();
+  // The admin console's worker (scope "/") deletes every cache but its own on activation.
+  t.caches.delete(cacheName('a'));
+  const page = SCOPE + 'library';
+  t.site.set(page, t.site.get(SCOPE)!);
+  const writes: Promise<void>[] = [];
+  await sw.handleNavigation(new Request(page), true, { waitUntil: (w) => writes.push(w) });
+  await Promise.all(writes);
+  expect(t.cached('a')).toEqual(
+    expect.arrayContaining([SCOPE, page, ...build('a').routes.map(scopeUrl)]),
+  );
+  // A newer deploy's page leaves the cache alone: this build is no longer the server's.
+  t.caches.delete(cacheName('a'));
+  t.site.set(page, '<p>newer deploy</p>');
+  await sw.handleNavigation(new Request(page), true, { waitUntil: (w) => writes.push(w) });
+  await Promise.all(writes);
+  expect(t.caches.has(cacheName('a'))).toBe(false);
 });

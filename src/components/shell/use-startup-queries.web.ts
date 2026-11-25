@@ -1,48 +1,51 @@
 import { useQueryClient } from '@tanstack/react-query';
+import { useGlobalSearchParams, usePathname, useSegments } from 'expo-router';
 import { useSyncExternalStore } from 'react';
 
-import { useApis } from '@/api/provider';
-import { appPath } from '@/lib/base-url';
+import { useApis, useCid } from '@/api/provider';
+import { queueConnectionId } from '@/components/upnext/up-next-model';
+import { firstParam } from '@/lib/paths';
+import { usePlayer } from '@/playback/store';
 import { useLibrarySelection } from '@/stores/library-selection';
 
 import {
   startPage,
   startStartupQueries,
   startupQueries,
-  startupQueriesSettled,
+  startupQueriesComplete,
   subscribeStartupQueries,
 } from './startup-queries';
 
-/** The page this load opened on, from the address (the base path off). */
-function openedOn() {
-  const { pathname, search } = window.location;
-  // A regex, not `URLSearchParams` (jest's jsdom here lacks it). Read as written, never
-  // decoded: the modes are plain words, and `decodeURIComponent` throws on a malformed
-  // escape (`?mode=%E0`), which in the gate's render would take the app down on every render.
-  const mode = /[?&]mode=([^&]*)/.exec(search)?.[1];
-  return startPage(appPath(pathname), mode ?? null);
-}
-
-/**
- * For the gate: whether the first screen may mount, once `open` (signed in, the person
- * known). The first time it is open the page's first answers are asked (`startupQueries`,
- * for the page the load opened on), and this is false until they are in or
- * `STARTUP_WAIT_MS` has passed; true for good after that.
- */
+/** Let the first signed-in app page mount once its queries settle or the wait expires. */
 export function useStartupQueries(open: boolean): boolean {
   const client = useQueryClient();
   const apis = useApis();
-  // Asked in render, the moment the gate opens, so the answers are on their way while it
-  // commits its spinner. Only the first call asks, and builds the list (a render thrown away
-  // asks nothing more).
-  if (open) {
-    startStartupQueries(client, () =>
-      startupQueries(openedOn(), apis, useLibrarySelection.getState().selection),
-    );
+  const defaultCid = useCid();
+  const [root] = useSegments();
+  const pathname = usePathname();
+  const { mode } = useGlobalSearchParams<{ mode?: string | string[] }>();
+  // Connect, demo and profile choice lead to another page. Keep the anchored Home from
+  // mounting beneath them. A direct link to a player or reader modal still needs the shell.
+  if (open && root && root !== 'connect' && root !== 'demo' && root !== 'profiles') {
+    startStartupQueries(client, () => {
+      const queueCid = queueConnectionId(
+        usePlayer.getState().nowPlaying?.connectionId,
+        defaultCid,
+        apis.map(({ connection }) => connection),
+      );
+      return startupQueries(
+        startPage(pathname, firstParam(mode)),
+        apis,
+        useLibrarySelection.getState().selection,
+        defaultCid,
+        queueCid,
+      );
+    });
   }
-  return useSyncExternalStore(
+  const complete = useSyncExternalStore(
     subscribeStartupQueries,
-    startupQueriesSettled,
-    startupQueriesSettled,
+    startupQueriesComplete,
+    startupQueriesComplete,
   );
+  return !open || complete;
 }
