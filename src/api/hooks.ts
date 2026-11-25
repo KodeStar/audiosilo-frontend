@@ -872,24 +872,10 @@ function refreshProgressQuery(qc: QueryClient, queryKey: QueryKey, match?: (q: Q
   void qc.invalidateQueries({ queryKey, predicate: match });
 }
 
-/** Refresh what else a change to a book's progress makes stale: the listening stats
- * and the goal when it can move a finish (they count finish dates), and the book's
- * `spoilers=hide` metadata when it can move the saved place the server cuts that at
- * (the position, or the finished flag). */
-function invalidateProgressDependents(
-  qc: QueryClient,
-  cid: string,
-  libraryId: number,
-  path: string,
-  changed: { finish: boolean; place: boolean },
-) {
-  if (changed.finish) {
-    refreshProgressQuery(qc, qk.myStatsAll(cid));
-    refreshProgressQuery(qc, qk.listeningGoal(cid));
-  }
-  if (changed.place) {
-    refreshProgressQuery(qc, qk.bookMeta(cid, libraryId, path), (q) => hidesSpoilers(q.queryKey));
-  }
+/** Refresh the book's `spoilers=hide` metadata, which a change to its saved place (the
+ * position, or the finished flag) makes stale: the server cuts it there. */
+function refreshHiddenMeta(qc: QueryClient, cid: string, libraryId: number, path: string) {
+  refreshProgressQuery(qc, qk.bookMeta(cid, libraryId, path), (q) => hidesSpoilers(q.queryKey));
 }
 
 /** Refresh what a book's finished flag moves: the progress list, the book's own row (its
@@ -917,7 +903,7 @@ export function refreshDeliveredFinishes(
   refreshProgressQuery(qc, qk.listeningGoal(cid));
   for (const { libraryId, path } of books) {
     refreshProgressQuery(qc, qk.progress(cid, libraryId, path));
-    invalidateProgressDependents(qc, cid, libraryId, path, { finish: false, place: true });
+    refreshHiddenMeta(qc, cid, libraryId, path);
   }
 }
 
@@ -2308,12 +2294,11 @@ export function useEditProgress(connectionId?: string) {
     ({ qc, cid }, progress, { edit }) => {
       // A finish it moved is announced with the edits queued behind it (`announceFinishEdits`).
       if (edit.finished !== undefined || edit.finished_at !== undefined) {
-        noteFinishEdit(cid, progress);
+        noteFinishEdit(cid, progress, edit.finished === true);
       }
-      invalidateProgressDependents(qc, cid, progress.library_id, progress.path, {
-        finish: false,
-        place: edit.finished !== undefined || edit.position !== undefined,
-      });
+      if (edit.finished !== undefined || edit.position !== undefined) {
+        refreshHiddenMeta(qc, cid, progress.library_id, progress.path);
+      }
       const same = (p: Progress) =>
         p.library_id === progress.library_id && p.path === progress.path;
       // The echo is a single book's read, which never carries `cover_version`: the list's
@@ -2336,21 +2321,29 @@ export function useEditProgress(connectionId?: string) {
 }
 
 /** The books whose finish a progress edit moved, per connection, by library and path, not
- * announced yet (`announceFinishEdits`). */
-const finishEdits = new Map<string, Map<string, { libraryId: number; path: string }>>();
+ * announced yet (`announceFinishEdits`); `finished`: one of them finished the book. */
+const finishEdits = new Map<
+  string,
+  Map<string, { libraryId: number; path: string; finished: boolean }>
+>();
 
-function noteFinishEdit(cid: string, progress: Progress) {
+function noteFinishEdit(cid: string, progress: Progress, finished: boolean) {
   const books = finishEdits.get(cid) ?? new Map();
-  const book = { libraryId: progress.library_id, path: progress.path };
-  books.set(`${book.libraryId}\n${book.path}`, book);
+  const key = `${progress.library_id}\n${progress.path}`;
+  books.set(key, {
+    libraryId: progress.library_id,
+    path: progress.path,
+    finished: finished || books.get(key)?.finished === true,
+  });
   finishEdits.set(cid, books);
 }
 
 /**
  * Announce the finishes the progress edits of `cid` moved (`noteFinishEdit`) once no other
  * edit of the connection is still to run: the stats and the goal read again once for them
- * all, and each book told to the other tabs, which read their caches again
- * (`tellFinishChangedElsewhere`), as a Sync v2 delivery does. A legacy server's finishes
+ * all, and each book an edit finished told to the other tabs, which read their caches again
+ * (`tellFinishChangedElsewhere`), as a Sync v2 delivery does (an Undo, or Mark as not
+ * finished, tells them from the store as it puts this device's record back: `undoFinish`). A legacy server's finishes
  * queued offline are edits the reconnect replays one at a time (one scope per connection):
  * announced per edit, each refreshed the stats and goal over the last, and no other tab heard
  * of any. Offline, what landed is announced now: the edits still waiting run once the
@@ -2361,12 +2354,13 @@ function announceFinishEdits(qc: QueryClient, cid: string) {
   if (!books) return;
   // The edit settling counts itself: it is still pending until this returns.
   const { mutationKey } = mutationScope('progress_edit', cid);
-  const queued = qc.getMutationCache().findAll({ mutationKey, exact: true, status: 'pending' });
-  if (queued.length > 1 && onlineManager.isOnline()) return;
+  if (qc.isMutating({ mutationKey, exact: true }) > 1 && onlineManager.isOnline()) return;
   finishEdits.delete(cid);
   refreshProgressQuery(qc, qk.myStatsAll(cid));
   refreshProgressQuery(qc, qk.listeningGoal(cid));
-  for (const book of books.values()) tellFinishChangedElsewhere({ connectionId: cid, ...book });
+  for (const { libraryId, path, finished } of books.values()) {
+    if (finished) tellFinishChangedElsewhere({ connectionId: cid, libraryId, path });
+  }
 }
 
 /** What the stats hooks take besides the connection: `ready` (false: don't fetch, for a

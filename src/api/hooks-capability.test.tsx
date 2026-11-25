@@ -1335,6 +1335,26 @@ describe('Phase 1b mutation cache updates', () => {
     );
   });
 
+  // The store's Undo tells the other tabs as it puts this device's record back (`undoFinish`).
+  it('an unfinishing edit refreshes the stats and goal and leaves the other tabs to the store', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    mockTellElsewhere.mockClear();
+    qc.setQueryData(qk.myStats('c1', '30d'), {});
+    await act(async () => {
+      await result.current.m.mutateAsync({
+        libraryId: 2,
+        path: 'A/Book',
+        edit: { finished: false, position: 30 },
+      });
+    });
+    expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(true);
+    expect(mockTellElsewhere).not.toHaveBeenCalled();
+  });
+
   it("a progress edit keeps the listed row's cover_version (the echo carries none)", async () => {
     const { result, qc } = await mountMutation(
       { progress_edit: true },

@@ -242,14 +242,14 @@ describe('useBookActions', () => {
   });
 
   // The page shows this device's newer record (3001) with the server's own row beside it at
-  // another device's further place (3300, stamped earlier). The Undo moved the server back
+  // another device's further place (3300). The Undo moved the server back
   // to this device's place: the server's row is the floor, for the store's unsaved leave
   // (`held`) and for a book that was not loaded.
   it("an Undo never goes behind the server's own row under this device's newer place", async () => {
     mockEdit.mockResolvedValue(progress({ finished: true }));
     const page: PlacedProgress = {
-      ...progress({ position: 3001, version: 0, updated_at: '2026-10-02T00:00:00Z' }),
-      server: progress({ position: 3300, device_id: 'other', version: 4 }),
+      ...progress({ position: 3001 }),
+      server: progress({ position: 3300 }),
     };
     const { find } = await actions(book(), page);
     await act(async () => find('finish')!.onPress());

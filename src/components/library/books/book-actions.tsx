@@ -285,7 +285,7 @@ export function useBookActions(
       await reloadLeftBook(ref);
       return;
     }
-    const place = { position: left ?? held ?? progress?.position ?? 0, before: recorded.before };
+    const place = { position: left ?? held ?? 0, before: recorded.before };
     const undo = () => void unfinish(place, t('library.bookActions.undoUnreachable'), undo);
     toast({
       title: t('library.bookActions.markedFinished'),
