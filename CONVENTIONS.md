@@ -5012,7 +5012,9 @@ tokens, type and components; its section 17 maps them onto these files.
   - **Text that stops growing**: `display` and `display-xl` titles stop at 2x
     (`DISPLAY_MAX_FONT_SCALE`, `text.tsx`; at iOS's AX5 one word broke mid-word; the web
     ignores `maxFontSizeMultiplier`, so Text supplies a capped CSS unit there).
-    Named title sizes keep their usual classes. For a display title drawn in design px,
+    Named title sizes keep their usual classes; their rem leading (14 on native) caps on the
+    web with a `web:` display leading (`text-2xl leading-7 web:leading-display-28`). For a
+    display title drawn in design px,
     use `text-display-38 leading-display-42`: the utilities take native px and resolve
     against the capped unit on the web, including at a breakpoint. The
     Android tab labels grow up to 1.3x and fit the widest translated name measured in the
