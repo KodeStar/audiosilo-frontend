@@ -63,6 +63,11 @@ const SIDE_CONTENT = 'shrink-0 basis-auto';
  * wider (a long track on a wide window is a long way to drag). */
 const CENTRE_MIN = 300;
 const CENTRE_MAX = 560;
+/** The book column's room beside the transport and a content-sized tablet set on the
+ * narrowest dock (640, the tablet layout's `TABLET_MIN_WIDTH`) at the default text size:
+ * larger text that leaves the book less than this gives the transport its own row
+ * (`dockLayout`'s `stacked`). */
+const BOOK_MIN = 640 - 2 * DOCK_PAD - 2 * DOCK_GAP - scaledTransportWidth('sm') - SIDE_TABLET;
 /** The space between the floating Undo chip and the bar, and the band it floats in. */
 const CHIP_GAP = 8;
 const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
@@ -90,7 +95,9 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
  * With the scrubber row the middle column's minimum has first call on the width, so at
  * 800 to 803 a side column is 218 or 219, which the tablet set (about 210) still fits:
  * centred. Larger text needs more room for the actions and transport. Where large text
- * leaves them no equal columns, the transport sits below the book and actions (`stacked`).
+ * leaves them no equal columns, or text above the default leaves the book less room than
+ * the narrowest dock gives it at the default size (`BOOK_MIN`), the transport sits below
+ * the book and actions (`stacked`).
  */
 export function dockLayout(
   width: number,
@@ -111,7 +118,10 @@ export function dockLayout(
   const side = (allActions ? SIDE_ALL : SIDE_TABLET) * text;
   const centre = scrubber ? Math.min(CENTRE_MAX, Math.max(centreMin, inner - 2 * side)) : transport;
   const centred = scrubber || inner - centre >= 2 * side;
-  const stacked = isLargeText(fontScale) && !centred;
+  // Off the centre the book takes the squeeze; the transport and the actions grow with any
+  // text above the default, so below large text too the book may run out of room.
+  const book = inner - centre - side;
+  const stacked = !centred && (isLargeText(fontScale) || (text > 1 && book < BOOK_MIN));
   return { allActions, scrubber, centre, centred, stacked };
 }
 

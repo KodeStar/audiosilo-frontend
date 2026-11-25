@@ -237,7 +237,8 @@ export function TransportControls({
   className,
 }: {
   size?: TransportSize;
-  /** The width the transport may take (the full player's column), to fit it. */
+  /** The width the transport may take (the full player's column, the dock's middle
+   * column), to fit it. */
   room?: number;
   className?: string;
 }) {

@@ -411,7 +411,8 @@ columns are equal; a bar narrower than 732 has no room for that, so there the ri
 actions and the transport sits off the centre). Right: speed, sleep (shows its countdown and turns
 `--brand-soft` while running), bookmark, output, Up next, expand. After a jump the Undo chip floats just above
 the bar, centred on the bar (over the transport wherever the columns are equal); the bar never re-lays out for
-it. With large text the transport grows up to 1.5x. On a narrow dock it moves below the book and actions.
+it. The transport grows with the text size, up to 1.5x. On a narrow dock where larger text leaves the book
+too little room (or under large text no equal columns), it moves below the book and actions.
 Click the book to open the full player.
 
 ### Mini player (phone) *custom*

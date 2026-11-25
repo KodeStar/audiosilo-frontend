@@ -201,6 +201,19 @@ describe('dockLayout', () => {
     // The default size gives up the centre at 640 but keeps one row.
     expect(dockLayout(640)).toMatchObject({ centred: false, stacked: false });
   });
+
+  it('stacks below large text where the grown transport and actions leave the book no room', () => {
+    // A 20 px browser font: 576 inner, a 285 transport and about 275 of actions left the
+    // book about 16 px (and less with a running sleep pill), so the columns overlapped.
+    expect(dockLayout(640, 1.25)).toMatchObject({ centred: false, stacked: true });
+    // A wider dock still has room for the book beside them.
+    expect(dockLayout(760, 1.1)).toMatchObject({ stacked: false });
+    // Never at the default size or below, at any width.
+    for (let width = 600; width <= 1440; width += 4) {
+      expect(dockLayout(width).stacked).toBe(false);
+      expect(dockLayout(width, 0.85).stacked).toBe(false);
+    }
+  });
 });
 
 describe('DockedPlayer', () => {
