@@ -5363,11 +5363,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       behind && sameConnection(behind.connectionId, asked.connectionId)
         ? await otherTabsPlace(behind.since).catch(() => null)
         : null;
-    const place = shared ?? (lateTabSeek?.np === asked ? lateTabSeek.place : null);
     // The book as it stands after those awaits: a hot-swap that landed meanwhile replaced it
     // (its queue is the one to reload), and a stop or another book leaves nothing to retry.
     const np = get().nowPlaying;
     if (!np || !sameBook(np, asked)) return;
+    // A move to another tab's place still out, on that book: the hot-swap moved it onto its
+    // queue (`moveLateTabSeek`).
+    const place = shared ?? (lateTabSeek?.np === np ? lateTabSeek.place : null);
     if (place) adoptTabPlace(np, place);
     let at: { index: number; positionInTrack: number } = place ?? reloadPlace(np);
     let loaded = np;
