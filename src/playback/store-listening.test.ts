@@ -2099,6 +2099,41 @@ describe('Mark as finished outside the player (finish-route)', () => {
     mockReadMirror.mockResolvedValue(row({ position: 30, device_id: 'phone' }));
     await expect(leaveFinishedBook(ref)).resolves.toBe(30);
     release();
+
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    release = holdSaves();
+    mockReadMirror.mockResolvedValue({ ack_version: 41 });
+    // The page read a further place from the server (another device's): not sent back over.
+    await expect(leaveFinishedBook({ ...ref, held: 50 })).resolves.toBe(50);
+    release();
+  });
+
+  // Until its load lands the snapshot is the previous book's: read through this book's queue
+  // it named a place this book never had, which the Undo's edit then sent to the server.
+  it('marked while its files load, the place is the one it resumes at, not the last book’s', async () => {
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    pushSnapshot(snap('playing', 1, 45));
+    await settle();
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: row({ position: 20 }),
+    });
+    let loaded = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (loaded = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    expect(usePlayer.getState().loadingBook).not.toBeNull();
+    await expect(leaveFinishedBook(ref)).resolves.toBe(20);
+    loaded();
+    await starting;
   });
 
   // FE-1: the same race as `stop()`. The unload's reset came before the load landed in the

@@ -51,7 +51,7 @@ type FinishRecorder = {
    * stops and unloads; resolves once its place is saved, with the place the finish replaces
    * (the one saved; when the save was skipped, the further of the place shown as it was left
    * and this device's record of it), else undefined (not loaded). */
-  leave: (ref: FinishBook) => Promise<number | undefined>;
+  leave: (ref: FinishBook & { held?: number }) => Promise<number | undefined>;
   /** The finish the book was left for failed: it is loaded again, paused at the place it
    * was left at, when nothing was loaded since. */
   reload: (ref: FinishBook) => Promise<void>;
@@ -96,9 +96,11 @@ export function finishTakesEvent(connectionId: string): boolean {
  * book stops and unloads when it is this one (fe#258), its span closed ahead of the finish.
  * Resolves once its place is saved, so the finish is recorded after it, with that place
  * (whole-book seconds: where an Undo goes back to; when the save was skipped, the place the
- * store showed as it was left, never behind this device's record of the book); undefined
- * when the book was not loaded. */
-export async function leaveFinishedBook(ref: FinishBook): Promise<number | undefined> {
+ * store showed as it was left, never behind this device's record of the book nor `held`,
+ * the place the caller read from the server); undefined when the book was not loaded. */
+export async function leaveFinishedBook(
+  ref: FinishBook & { held?: number },
+): Promise<number | undefined> {
   return recorder?.leave(ref);
 }
 
