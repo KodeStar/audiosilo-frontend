@@ -1478,7 +1478,9 @@ const MAX_ROUNDS = 50;
 
 async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
-  await recoverOpenSpan((id) => sameConnection(id, connectionId));
+  // Only this id's: a span recovered under the id the identity migration moved it from is no
+  // event this flush sends (`outboxEvents` reads this id alone), so the recovery sends it.
+  await recoverOpenSpan((id) => id === connectionId);
   // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
   // the wait is over (`onRateLimitOver`, below). Not a sign-out's last chance.
   if (rateLimited(connectionId) && !lastChance.has(resolveConnectionId(connectionId))) return;
