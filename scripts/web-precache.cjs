@@ -6,6 +6,9 @@ const { createHash } = require('node:crypto');
 const { readFileSync } = require('node:fs');
 const path = require('node:path');
 
+/** Where public/sw.js takes its build's manifest (`const BUILD`). */
+const MANIFEST_MARKER = '/* precache manifest */ null';
+
 function buildWorker(artifacts, assets) {
   const start = [];
   const routes = [];
@@ -30,15 +33,16 @@ function buildWorker(artifacts, assets) {
   const manifest = { start: start.sort(), routes: routes.sort(), catalogs, fonts: fonts.sort() };
   const id = createHash('sha256').update(JSON.stringify(manifest)).digest('hex').slice(0, 20);
   const source = readFileSync(path.join(__dirname, '../public/sw.js'), 'utf8');
+  // Without the marker the worker would ship with no manifest and never install.
+  if (source.split(MANIFEST_MARKER).length !== 2)
+    throw new Error('public/sw.js must name ' + MANIFEST_MARKER + ' exactly once');
   return {
     filename: 'sw.js',
     originFilename: 'public/sw.js',
     type: 'js',
     // A worker has no route entry point, so Expo never adds it to the page's script tags.
     metadata: { isAsync: true, modulePaths: [] },
-    source: source.replace('/* precache manifest */ null', () =>
-      JSON.stringify({ id, ...manifest }),
-    ),
+    source: source.replace(MANIFEST_MARKER, () => JSON.stringify({ id, ...manifest })),
   };
 }
 
