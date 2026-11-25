@@ -79,11 +79,11 @@ jest.mock('@/components/ui/cover', () => {
 const mockWeekMounts = jest.fn();
 jest.mock('./this-week-card', () => {
   const actual = jest.requireActual('./this-week-card');
-  const { useEffect } = jest.requireActual('react');
+  const { createElement, useEffect } = jest.requireActual('react');
   return {
     ThisWeekCard: (p: { className?: string }) => {
       useEffect(() => mockWeekMounts(), []);
-      return actual.ThisWeekCard(p);
+      return createElement(actual.ThisWeekCard, p);
     },
   };
 });
@@ -606,7 +606,7 @@ describe('HomeScreen', () => {
     expect(screen.getByRole('image', { name: '3 of 24 books finished this year' })).toBeTruthy();
   });
 
-  it('stacks This week under the Now card when the page column is too narrow for both', async () => {
+  it('stacks This week under the Now card when the column is too narrow for both, never remounting it', async () => {
     mockCaps = { user_stats: true };
     mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
     await mountHome();
@@ -621,17 +621,7 @@ describe('HomeScreen', () => {
       nativeEvent: { layout: { width: 1200, height: 900 } },
     });
     expect(screen.getByTestId('home-hero-beside')).toBeTruthy();
-  });
-
-  it('keeps This week mounted when the column measures too narrow for it beside the Now card', async () => {
-    mockCaps = { user_stats: true };
-    mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
-    await mountHome();
-    await fireEvent(screen.getByTestId('home-column'), 'layout', {
-      nativeEvent: { layout: { width: 600, height: 900 } },
-    });
-    expect(screen.queryByTestId('home-hero-beside')).toBeNull();
-    // Mounted once: a second mount would have cancelled the stats reads the first asked.
+    // Mounted once through both moves: a remount would cancel the stats reads in flight.
     expect(mockWeekMounts).toHaveBeenCalledTimes(1);
   });
 
