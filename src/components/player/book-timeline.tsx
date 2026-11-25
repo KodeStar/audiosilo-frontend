@@ -44,6 +44,14 @@ const PIN_ROOM = PIN_HEAD + 4;
 const HEAD_W = 3;
 const HEAD_OVER = 4;
 
+/** Past chapters in ink, the current one in a pink tint under its heard part, the chapters
+ * ahead on the track colour (a non-text contrast token, outlined in high contrast). */
+const SEGMENT_CLASS: Record<ScaleState, string> = {
+  past: 'bg-foreground/35',
+  current: 'bg-brand/25',
+  ahead: 'bg-track',
+};
+
 /** A pin head (a teardrop pointing down at its place) and its stem. */
 function Pin({
   at,
@@ -109,10 +117,7 @@ const Segment = memo(function Segment({
       style={{ left: `${left}%`, width: `${width}%` }}
     >
       <View
-        className={cn(
-          'flex-1 overflow-hidden rounded-[3px]',
-          state === 'past' ? 'bg-foreground/35' : 'bg-track',
-        )}
+        className={cn('flex-1 overflow-hidden rounded-[3px]', SEGMENT_CLASS[state])}
         style={{ marginRight: gap }}
       >
         {state !== 'past' ? <TrackOutline rounded="rounded-[3px]" /> : null}
@@ -156,8 +161,8 @@ export type BookTimelineProps = {
 /**
  * The whole-book timeline (STYLEGUIDE section 8): one segment per chapter, placed by time
  * like the playhead, taps, the hover tip and the pins (`runBox`), with 2-point gaps
- * carved out of each segment's own end. Past chapters use ink, the heard part of the
- * current chapter and the playhead use pink; bookmark pins (ink) and note pins (community) on
+ * carved out of each segment's own end; past chapters in ink, the current one pink with
+ * its heard part solid, a pink playhead; bookmark pins (ink) and note pins (community) on
  * stems above. On the web a hover names the chapter and the time. A tap or drag seeks (a
  * jump, so the Undo chip offers the way back by itself); a tap on a pin lands on it
  * exactly. Accessible as an adjustable "Whole-book timeline" whose steps are chapters.
