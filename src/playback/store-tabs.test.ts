@@ -1810,6 +1810,52 @@ describe.each([
         }
       });
 
+      // The download hot-swap replaced the loaded book while the move was out: matched by the
+      // book it was asked on, the move no longer held the saves, and A's old place went over
+      // the shared one.
+      it('keeps the shared place through a download that lands while the move is out', async () => {
+        await playedPast(a, b);
+        b.engine.at(900);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === 900, 'B to save');
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const bound = shortenTabMoveBound();
+        type Swap = NonNullable<PlaybackService['swapTo']>;
+        const swapping = jest.fn<ReturnType<Swap>, Parameters<Swap>>(async () => 'swapped');
+        try {
+          a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
+          await a.player().toggle();
+          bound.mockRestore();
+          const streamed = a.player().nowPlaying;
+          a.engine.svc.swapTo = swapping;
+          a.downloadLands(
+            long,
+            long.chapters.files.map((f) => f.rel_path),
+          );
+          await until(() => a.player().nowPlaying !== streamed, 'the swap to land');
+          a.engine.at(40);
+          await a.save();
+          expect(mockMirror.records.get(key)?.position).toBe(900);
+          const now = Date.now;
+          const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() + 16_000);
+          try {
+            a.engine.at(41);
+            await until(() => a.player().snapshot.state === 'error', 'A to offer Retry');
+            expect(a.player().snapshot.position).toBe(900);
+            await a.save();
+            expect(mockMirror.records.get(key)?.position).toBe(900);
+            expect(mockMirror.saved).not.toContain(40);
+            expect(mockMirror.saved).not.toContain(41);
+          } finally {
+            clock.mockRestore();
+          }
+        } finally {
+          warn.mockRestore();
+          bound.mockRestore();
+        }
+      });
+
       /** A's next seek stays out until the returned `land`; the 5 s bound is 20 ms. */
       function slowSeek() {
         let target = 0;

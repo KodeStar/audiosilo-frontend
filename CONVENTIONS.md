@@ -2510,7 +2510,7 @@ media GETs only.
   stream, in the stream's order); `persist` and `onRemoteMove` still refuse a place at
   another index of that book until the download's queue is committed, which on a load is
   before the rate and the play. The commit moves the store's snapshot onto the download's
-  index by file too (a stream in `error` holds back the engine's own report). A download
+  index by file too (a stream in `error` holds back the engine's own report). So does a move to another tab's place still out (`moveLateTabSeek`): its saves stay held and its deadline still holds the book at the shared place for Retry. A download
   landing while a load holds the store (`loadingBook`: a start, an adoption's reload) or a
   start is on its way (`startsInFlight`: one of the book already loaded holds nothing, and
   one that has not made its book the store's yet is seen by nothing) swaps once they are

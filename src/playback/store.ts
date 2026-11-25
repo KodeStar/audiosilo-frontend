@@ -3031,6 +3031,28 @@ function withdrawAsk(ask: EngineAsk) {
   askedPlace = null;
 }
 
+/** A move to another tab's place still out (`lateTabSeek`) is `to`'s from here (the download
+ * hot-swap's commit, `moveAsk`), at the same file and place in it, by its whole-book seconds
+ * for a file `to` lacks. Left on `from`, the saves of the committed book went on from the
+ * engine's old place over the shared one, and the deadline no longer held the book at the
+ * shared place for Retry. */
+function moveLateTabSeek(from: NowPlaying, to: NowPlaying) {
+  const late = lateTabSeek;
+  if (late?.np !== from) return;
+  const { place } = late;
+  const file = place.finished ? 0 : trackIndexById(to.queue, from.queue.tracks[place.index]?.id);
+  const at =
+    file >= 0
+      ? { index: file, positionInTrack: place.finished ? 0 : place.positionInTrack }
+      : locate(to.queue.offsets, place.pos);
+  late.np = to;
+  late.place = {
+    ...place,
+    ...at,
+    pos: toBookPosition(to.queue.offsets, at.index, at.positionInTrack),
+  };
+}
+
 /** The engine's record of `from` is `to`'s from here, the same book on another queue (the
  * download hot-swap's commit, `commitLocalSwap`): its fault (`faultedBook`), a fault an ask
  * called off (`calledOff`: a late refusal brings it back there), and the ask standing, in the
@@ -3041,6 +3063,7 @@ function withdrawAsk(ask: EngineAsk) {
 function moveAsk(from: NowPlaying, to: NowPlaying, lost: { trackIndex: number; position: number }) {
   if (faultedBook === from) faultedBook = to;
   if (calledOff?.np === from) calledOff = { ...calledOff, np: to };
+  moveLateTabSeek(from, to);
   const ask = askedPlace;
   if (ask?.np !== from) return;
   const onto = (i: number) => trackIndexById(to.queue, from.queue.tracks[i]?.id);
@@ -3421,27 +3444,29 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
   const attempt = playAttempts;
   const noted = notedPlay;
   const timeout = new Error('the move did not settle');
-  const current = () =>
-    usePlayer.getState().nowPlaying === np &&
+  // `book` and `at`: the late move's own (`lateTabSeek`), which a download hot-swap moves
+  // onto its queue (`moveLateTabSeek`).
+  const current = (book = np) =>
+    usePlayer.getState().nowPlaying === book &&
     moves === localMoves &&
     ask.seq === askSeq &&
     attempt === playAttempts &&
     noted === notedPlay;
-  const refused = (): boolean => {
-    if (!current()) return false;
+  const refused = (book = np, at = place): boolean => {
+    if (!current(book)) return false;
     // The engine stayed at the old place. Show the shared place for Retry and ignore
     // reports from the old one, as for a seek clamped by a short file.
     dropListening();
     clearPlaybackIntent();
     stopSaveLoop();
-    adoptTabPlace(np, place);
+    adoptTabPlace(book, at);
     const snapshot = usePlayer.getState().snapshot;
-    pauseFaultedEngine(svc, np, snapshot.state);
+    pauseFaultedEngine(svc, book, snapshot.state);
     usePlayer.setState({
       snapshot: {
         ...snapshot,
         state: 'error',
-        ...shownAt(np, place.index, place.positionInTrack, snapshot),
+        ...shownAt(book, at.index, at.positionInTrack, snapshot),
       },
     });
     void persist();
@@ -3477,7 +3502,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
         const fail = (): boolean => {
           if (lateTabSeek !== late) return false;
           clearLateTabSeek();
-          return refused();
+          return refused(late.np, late.place);
         };
         const timer = setTimeout(fail, Math.max(0, ask.at + ASK_SETTLE_MAX_MS - Date.now()));
         const late = {
