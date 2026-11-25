@@ -65,10 +65,10 @@ const CENTRE_MIN = 300;
 const CENTRE_MAX = 560;
 /** The chapter scrubber's track is never narrower than this: a shorter one is too fine to
  * drag. Beside it, its time labels (the elapsed time's 44 and "10h 15m left at 1.25x",
- * with the two gaps: about 180 at the default text size, an ESTIMATE like `SIDE_ALL`)
- * grow with the text. The two fill `CENTRE_MIN` at the default size. */
-const SCRUBBER_MIN = 120;
-const SCRUBBER_LABELS = 180;
+ * about 132, with the two gaps: about 200 at the default text size, an ESTIMATE like
+ * `SIDE_ALL`) grow with the text. The two fill `CENTRE_MIN` at the default size. */
+const SCRUBBER_MIN = 100;
+const SCRUBBER_LABELS = 200;
 /** The book column's room beside the transport and a content-sized tablet set on the
  * narrowest dock (640, the tablet layout's `TABLET_MIN_WIDTH`) at the default text size:
  * larger text that leaves the book less than this gives the transport its own row
@@ -109,7 +109,8 @@ const GROWN_PAD_Y = 8;
  * the narrowest dock gives it at the default size (`BOOK_MIN`), the transport sits below
  * the book and actions (`stacked`). From 800, text above the default that leaves the
  * scrubber row less than its minimum (`SCRUBBER_MIN` and its labels) between the side
- * columns stacks too, the transport and scrubber on their own row up to `CENTRE_MAX` wide.
+ * columns stacks too, the transport and scrubber on their own row `CENTRE_MAX` wide (wider
+ * where the text needs a wider scrubber row).
  */
 export function dockLayout(
   width: number,
@@ -138,9 +139,9 @@ export function dockLayout(
     }
     // Larger text leaves the scrubber row no room between the book and the actions: the
     // transport and the scrubber take their own row rather than shrink or hide it.
-    const row = width - 2 * DOCK_PAD;
-    if (row >= scrubberRow) {
-      const centre = Math.min(row, Math.max(centreMin, CENTRE_MAX));
+    // From 800 the row (768 or more) always holds `CENTRE_MAX`.
+    if (width - 2 * DOCK_PAD >= centreMin) {
+      const centre = Math.max(centreMin, CENTRE_MAX);
       return { allActions, scrubber: true, centre, centred: false, stacked: true };
     }
   }

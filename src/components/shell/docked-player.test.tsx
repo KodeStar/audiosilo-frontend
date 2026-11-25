@@ -197,7 +197,7 @@ describe('dockLayout', () => {
 
   it('puts the transport below the book and actions only where large text leaves no equal columns', () => {
     expect(dockLayout(640, 2)).toMatchObject({ centred: false, stacked: true });
-    expect(dockLayout(1440, 2)).toMatchObject({ centred: true, stacked: false });
+    expect(dockLayout(1500, 2)).toMatchObject({ centred: true, stacked: false });
     // The default size gives up the centre at 640 but keeps one row.
     expect(dockLayout(640)).toMatchObject({ centred: false, stacked: false });
   });
@@ -229,12 +229,12 @@ describe('dockLayout', () => {
     expect(dockLayout(832, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: true });
     // Where it fits beside the side columns it stays there, as at the default size.
     expect(dockLayout(1280, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: false });
-    // Its track keeps 120 beside its labels (180 at the default size, grown with the text).
+    // Its track keeps 100 beside its labels (200 at the default size, grown with the text).
     for (const scale of [1, 1.1, 1.25, 1.5, 2, 3.1]) {
       for (let width = 800; width <= 1880; width += 4) {
         const { scrubber, centre } = dockLayout(width, scale);
         expect(scrubber).toBe(true);
-        expect(centre - 180 * scale).toBeGreaterThanOrEqual(120);
+        expect(centre - 200 * scale).toBeGreaterThanOrEqual(100);
       }
     }
     // Below 800 the dock has no scrubber at any size.
@@ -242,7 +242,7 @@ describe('dockLayout', () => {
   });
 
   it('lays out the default size as before the scrubber minimum, at every width', () => {
-    // The scrubber row's minimum (120 + 180) is the default's CENTRE_MIN: nothing moves.
+    // The scrubber row's minimum (100 + 200) is the default's CENTRE_MIN: nothing moves.
     for (let width = 600; width <= 1880; width += 2) {
       const inner = width - 64;
       const { allActions, scrubber, centre, centred, stacked } = dockLayout(width);
@@ -268,7 +268,7 @@ describe('DockedPlayer', () => {
       // Room above and below, so the window's bottom edge never cuts the play button.
       expect(screen.getByTestId('dock-row')).toHaveStyle({ paddingVertical: 8 });
       // The same beside the book and actions, where the grown transport is the tallest.
-      await renderAt(1440);
+      await renderAt(1500);
       expect(screen.getByTestId('dock-row').props.className).toContain('flex-row');
       expect(screen.getByTestId('dock-row')).toHaveStyle({ paddingVertical: 8 });
     } finally {
