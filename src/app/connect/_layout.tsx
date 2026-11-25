@@ -8,7 +8,7 @@ import {
   dropOidcIntent,
   peekOidcIntent,
   resumeOidcIntent,
-  takeOidcIntent,
+  clearHeldOidcIntent,
 } from '@/components/connect/oidc-intent';
 import { oidcReturnOnLoad } from '@/components/connect/oidc-sign-in';
 import { KIDS_PATH } from '@/components/kids/kids-model';
@@ -56,7 +56,7 @@ export default function ConnectLayout() {
   // Whether kids mode is on can only be told once both are read.
   const known = status !== 'loading' && profilesRead;
   // A single sign-on's return is a page load: what the flow was for before the trip comes
-  // back from this tab's storage (`takeOidcIntent`, fe#310), put back once the profiles are
+  // back from this tab's storage (`peekOidcIntent`, fe#310), put back once the profiles are
   // read. A grown-up's pass through kids mode is not: it waits on the sign-in's finish
   // (`passWaits`, until `settleOidcPass`), and meanwhile kids mode lets only the return's own
   // screen run, which finishes the sign-in and shows nothing else. No session echoing this
@@ -65,8 +65,8 @@ export default function ConnectLayout() {
   // the layout renders and taken once it is on screen (`useHandoff`): the app's first render
   // is a transition, and one thrown away and run again must still find it.
   const intent = useHandoff(
-    () => peekOidcIntent(oidcReturnOnLoad()),
-    () => void takeOidcIntent(false),
+    () => (oidcReturnOnLoad() ? peekOidcIntent() : null),
+    clearHeldOidcIntent,
   );
   const [held, setHeld] = useState(intent);
   const [passWaiting, setPassWaiting] = useState(false);

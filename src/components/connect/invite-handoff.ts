@@ -1,7 +1,9 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import type { InviteScan } from '@/lib/pairing';
+import type { LegacyExchangeUnansweredError } from '@/api/client';
+import type { PairingPayload } from '@/api/types';
+import { type InviteScan, inviteKey } from '@/lib/pairing';
 import { type ConnectBook, connectBookParams } from '@/lib/paths';
 import { sameUrl } from '@/lib/server-address';
 import { useSession } from '@/stores/session';
@@ -21,8 +23,17 @@ export function holdInvite(invite: InviteScan): void {
 /** Start an invite's sign-in (a scanned QR or a pasted link): hold its code, make its
  * server the pending one, then `go` to the sign-in step. */
 export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
+  // The sign-in route can still be loading when Connect is pressed again. One held
+  // invite opens one step, which takes it on mount.
+  const pending = peekInviteCode(invite.base);
+  if (pending !== undefined && inviteKey(pending) === inviteKey(invite.code)) return;
   holdInvite(invite);
-  void useSession.getState().setPendingServerUrl(invite.base).then(go);
+  void useSession
+    .getState()
+    .setPendingServerUrl(invite.base)
+    .then(() => {
+      if (held === invite) go();
+    });
 }
 
 /**
@@ -52,6 +63,40 @@ export function takeInviteCode(server: string | null): string | undefined {
   const code = server ? peekInviteCode(server) : undefined;
   held = null;
   return code;
+}
+
+/** What an invite's exchange that got no answer left to retry with: its pairing token, or
+ * an old server's unanswered exchange, which ends the retries. */
+export type UnansweredInvite = PairingPayload | LegacyExchangeUnansweredError;
+
+/** The invite codes redeemed whose exchange got no answer, by server and code (memory only,
+ * `unansweredKey`). */
+const unanswered = new Map<string, UnansweredInvite>();
+
+/** One invite at one server: the address as `sameUrl` reads it, the code as the server does. */
+const unansweredKey = (server: string, code: string) =>
+  `${server.replace(/\/+$/, '')}\n${inviteKey(code)}`;
+
+/**
+ * Keep what an invite's lost exchange left (`code` at `server`), so a later sign-in step for
+ * the same invite retries the exchange instead of redeeming the code again, which could spend
+ * another of its uses: a step left by Back and opened again by the same link or code too, not
+ * only the one that sent it, and after another code's own lost exchange. Leaving the connect
+ * flow drops them all (`dropConnectHandoffs`).
+ */
+export function keepUnansweredInvite(server: string, code: string, kept: UnansweredInvite): void {
+  unanswered.set(unansweredKey(server, code), kept);
+}
+
+/** What `keepUnansweredInvite` kept for `code` at `server`, if anything. */
+export function unansweredInvite(server: string, code: string): UnansweredInvite | null {
+  return unanswered.get(unansweredKey(server, code)) ?? null;
+}
+
+/** The kept invite (`code` at `server`) signed in: its token is spent, nothing is left to
+ * retry. */
+export function forgetUnansweredInvite(server: string, code: string): void {
+  unanswered.delete(unansweredKey(server, code));
 }
 
 /** The connection the scanner was opened to re-pair (memory only). */
@@ -148,6 +193,7 @@ export function peekReconnect(server: string | null): string | undefined {
  * code again). */
 export function dropConnectHandoffs(): void {
   held = null;
+  unanswered.clear();
   scanFor = undefined;
   scanned = null;
   reconnecting = null;

@@ -15,7 +15,8 @@ import {
   resumeOidcIntent,
   oidcPassTag,
   settleOidcPass,
-  takeOidcIntent,
+  clearHeldOidcIntent,
+  peekOidcIntent,
   takeOidcResumed,
 } from './oidc-intent';
 
@@ -44,6 +45,12 @@ afterEach(() => {
   dropOidcIntent();
 });
 
+function takeIntent() {
+  const held = peekOidcIntent();
+  clearHeldOidcIntent();
+  return held;
+}
+
 const BOOK = { libraryId: 3, path: 'Austen/Emma' };
 const HOME = 'http://192.168.1.20:8080';
 
@@ -53,14 +60,14 @@ it('carries "Add someone" and the book across the trip, taken once', () => {
   holdOidcIntent(BOOK);
   // The page load: memory is gone.
   endConnectFlow();
-  const held = takeOidcIntent(true);
+  const held = takeIntent();
   expect(held).toEqual({
     newPerson: true,
     grownUpFromKids: false,
     book: BOOK,
     tag: expect.stringMatching(/^[0-9a-f]{64}$/),
   });
-  expect(takeOidcIntent(true)).toBeNull();
+  expect(takeIntent()).toBeNull();
   const settled = jest.fn();
   // No pass left with the trip: none waits, and nothing is settled later.
   expect(resumeOidcIntent(held!, settled)).toBe(false);
@@ -89,7 +96,7 @@ describe("a grown-up's pass through kids mode", () => {
     const settled = jest.fn();
     // Denied: the address alone (`/connect?oidc=1`) gives no pass back.
     expect(oidcPassTag()).toBeUndefined();
-    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(resumeOidcIntent(takeIntent()!, settled)).toBe(true);
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).not.toHaveBeenCalled();
     // The tag the finish's request names while the pass waits.
@@ -107,7 +114,7 @@ describe("a grown-up's pass through kids mode", () => {
   it('is not given when the finish fails (a trip abandoned at the provider, the address typed)', () => {
     const tag = leaveWithPass();
     const settled = jest.fn();
-    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(resumeOidcIntent(takeIntent()!, settled)).toBe(true);
     expect(settleOidcPass(null)).toBe('refused');
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).toHaveBeenCalledTimes(1);
@@ -125,7 +132,7 @@ describe("a grown-up's pass through kids mode", () => {
   ])('is not given for a session with %s', (_, session) => {
     leaveWithPass();
     const settled = jest.fn();
-    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(resumeOidcIntent(takeIntent()!, settled)).toBe(true);
     expect(settleOidcPass(session)).toBe('refused');
     expect(kidsConnectAllowed()).toBe(false);
     expect(settled).toHaveBeenCalledTimes(1);
@@ -138,7 +145,7 @@ describe("a grown-up's pass through kids mode", () => {
         'audiosilo.oidcIntent',
         JSON.stringify({ at: Date.now(), grownUpFromKids: true, tag }),
       );
-      const held = takeOidcIntent(true)!;
+      const held = takeIntent()!;
       expect(held.tag).toBeUndefined();
       expect(resumeOidcIntent(held, jest.fn())).toBe(true);
       // Even a session echoing the stored value gets nothing.
@@ -149,7 +156,7 @@ describe("a grown-up's pass through kids mode", () => {
 
   it('makes a new tag for every trip', () => {
     const first = leaveWithPass();
-    expect(takeOidcIntent(true)?.tag).toBe(first);
+    expect(takeIntent()?.tag).toBe(first);
     const second = leaveWithPass();
     expect(second).not.toBe(first);
   });
@@ -165,7 +172,7 @@ describe("a grown-up's pass through kids mode", () => {
     } finally {
       full.mockRestore();
     }
-    expect(takeOidcIntent(true)).toBeNull();
+    expect(takeIntent()).toBeNull();
   });
 
   it('does not wait while kids mode would not let it through now', () => {
@@ -175,7 +182,7 @@ describe("a grown-up's pass through kids mode", () => {
       profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
     }));
     const settled = jest.fn();
-    const held = takeOidcIntent(true)!;
+    const held = takeIntent()!;
     expect(resumeOidcIntent(held, settled)).toBe(false);
     // No pass waits: the finish names no tag.
     expect(oidcPassTag()).toBeUndefined();
@@ -185,7 +192,7 @@ describe("a grown-up's pass through kids mode", () => {
 
   it('is not given once a grown-up joined the device while the finish was on its way', () => {
     const tag = leaveWithPass();
-    expect(resumeOidcIntent(takeOidcIntent(true)!, jest.fn())).toBe(true);
+    expect(resumeOidcIntent(takeIntent()!, jest.fn())).toBe(true);
     useProfiles.setState((s) => ({
       profiles: [...s.profiles, { id: 'g', name: 'Sam', connectionIds: ['srv.2'] }],
     }));
@@ -196,7 +203,7 @@ describe("a grown-up's pass through kids mode", () => {
   it('stops waiting when the flow is left', () => {
     const tag = leaveWithPass();
     const settled = jest.fn();
-    expect(resumeOidcIntent(takeOidcIntent(true)!, settled)).toBe(true);
+    expect(resumeOidcIntent(takeIntent()!, settled)).toBe(true);
     dropOidcIntent();
     expect(oidcPassTag()).toBeUndefined();
     expect(settleOidcPass({ intent: tag })).toBe('none');
@@ -207,16 +214,16 @@ describe("a grown-up's pass through kids mode", () => {
 
 it('drops what was held when this load is not the return, and reads nothing it cannot parse', () => {
   holdOidcIntent(BOOK);
-  expect(takeOidcIntent(false)).toBeNull();
-  expect(takeOidcIntent(true)).toBeNull();
+  clearHeldOidcIntent();
+  expect(takeIntent()).toBeNull();
   store.set('audiosilo.oidcIntent', '{not json');
-  expect(takeOidcIntent(true)).toBeNull();
+  expect(takeIntent()).toBeNull();
   // A book that is no book is left out; the rest stands.
   store.set(
     'audiosilo.oidcIntent',
     JSON.stringify({ at: Date.now(), newPerson: true, book: { book: 'x', path: 'a' } }),
   );
-  expect(takeOidcIntent(true)).toEqual({ newPerson: true, grownUpFromKids: false });
+  expect(takeIntent()).toEqual({ newPerson: true, grownUpFromKids: false });
 });
 
 it("gives back no pass left by a trip abandoned at the provider: too old, or the flow's gone", () => {
@@ -228,15 +235,15 @@ it("gives back no pass left by a trip abandoned at the provider: too old, or the
     holdOidcIntent();
     // Denied: a page load of `/connect?oidc=1` past the server's limit on a trip.
     clock.mockReturnValue(now + MAX_AGE_MS + 1);
-    expect(takeOidcIntent(true)).toBeNull();
+    expect(takeIntent()).toBeNull();
     // Denied: one with no stamp (not written by this build).
     store.set('audiosilo.oidcIntent', JSON.stringify({ grownUpFromKids: true }));
-    expect(takeOidcIntent(true)).toBeNull();
+    expect(takeIntent()).toBeNull();
     // Allowed: within the limit.
     clock.mockReturnValue(now);
     holdOidcIntent();
     clock.mockReturnValue(now + MAX_AGE_MS);
-    expect(takeOidcIntent(true)?.grownUpFromKids).toBe(true);
+    expect(takeIntent()?.grownUpFromKids).toBe(true);
   } finally {
     clock.mockRestore();
   }
@@ -251,7 +258,7 @@ it("gives back no pass left by a trip abandoned at the provider: too old, or the
 // A reconnect's sign-in through single sign-on (fe#298): the in-memory hold is lost to the
 // page load, so the connection it re-pairs goes with the intent, bound to its address.
 describe('a reconnect across the trip', () => {
-  const held = () => takeOidcIntent(true);
+  const held = () => takeIntent();
   const reconnectOf = (origin: string) => takeOidcResumed(origin).reconnectId;
 
   it('is given to the finish for the address it signed in through, once', () => {

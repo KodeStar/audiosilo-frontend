@@ -1,4 +1,5 @@
 import {
+  beginInviteSignIn,
   dropConnectHandoffs,
   holdInvite,
   holdReconnect,
@@ -16,6 +17,22 @@ import {
 
 const mockPush = jest.fn();
 jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+const mockSetPending = jest.fn((_url: string) => Promise.resolve());
+jest.mock('@/stores/session', () => ({
+  useSession: { getState: () => ({ setPendingServerUrl: mockSetPending }) },
+}));
+
+it('opens one sign-in step for an invite already on its way, in any spelling of its code', async () => {
+  dropConnectHandoffs();
+  const go = jest.fn();
+  beginInviteSignIn({ base: 'https://a.example', code: 'ABCD-1234' }, go);
+  beginInviteSignIn({ base: 'https://a.example', code: 'abcd 1234' }, go);
+  await Promise.resolve();
+  await Promise.resolve();
+  expect(mockSetPending).toHaveBeenCalledTimes(1);
+  expect(go).toHaveBeenCalledTimes(1);
+  expect(takeInviteCode('https://a.example')).toBe('ABCD-1234');
+});
 
 it("hands a held invite's code to its own server's sign-in, once", () => {
   holdInvite({ base: 'https://a.example', code: 'ABCD-1234' });

@@ -18,7 +18,7 @@ jest.mock('@/lib/base-url', () => {
   const actual = jest.requireActual('@/lib/base-url');
   return {
     ...actual,
-    servedOrigin: () => mockServed,
+    productionWebOrigin: () => mockServed,
     appPath: (pathname: string) => actual.appPath(pathname, '/web'),
   };
 });

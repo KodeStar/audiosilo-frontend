@@ -1,4 +1,4 @@
-import { holdOidcIntent, takeOidcIntent } from './oidc-intent';
+import { holdOidcIntent, peekOidcIntent } from './oidc-intent';
 import { endOidcTripOnLoad, oidcFlowKey, oidcReturnCleared } from './oidc-return';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
@@ -7,7 +7,7 @@ jest.mock('@/lib/base-url', () => {
   const actual = jest.requireActual('@/lib/base-url');
   return {
     ...actual,
-    servedOrigin: () => 'https://books.example.com',
+    productionWebOrigin: () => 'https://books.example.com',
     appPath: (pathname: string) => actual.appPath(pathname, '/web'),
   };
 });
@@ -51,15 +51,15 @@ describe('a page load with a single sign-on trip still held in the tab', () => {
     loadAt(pathname, search);
     // Denied: nothing left for a later return to take as its own.
     expect(store.size).toBe(0);
-    expect(takeOidcIntent(true)).toBeNull();
+    expect(peekOidcIntent()).toBeNull();
   });
 
-  it("keeps it for the return's own load, which takes it", () => {
+  it("keeps it for the return's own load", () => {
     const tag = holdOidcIntent();
     loadAt('/web/connect', '?oidc=1');
     // Allowed: the trip came back.
-    expect(takeOidcIntent(true)).toMatchObject({ tag });
-    expect(store.size).toBe(0);
+    expect(peekOidcIntent()).toMatchObject({ tag });
+    expect(store.size).toBe(1);
   });
 });
 

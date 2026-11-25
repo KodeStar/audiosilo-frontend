@@ -21,7 +21,7 @@ describe('signInErrorText', () => {
   // fe#295: a sign-in proxy's own 401 is never a wrong code or password.
   it("names the proxy headers for an auth proxy's 401, at every step", () => {
     const e = new ApiError(401, 'Unauthorized', undefined, undefined, true);
-    for (const stage of ['redeem', 'exchange', 'login'] as const) {
+    for (const stage of ['redeem', 'exchange', 'retryExchange', 'login'] as const) {
       expect(signInErrorText(e, stage, t)).toMatch(/sign-in proxy turned this device away/);
     }
   });
@@ -37,13 +37,17 @@ describe('signInErrorText', () => {
     expect(signInErrorText(new ApiError(401, 'x'), 'redeem', t)).toMatch(/didn't work/);
   });
 
-  it.each(['de', 'es', 'fr', 'it', 'pt'])('has both invite messages in %s', (lng) => {
+  it.each(['de', 'es', 'fr', 'it', 'pt'])('has the invite messages in %s', (lng) => {
     const tl = i18n.getFixedT(lng);
-    for (const code of ['invite_used', 'invite_expired']) {
+    for (const code of ['invite_used', 'invite_expired', 'invite_used_by_this_device']) {
       const said = signInErrorText(new ApiError(401, 'x', code), 'redeem', tl);
       expect(said).not.toBe(signInErrorText(new ApiError(401, 'x', code), 'redeem', t));
       expect(said).not.toMatch(/connect\.signIn/);
     }
+    const legacy = new ApiError(401, 'used');
+    expect(signInErrorText(legacy, 'retryExchange', tl)).not.toBe(
+      signInErrorText(legacy, 'retryExchange', t),
+    );
   });
 
   it('names a wait of a minute or more in whole minutes, rounding up', () => {

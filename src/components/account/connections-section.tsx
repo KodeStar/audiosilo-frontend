@@ -15,7 +15,7 @@ import { RowSurface } from '@/components/ui/row-surface';
 import { Text } from '@/components/ui/text';
 import { touchTarget } from '@/components/ui/touch-target';
 import { downloadedCountFor, useDownloads } from '@/downloads/store';
-import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
+import { onlyOwnServer, productionWebOrigin } from '@/lib/base-url';
 import { accountHref } from '@/lib/paths';
 import { serverDisplayName } from '@/lib/server-display-name';
 import { cn } from '@/lib/utils';
@@ -196,7 +196,7 @@ export function ConnectionsSection({ onRemove }: { onRemove: (c: Connection) => 
         })}
         {/* The served web player reaches only its own server. */}
         {onlyOwnServer(
-          servedOrigin(),
+          productionWebOrigin(),
           connections.map((c) => c.serverUrl),
         ) ? null : (
           <Button

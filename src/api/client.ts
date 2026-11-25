@@ -154,6 +154,26 @@ export class ApiError extends Error {
   }
 }
 
+/** An older server accepted only an id-less exchange and its session reply was lost.
+ * Repeating it could spend another use of a multi-device invite. */
+export class LegacyExchangeUnansweredError extends Error {
+  constructor() {
+    super('An id-less invite exchange got no answer');
+    this.name = 'LegacyExchangeUnansweredError';
+  }
+}
+
+/** Sessions an older server answered to an exchange sent again without `device_id`
+ * (`ApiClient.exchange`): no retry can recover one, and repeating its exchange could spend
+ * another use of a multi-device invite. */
+const idlessExchanges = new WeakSet<object>();
+
+/** Whether `session` came from an older server's exchange without `device_id`, so a device
+ * that could not keep it must never send that exchange again. */
+export function isIdlessExchange(session: object): boolean {
+  return idlessExchanges.has(session);
+}
+
 /** A /server response that cannot identify the connection at its current address.
  * It gives reachability no answer about that connection. */
 export class UnexpectedServerAnswerError extends Error {
@@ -308,6 +328,8 @@ const API_ERROR_CODES = [
   // allows, or past its expiry (401; older servers send the 401 without them).
   'invite_used',
   'invite_expired',
+  // An invite exchange this device already completed and can no longer replay.
+  'invite_used_by_this_device',
   // Add from LibriVox (LibriVox L6, `/admin/librivox/*`): community metadata is off (404),
   // the recording is already on this server (409, with its `library_id` and `path`), and an
   // Add into a podcast library (409).
@@ -1041,11 +1063,13 @@ export class ApiClient {
       publicRoute: true,
     }).then(withCleanAddresses);
   }
-  exchange(pairingToken: string, deviceName: string) {
-    return this.request<AuthSession>('POST', '/auth/exchange', {
-      body: { pairing_token: pairingToken, device_name: deviceName },
-      publicRoute: true,
-    }).then(withCleanAddresses);
+  /** An invite-linked token and this install's sign-in key can recover a lost answer once. */
+  exchange(pairingToken: string, deviceName: string, deviceId?: string) {
+    return this.deviceSignIn(
+      '/auth/exchange',
+      { pairing_token: pairingToken, device_name: deviceName },
+      deviceId,
+    );
   }
   /** Where the web player sends the browser (a full page load, never a fetch) to sign in
    * with the server's single sign-on (capability `oidc`): the provider, then back to
@@ -1078,22 +1102,53 @@ export class ApiClient {
    * server (`getSignInKey`), so a sign-in again from this device is not announced to the
    * admin as a new device (fe#159). A server before 1.17.0 refuses a field it doesn't know
    * (400): the sign-in is sent again without it. */
-  async login(username: string, password: string, deviceName: string, deviceId?: string) {
-    const send = (withId: boolean) =>
-      this.request<AuthSession>('POST', '/auth/login', {
-        body: {
-          username,
-          password,
-          device_name: deviceName,
-          ...(withId && deviceId ? { device_id: deviceId } : {}),
-        },
-        publicRoute: true,
-      }).then(withCleanAddresses);
+  login(username: string, password: string, deviceName: string, deviceId?: string) {
+    return this.deviceSignIn(
+      '/auth/login',
+      { username, password, device_name: deviceName },
+      deviceId,
+    );
+  }
+
+  private async deviceSignIn(
+    path: '/auth/login' | '/auth/exchange',
+    body: Record<string, string>,
+    deviceId?: string,
+  ) {
+    const send = (fields: Record<string, string>) =>
+      this.request<AuthSession>('POST', path, { body: fields, publicRoute: true }).then(
+        withCleanAddresses,
+      );
+    if (!deviceId) return send(body);
     try {
-      return await send(true);
+      return await send({ ...body, device_id: deviceId });
     } catch (e) {
-      if (deviceId && e instanceof ApiError && e.status === 400) return send(false);
-      throw e;
+      // Older servers reject an unknown field before spending the invite or signing in.
+      if (!(e instanceof ApiError) || e.status !== 400) throw e;
+      if (path === '/auth/login') return send(body);
+      // The strict exchange decoder reports this even with a nonempty token when it
+      // rejects the device_id field (server v1.0 through v2.6). A 400 that is not the
+      // server's own envelope (a proxy's error page in its place) spent nothing either.
+      if (!body.pairing_token || (e.fromServer && e.message !== 'pairing_token is required')) {
+        throw e;
+      }
+      try {
+        const session = await send(body);
+        idlessExchanges.add(session);
+        return session;
+      } catch (failure) {
+        // Anything but the server's own refusal (no answer, a 5xx or 408, an answer that
+        // could not be read) may have spent a use.
+        if (
+          !(failure instanceof ApiError) ||
+          failure.status < 400 ||
+          failure.status >= 500 ||
+          failure.status === 408
+        ) {
+          throw new LegacyExchangeUnansweredError();
+        }
+        throw failure;
+      }
     }
   }
   /** Mint a throwaway demo account (when the server runs in demo mode). Returns a

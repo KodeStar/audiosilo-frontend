@@ -46,7 +46,7 @@ export function youModuleSections(
 }
 
 /** The Upcoming section's key (Track U2): the hub's own, but offered only while one of the
- * listener's servers lists upcoming releases for them (`useUpcomingAvailable`), so it rides
+ * listener's servers lists upcoming releases for them (`useUpcomingEligibility`), so it rides
  * with the modules' sections, after the hub's fixed ones, and no module can take its key. */
 export const UPCOMING_SECTION = 'upcoming';
 

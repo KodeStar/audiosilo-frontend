@@ -494,6 +494,8 @@
         "waitOver": "Demasiadas tentativas a partir desta rede. Já pode tentar novamente.",
         "badCode": "Esse código de convite não funcionou. Verifique-o ou peça um novo convite ao seu administrador.",
         "usedInvite": "Este convite não pode adicionar outro dispositivo: esgotou-se ou expirou. Peça um novo convite ao seu administrador.",
+        "inviteMayBeUsedByThisDevice": "Este dispositivo pode já ter usado o convite. Inicie sessão com a sua palavra-passe ou peça um novo convite ao seu administrador.",
+        "inviteUsedByThisDevice": "Este dispositivo já usou este convite. Inicie sessão com a sua palavra-passe ou peça um novo convite ao seu administrador.",
         "inviteUsed": "Este convite já foi usado em todos os dispositivos que permite. Peça um novo convite ao seu administrador.",
         "inviteExpired": "Este convite expirou. Peça um novo convite ao seu administrador.",
         "badPassword": "O nome de utilizador ou a palavra-passe estão errados. Verifique-os e tente novamente.",
@@ -540,6 +542,7 @@
       "hint": "Confirma a escrita e que o servidor está online. Um endereço de casa como 192.168.1.20:8080 só funciona na mesma rede que o servidor.",
       "homeHint": "É um endereço da rede de casa, por isso só responde na mesma rede que o servidor. Confirma que este dispositivo está nessa rede, e a escrita.",
       "selfSignedHint": "Se o servidor usar o seu próprio certificado (autoassinado), atualiza-o ou, na rede de casa, escreve o endereço sem https://.",
+      "wrongApi": "A API do AudioSilo deve estar disponível em /api/v1/server neste endereço. Verifique o endereço e as definições do proxy.",
       "errorTitle": "O servidor respondeu com um erro",
       "errorBody": "Mensagem: {{message}}"
     },

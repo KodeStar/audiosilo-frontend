@@ -13,7 +13,13 @@ import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { leaveOnboarding } from '@/components/shell/leave-onboarding';
 import { Spinner } from '@/components/ui/spinner';
 import { Text } from '@/components/ui/text';
-import { onlyOwnServer, servedOrigin, webOrigin } from '@/lib/base-url';
+import {
+  onlyOwnServer,
+  playerAllowsOtherServers,
+  productionWebOrigin,
+  webOrigin,
+} from '@/lib/base-url';
+import { reportedServerId } from '@/lib/auth-failure';
 import { serverIdOf } from '@/lib/connection-id';
 import { getDeviceName } from '@/lib/device';
 import {
@@ -95,10 +101,9 @@ import { useLinkPairing } from './use-pairing';
  * that user there the token is left to expire and the book opens at once (`useLinkPairing`,
  * for a pasted link too).
  *
- * The player the server serves at `/web` (`servedOrigin`) asks nothing: it asks its own origin
- * who it is on open and shows what it found, with Sign in, and no address field or remembered
- * servers (the server's CSP lets it reach no other). Only when that fails (or Cancel is
- * pressed while it asks) does the field show, filled in with the origin.
+ * A production web player asks its origin who it is. The server's own player shows the
+ * found server with Sign in, or the address and reason when its API failed. A static host
+ * leaves the field free for the listener's server.
  *
  * The served player opened as `?oidc=1` is the server's return from a single sign-on
  * (server#235, started on the sign-in step): the sign-in is finished at once
@@ -146,16 +151,16 @@ export function ConnectStart() {
   // Opened by a link (a pairing token or a single sign-on's return): it runs at once, with
   // no address field or served card until it fails.
   const linkFlow = !!token || oidcOrigin !== null;
-  // The served player's field, shown only when its own server didn't answer, has the origin.
-  const [url, setUrl] = useState(savedUrl ?? servedOrigin() ?? heldProxy?.origin ?? '');
+  // Only an address held by the flow starts in the field. The host is tried separately.
+  const [url, setUrl] = useState(savedUrl ?? heldProxy?.origin ?? '');
   // The address as the listener typed it: what proxy headers are for. Never the field after
   // the flow rewrites it (a plain-http fallback, a remembered server's home address), so
   // headers entered for https are never rebound to another origin.
   const [typedUrl, setTypedUrl] = useState(() => heldProxy?.origin ?? url);
   // The served player's own server: `pending` while asking it, then `found` (the card is the
-  // screen). `null` everywhere else (the field), and for a pairing link.
-  const [served, setServed] = useState<'pending' | 'found' | null>(() =>
-    servedOrigin() && !linkFlow ? 'pending' : null,
+  // screen). A host that failed keeps its address and error. A standalone player uses the field.
+  const [served, setServed] = useState<'pending' | 'found' | 'unavailable' | null>(() =>
+    productionWebOrigin() && !linkFlow ? 'pending' : null,
   );
   const [known, setKnown] = useState<KnownServer[]>([]);
   // Which connect action is in flight (a remembered server's `serverId`, or `'manual'` for
@@ -289,10 +294,10 @@ export function ConnectStart() {
       return;
     }
     router.setParams({ token: undefined });
-    const origin = servedOrigin();
+    const origin = productionWebOrigin();
     // A pasted link (or Try again) on the card already found: the card stays as it is.
     if (origin && served === 'found') return;
-    if (origin) showServedCard(origin);
+    if (origin && sameOrigin(scan.base, { origin })) showServedCard(origin);
     else fillAddress(scan.base);
   };
 
@@ -373,7 +378,7 @@ export function ConnectStart() {
 
   // The served player: ask its own server who it is, once.
   useEffect(() => {
-    const origin = servedOrigin();
+    const origin = productionWebOrigin();
     if (served !== 'pending' || !origin) return;
     showServedCard(origin);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -382,7 +387,7 @@ export function ConnectStart() {
   // Remembered servers (durable, no token): one-tap reconnect, with zero typing. Not on the
   // served player, which reaches only its own server.
   useEffect(() => {
-    if (servedOrigin()) return;
+    if (served !== null) return;
     let cancelled = false;
     void listKnownServers().then((k) => {
       if (!cancelled) setKnown(k);
@@ -390,7 +395,7 @@ export function ConnectStart() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [served]);
 
   // Back to where the listener came from (Settings, the profile menu), else the app.
   const closeAdd = () => (router.canGoBack() ? router.back() : leaveOnboarding());
@@ -430,36 +435,30 @@ export function ConnectStart() {
     const ask = new AbortController();
     servedAsk.current = ask;
     setServed('pending');
-    void connect(origin, 'manual', ask.signal, true).then((found) => {
-      if (!ask.signal.aborted) setServed(found ? 'found' : null);
-    });
+    void connect(origin, 'manual', ask.signal, true);
   };
   // Cancel on "Finding your server": the address field, filled in with the origin.
   const cancelServed = () => {
     servedAsk.current?.abort();
     servedAsk.current = null;
     setBusy(null);
+    const origin = productionWebOrigin();
+    if (origin) fillAddress(origin);
     setServed(null);
   };
 
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
-  // demo. True when the server answered. Nothing is recorded once the screen is gone or the
-  // ask was cancelled (`signal`): not the pending address, nor what was found. `own`: the
-  // served player asking its own origin, which nobody typed.
-  const connect = async (
-    target: string,
-    tag: string,
-    signal?: AbortSignal,
-    own = false,
-  ): Promise<boolean> => {
+  // demo. Nothing is recorded once the screen is gone or the ask was cancelled (`signal`).
+  // `own`: the production player asking its own origin, which nobody typed.
+  const connect = async (target: string, tag: string, signal?: AbortSignal, own = false) => {
     setFieldError(null);
     setDemoError(null);
     setProbe(null);
     const normalized = normalizeUrl(target);
     if (!normalized) {
       setFieldError(t('connect.server.enterAddress'));
-      return false;
+      return;
     }
     setBusy(tag);
     const gone = () => !mounted.current || !!signal?.aborted;
@@ -481,10 +480,11 @@ export function ConnectStart() {
         base = http;
         setUrl(http);
       }
-      if (gone()) return false;
+      if (gone()) return;
+      if (!reportedServerId(info)) throw new ApiError(200, t('connect.probe.wrongApi'));
       await setPendingServerUrl(base);
       // A Cancel while the address was written: the field stays, the card doesn't come back.
-      if (gone()) return false;
+      if (gone()) return;
       const found: Probe = {
         kind: 'found',
         base,
@@ -497,25 +497,32 @@ export function ConnectStart() {
       else setProbe(found);
       // The served player can reach only its own server: found by a Continue after its own
       // ask failed, it is that server's card, with no address field beside it (fe#159).
-      if (tag === 'manual' && onlyOwnServer(servedOrigin(), [base])) setServed('found');
-      return true;
+      if (tag === 'manual' && onlyOwnServer(productionWebOrigin(), [base])) setServed('found');
     } catch (e) {
-      if (gone()) return false;
-      // The page's own origin answered, but not as an AudioSilo server (a 404, or a page
-      // that isn't JSON): a production build hosted on a site of its own, beside servers
-      // that let it in. No error about an address nobody typed, and an empty field
-      // (CONNECT-11). A server that is down, or answers with its own error, still says so.
-      if (own && e instanceof ApiError && (e.status === 404 || e.status < 300)) {
-        setUrl((u) => (u === target ? '' : u));
-        setTypedUrl((u) => (u === target ? '' : u));
-        return false;
+      if (gone()) return;
+      // An answer that isn't an AudioSilo server's (a 404, a page that isn't JSON, no id).
+      const wrongApi = e instanceof ApiError && (e.status < 300 || e.status === 404);
+      if (own) {
+        // On a static host these replies come from asking for an API it doesn't serve.
+        // The same answers on a server's own player need to stay visible.
+        const ambiguous = wrongApi || (e instanceof ApiError && e.status === 403);
+        const expected = url && sameOrigin(url, { origin: target });
+        if (ambiguous && !expected && (await playerAllowsOtherServers(signal))) {
+          if (!gone()) setServed(null);
+          return;
+        }
+        if (gone()) return;
+        fillAddress(target);
+        setServed('unavailable');
       }
       setProbe(
         e instanceof ApiError
           ? {
               kind: 'error',
               // A proxy's own 401 or 403 (fe#295) or a 429: what to do about it, not the raw status.
-              message: sharedRefusalText(e, t) ?? e.message,
+              message: wrongApi
+                ? t('connect.probe.wrongApi')
+                : (sharedRefusalText(e, t) ?? t('connect.probe.errorBody', { message: e.message })),
             }
           : {
               kind: 'unreachable',
@@ -526,7 +533,6 @@ export function ConnectStart() {
               tls: !http && selfSignedMayBeWhy(normalized, e, Platform.OS === 'web'),
             },
       );
-      return false;
     } finally {
       // A cancelled ask leaves `busy` to whoever cancelled it (`cancelServed`, or the ask
       // that replaced it), so its late end can't free Continue while another is on its way.
@@ -609,7 +615,7 @@ export function ConnectStart() {
       setLinkError(t('connect.link.invalid'));
       return;
     }
-    const own = servedOrigin();
+    const own = productionWebOrigin();
     if (served === 'found' && own && !sameOrigin(base, { origin: own })) {
       setForeignLink(link.trim());
       return;
@@ -920,7 +926,7 @@ export function ConnectStart() {
           )}
         </View>
       ) : null}
-      {offered.length > 0 ? (
+      {served === null && offered.length > 0 ? (
         <View className="gap-2" role="list">
           <Text variant="eyebrow">
             {newPerson ? t('profiles.connect.knownHeading') : t('reconnect.connect.heading')}

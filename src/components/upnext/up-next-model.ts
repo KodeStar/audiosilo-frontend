@@ -229,7 +229,7 @@ export function pickSuggestions({
     seen.has(entryKey(ref)) || queued.some((q) => entryHolds(q, ref.library_id, ref.path));
   const taken = (ref: BookRef) => listed(ref) || own.some((b) => sameBook(b, ref));
   // The server's next sent with its `book` is a book of its own: inside the loaded or shown
-  // book's folder (a book nested in another's) it is no part of that one, as `loadedHolding`
+  // book's folder (a book nested in another's) it is no part of that one, as `dropStartedBook`
   // reads `book` too. Only its own path, or a part path under it, names it.
   const nextTaken = (ref: BookRef) =>
     next?.book ? listed(ref) || own.some((b) => entryHolds(ref, b.library_id, b.path)) : taken(ref);

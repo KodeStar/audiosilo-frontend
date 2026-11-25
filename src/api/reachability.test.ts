@@ -133,7 +133,7 @@ describe('per-connection reachability state machine', () => {
     noteSuccess('c1'); // offline -> online edge
     expect(isReachable('c1')).toBe(true);
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith('c1');
+    expect(handler).toHaveBeenCalledWith('c1', undefined);
 
     // A redundant online->online call must not re-fire the handler.
     noteSuccess('c1');
@@ -150,7 +150,7 @@ describe('per-connection reachability state machine', () => {
     await markDown('c2');
     noteSuccess('c2'); // only c2 recovers
     expect(handler).toHaveBeenCalledTimes(1);
-    expect(handler).toHaveBeenCalledWith('c2');
+    expect(handler).toHaveBeenCalledWith('c2', undefined);
     expect(isReachable('c1')).toBe(false);
 
     unsubscribe();
@@ -191,7 +191,7 @@ describe('the offline probe', () => {
     expect(mockResolveClient).toHaveBeenCalledWith('c1');
     expect(serverInfo).toHaveBeenCalled();
     expect(r.isReachable('c1')).toBe(true);
-    expect(handler).toHaveBeenCalledWith('c1');
+    expect(handler).toHaveBeenCalledWith('c1', undefined);
     off();
   });
 
@@ -246,6 +246,12 @@ describe('the offline probe', () => {
     fail(new TypeError('Network request failed'));
     await check;
     expect(r.isReachable('c1')).toBe(false);
+  });
+
+  it('records an answer without building a client for an idle connection', () => {
+    const r = fresh();
+    r.noteAnswer('c1', 'https://h');
+    expect(mockResolveClient).not.toHaveBeenCalled();
   });
 
   it('counts an answer on the address the connection uses now', async () => {
@@ -391,7 +397,7 @@ describe('the device network (native)', () => {
     await jest.advanceTimersByTimeAsync(REJOIN_RETRY_MS);
     expect(serverInfo).toHaveBeenCalledTimes(2);
     expect(isReachable('c1')).toBe(true);
-    expect(handler).toHaveBeenCalledWith('c1');
+    expect(handler).toHaveBeenCalledWith('c1', undefined);
     off();
   });
 
