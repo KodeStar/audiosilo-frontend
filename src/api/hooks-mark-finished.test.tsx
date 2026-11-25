@@ -126,3 +126,18 @@ it('replaces an older first list GET after the migrated connection delivers, wit
     setConnectionAliases({});
   }
 });
+
+it('leaves a first list GET nobody observes to its fetchQuery caller (the car, what plays next)', async () => {
+  onlineManager.setOnline(true);
+  let settle!: (rows: string[]) => void;
+  const read = queryClient.fetchQuery({
+    queryKey: qk.allProgress('c1'),
+    queryFn: () =>
+      new Promise<string[]>((resolve) => {
+        settle = resolve;
+      }),
+  });
+  finishDelivered('c1', [finish]);
+  settle(['in progress']);
+  await expect(read).resolves.toEqual(['in progress']);
+});

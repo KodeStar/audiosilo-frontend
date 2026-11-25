@@ -1080,10 +1080,13 @@ function hidesSpoilers(queryKey: readonly unknown[]): boolean {
 }
 
 /** An invalidation normally joins an initial GET without data, even if that GET began
- * before the finish. Cancel just those reads so the active observer gets a fresh answer. */
+ * before the finish. Cancel just those reads so the active observer gets a fresh answer.
+ * Only an observed one: a cancelled read with no data rejects its `fetchQuery` callers (the
+ * car's lists, what plays next), and nothing would read an unobserved one again. */
 function refreshProgressQuery(qc: QueryClient, queryKey: QueryKey, match?: (q: Query) => boolean) {
   void qc.cancelQueries({
     queryKey,
+    type: 'active',
     fetchStatus: 'fetching',
     predicate: (q) => q.state.data === undefined && (!match || match(q)),
   });
