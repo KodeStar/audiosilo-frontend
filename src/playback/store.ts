@@ -19,7 +19,7 @@ import type { DownloadManifest } from '@/downloads/types';
 import { isAway, onAppStateEdge } from '@/lib/app-activity';
 import { legacyIdOf, resolveConnectionId, sameConnection } from '@/lib/connection-id';
 import { contentKey, contentKeyOf } from '@/lib/content-key';
-import { isDeviceOnline } from '@/lib/device-online';
+import { isDeviceOnline, waitForDeviceOnline } from '@/lib/device-online';
 import { canAutoDownload } from '@/lib/network';
 import type { FilePlace } from '@/lib/paths';
 import { quietly } from '@/lib/quietly';
@@ -4360,7 +4360,9 @@ async function createService(): Promise<PlaybackService> {
     // A load or a start still on its way keeps it (`runDueSwap`).
     if (swapDue !== null && svc.reportedBook?.()) void Promise.resolve().then(runDueSwap);
     // Reached online (the network came back while it played): it plays on, streaming the
-    // rest, when its server answers; else the listener is told.
+    // rest, when its server answers; else the listener is told. A network still unknown counts
+    // as none here, as it does for the queue (`offlineShort` in `playBook`): a play-on would
+    // only load the same short queue again, at its end.
     if (partialEnd && prev.state !== 'paused') {
       const cid = usePlayer.getState().nowPlaying?.connectionId ?? '';
       if (isDeviceOnline() && isReachable(cid) && resolveClient(cid)) {
@@ -4735,10 +4737,21 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // of pausing there. So does one with no server to stream from: no client (its token
       // gone this launch) or one marked unreachable (a LAN server from the car's mobile
       // data). Online it streams on.
+      // Only a short download's queue and a resume's place read it: other starts never wait.
+      let online = isDeviceOnline();
+      if (
+        local &&
+        api &&
+        online === undefined &&
+        (dl?.manifest.endsBefore ||
+          (startBookPosition === undefined && startTrack === undefined)) &&
+        isReachable(connectionId)
+      ) {
+        online = await waitForDeviceOnline();
+        if (lastPlayRequest !== request || !current() || replaced()) return;
+      }
       const offlineShort =
-        !!local &&
-        !!dl?.manifest.endsBefore &&
-        (!api || !isDeviceOnline() || !isReachable(connectionId));
+        !!local && !!dl?.manifest.endsBefore && (!api || !online || !isReachable(connectionId));
       const own = dl && (!chapterData || offlineShort) ? dl.manifest : undefined;
       const queueChapters = own ? (own.chapters ?? undefined) : chapterData;
       const queue = buildBookQueue(
@@ -4798,9 +4811,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         // to be unreachable, else for `DOWNLOADED_PLACE_WAIT_MS` (a frozen server held a car's
         // start for the whole request timeout, and the car gave up on it). Started from this
         // device's records, as offline: its saves go guarded (`unchecked`, fe#198). A server
-        // that answers later is followed once the book is loaded (`followLatePlace`).
+        // that answers later is followed once the book is loaded (`followLatePlace`). A network
+        // still unknown after the first reading's wait is asked within that bound: only a known
+        // "no network" skips it, so another device's newer place is still followed.
         const placeApi =
-          dl && (!isDeviceOnline() || !isReachable(connectionId)) ? null : clientNow();
+          dl && ((isDeviceOnline() ?? online) === false || !isReachable(connectionId))
+            ? null
+            : clientNow();
         const r = await loadInitialProgress(
           placeApi,
           connectionId,

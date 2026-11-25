@@ -134,6 +134,45 @@ describe('runKeepAhead', () => {
     expect(client.serverInfo).not.toHaveBeenCalled();
   });
 
+  it('discards an item read held across a book change and plans from the new book', async () => {
+    let release!: () => void;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let reached!: () => void;
+    const reading = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    client.item.mockImplementationOnce(async (_lib, path) => {
+      reached();
+      await held;
+      return book(path);
+    });
+    const old = runKeepAhead();
+    await reading;
+    (usePlayer.getState as jest.Mock).mockReturnValue({
+      nowPlaying: { connectionId: 'c1', libraryId: 1, path: 'B3' },
+    });
+    release();
+    await old;
+    expect(queued()).toEqual([]);
+    await runKeepAhead();
+    expect(queued()).toEqual(['B4:keep-ahead', 'B5:keep-ahead']);
+  });
+
+  it('stops reading the previous series when the playing book changes during a lookup', async () => {
+    client.nextBook.mockImplementationOnce(async (_lib, path) => {
+      (usePlayer.getState as jest.Mock).mockReturnValue({
+        nowPlaying: { connectionId: 'c1', libraryId: 1, path: 'B3' },
+      });
+      return nextOf(path);
+    });
+    await runKeepAhead();
+    expect(client.nextBook).toHaveBeenCalledTimes(1);
+    expect(engine.storageEstimate).not.toHaveBeenCalled();
+    expect(queued()).toEqual([]);
+  });
+
   it('downloads the next books in the series, marked as kept ahead', async () => {
     await runKeepAhead();
     expect(queued()).toEqual(['B2:keep-ahead', 'B3:keep-ahead']);

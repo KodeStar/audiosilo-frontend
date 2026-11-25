@@ -172,23 +172,29 @@ class AudiobookPlayer(player: Player, private val hooks: AudiobookPlayerHooks) :
       absorbIdenticalSet = false
       if (sameQueue(mediaItems)) return
     }
-    pausedAt = 0L
-    super.setMediaItems(mediaItems, startIndex, startPositionMs)
-    updatePlaylistTitle()
+    replaceQueue(mediaItems) { super.setMediaItems(mediaItems, startIndex, startPositionMs) }
   }
 
   override fun setMediaItems(mediaItems: MutableList<MediaItem>, resetPosition: Boolean) {
     absorbIdenticalSet = false
-    pausedAt = 0L
-    super.setMediaItems(mediaItems, resetPosition)
-    updatePlaylistTitle()
+    replaceQueue(mediaItems) { super.setMediaItems(mediaItems, resetPosition) }
   }
 
   override fun setMediaItems(mediaItems: MutableList<MediaItem>) {
     absorbIdenticalSet = false
+    replaceQueue(mediaItems) { super.setMediaItems(mediaItems) }
+  }
+
+  /** Car and resumption loads can replace a prepared queue directly through Media3.
+   * Release the old extractors first, then restore the prepared state. The app controller
+   * already stopped its queue and will prepare it itself. */
+  private inline fun replaceQueue(items: List<MediaItem>, setItems: () -> Unit) {
+    val prepared = items.isNotEmpty() && mediaItemCount > 0 && super.getPlaybackState() != Player.STATE_IDLE
     pausedAt = 0L
-    super.setMediaItems(mediaItems)
+    if (prepared) super.stop()
+    setItems()
     updatePlaylistTitle()
+    if (prepared) super.prepare()
   }
 
   /** Run [block] as the service's own move: it is never reported as a remote move or rate. */

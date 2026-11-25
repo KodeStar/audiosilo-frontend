@@ -111,10 +111,12 @@ jest.mock('@/api/provider', () => ({
 }));
 jest.mock('@/lib/network', () => ({ canAutoDownload: jest.fn(async () => false) }));
 /** The device's network (`isDeviceOnline`): online unless a test says otherwise. */
-const mockDeviceOnline = jest.fn(() => true);
+const mockDeviceOnline = jest.fn((): boolean | undefined => true);
+const mockFirstNetwork = jest.fn<Promise<boolean | undefined>, []>();
 jest.mock('@/lib/device-online', () => ({
   ...jest.requireActual('@/lib/device-online'),
   isDeviceOnline: () => mockDeviceOnline(),
+  waitForDeviceOnline: () => mockFirstNetwork(),
 }));
 
 const fakeClient = {
@@ -1113,6 +1115,27 @@ describe('adoptLoaded', () => {
       };
       afterEach(() => mockDeviceOnline.mockReturnValue(true));
 
+      it('waits for the first network reading before choosing files for a cold resume', async () => {
+        mockDeviceOnline.mockReturnValue(undefined);
+        let answer!: (online: boolean) => void;
+        mockFirstNetwork.mockImplementationOnce(
+          () =>
+            new Promise((resolve) => {
+              answer = resolve;
+            }),
+        );
+        const start = startCold();
+        await flushMicrotasks();
+        expect(mockFirstNetwork).toHaveBeenCalled();
+        answer(false);
+        await start;
+        expect(usePlayer.getState().nowPlaying?.queue.tracks.map((t) => t.url)).toEqual([
+          'file:///d/1.mp3',
+          'file:///d/2.mp3',
+        ]);
+        await usePlayer.getState().pause();
+      });
+
       it("offline, plays the download's own copy and pauses at its end, never finishing (D3, fe#185)", async () => {
         mockDeviceOnline.mockReturnValue(false);
         const told = jest.fn();
@@ -1284,6 +1307,35 @@ describe('adoptLoaded', () => {
         expect(usePlayer.getState().nowPlaying?.queue.tracks).toHaveLength(3);
         stopTelling();
         await usePlayer.getState().pause();
+      });
+
+      // Unknown counts as no network for the queue (`offlineShort`), so a play-on would load
+      // the same short queue at its end again (and end again): the listener is told instead.
+      it('tells, and loads nothing, when it reaches that end with the network still unknown', async () => {
+        const told = jest.fn();
+        const stopTelling = onPartialDownloadEnd(told);
+        try {
+          mockResolveClient.mockReturnValue(null);
+          useDownloads.setState({ entries: { 'c1:2:B': downloadedUneven() } });
+          await usePlayer
+            .getState()
+            .adoptLoaded(
+              engine(['B/1.mp3', 'B/2.mp3', 'B/3.mp3'], { trackIndex: 1, position: 30 }),
+            );
+          mockDeviceOnline.mockReturnValue(undefined);
+          mockResolveClient.mockReturnValue(fakeClient);
+          serverAnswers(withB3);
+          (mockSvc.load as jest.Mock).mockClear();
+          pushSnapshot(snap('playing', 1, 50));
+          pushSnapshot({ ...snap('ended', 1, 60), duration: 60 });
+          await flushMicrotasks();
+          expect(told).toHaveBeenCalledTimes(1);
+          expect(mockSvc.load).not.toHaveBeenCalled();
+        } finally {
+          mockDeviceOnline.mockReturnValue(true);
+          stopTelling();
+          await usePlayer.getState().pause();
+        }
       });
     });
 

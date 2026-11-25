@@ -43,7 +43,7 @@ import { cn } from '@/lib/utils';
 import { bookSeriesNumber } from '@/lib/series-position';
 import { useWidth } from '@/lib/use-width';
 import { fileOf } from '@/playback/book-queue';
-import { type PlacedProgress, positionOn } from '@/playback/progress-sync';
+import { type PlacedProgress, savedTimeline } from '@/playback/progress-sync';
 import { selectBookPosition, selectIsPlaying, usePlayer } from '@/playback/store';
 import { timeLeft, timeLeftLabel } from '@/playback/time-left';
 import { useConnectionName } from '@/stores/session';
@@ -174,13 +174,13 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
     loaded ? (s.nowPlaying?.queue.offsets[s.snapshot.trackIndex] ?? 0) : 0,
   );
 
-  const total = queue?.total || chapterData?.duration || saved?.duration || book?.duration || 0;
+  const savedPlace = savedTimeline(saved, chapterData, book?.duration);
+  const total = queue?.total || savedPlace.total;
   // While a book is still loading the player reports 0: keep the saved place until it
   // has really moved. The saved place as Resume plays it: this device's file place read on
-  // these chapters' files (`positionOn`).
-  const savedPosition = saved ? positionOn(saved, chapterData?.files) : 0;
+  // these chapters' files (`savedTimeline`).
   const live = loaded && livePosition > 0;
-  const position = live ? livePosition : savedPosition;
+  const position = live ? livePosition : savedPlace.position;
   const fileAt = live
     ? liveFile === undefined
       ? undefined
