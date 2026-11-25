@@ -14,6 +14,7 @@ import {
   ApiError,
   LegacyExchangeUnansweredError,
   apiErrorKind,
+  isIdlessExchange,
   isNotInLibraryError,
   isPlainSeriesQuery,
   isProxyRefusal,
@@ -1844,6 +1845,40 @@ describe('ApiClient.exchange with a device id', () => {
       { ...body, device_id: 'device-1' },
       body,
     ]);
+  });
+
+  it('marks only a session an older server gave for the id-less exchange', async () => {
+    installFetch((_url, init) =>
+      JSON.parse(String(init.body)).device_id
+        ? { status: 400, body: { error: 'pairing_token is required' } }
+        : { status: 200, body: { token: 'session', server_id: 's' } },
+    );
+    expect(isIdlessExchange(await client.exchange('pt', 'Phone', 'device-1'))).toBe(true);
+    installFetch(() => ({ status: 200, body: { token: 'session', server_id: 's' } }));
+    expect(isIdlessExchange(await client.exchange('pt', 'Phone', 'device-1'))).toBe(false);
+  });
+
+  it("resends without the field when a proxy's page stands in for the server's 400", async () => {
+    const fetchMock = installFetch((_url, init) =>
+      JSON.parse(String(init.body)).device_id
+        ? { status: 400, text: '<html>Bad Request</html>' }
+        : { status: 200, body: { token: 'session', server_id: 's' } },
+    );
+    await expect(client.exchange('pt', 'Phone', 'device-1')).resolves.toMatchObject({
+      token: 'session',
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes an unreadable answer to the id-less exchange as maybe spent', async () => {
+    installFetch((_url, init) =>
+      JSON.parse(String(init.body)).device_id
+        ? { status: 400, body: { error: 'pairing_token is required' } }
+        : { status: 200, text: '<html>portal</html>' },
+    );
+    await expect(client.exchange('pt', 'Phone', 'device-1')).rejects.toBeInstanceOf(
+      LegacyExchangeUnansweredError,
+    );
   });
 
   it('identifies a lost reply to an older server’s id-less exchange', async () => {

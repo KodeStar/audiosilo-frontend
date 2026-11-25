@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 import {
   ApiError,
   LegacyExchangeUnansweredError,
+  isIdlessExchange,
   isProxyRefusal,
   isRefusedForGood,
   isSignedOutError,
@@ -237,6 +238,9 @@ export function useLinkPairing(startPairing = false): LinkPairing {
         attempt ??= { scan, address: answeredAt };
         lastExchange.current = attempt;
         const session = await client.exchange(scan.token, getDeviceName(), deviceId);
+        // An older server's exchange without the sign-in key can't be replayed: a session
+        // this device fails to keep must not send it again (each one claims an invite use).
+        if (isIdlessExchange(session)) attempt.legacyError = new LegacyExchangeUnansweredError();
         if (answeredAt !== scan.base && session.server_id !== homeServer) {
           throw new Error('another server answered at home');
         }

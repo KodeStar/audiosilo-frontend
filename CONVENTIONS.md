@@ -609,8 +609,11 @@ Invite-code and QR sign-in read the chosen address's `/server` capabilities befo
 A device can recover a lost invite exchange once within 60 seconds. It sends the same
 `pairing_token` and its per-address sign-in key as `device_id`. The server rotates the
 bearer on the original session. A marked `invite_used_by_this_device` names the spent
-retry. A strict older server can take a first exchange without the key. If that answer
-is lost, the player directs the listener to sign in or get a new invite.
+retry. A strict older server can take a first exchange without the key (its 400, or a
+proxy's page in its place). If that answer is lost, or its session can't be kept
+(`isIdlessExchange`), the player never sends it again and directs the listener to sign in
+or get a new invite. The sign-in step keeps every invite whose exchange went unanswered
+(`keepUnansweredInvite`, by server and code) until the connect flow is left.
 
 A pairing link whose https discovery can't connect (a server on its own self-signed certificate) exchanges
 once at the link's `home` instead (native only): only when that is plain http on the base's own

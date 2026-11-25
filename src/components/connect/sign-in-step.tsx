@@ -3,7 +3,12 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { type ApiClient, LegacyExchangeUnansweredError, isRefusedForGood } from '@/api/client';
+import {
+  type ApiClient,
+  LegacyExchangeUnansweredError,
+  isIdlessExchange,
+  isRefusedForGood,
+} from '@/api/client';
 import { connectClient, connectClientFor } from '@/api/connect-client';
 import type { AuthSession, PairingPayload, ServerInfo } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
@@ -222,8 +227,14 @@ export function SignInStep({
           });
         } catch (e) {
           // The invite is spent on a session this device could not keep: the next try
-          // exchanges the same token again, never redeeming the code a second time.
-          keepUnansweredInvite(server, code, payload);
+          // exchanges the same token again, never redeeming the code a second time. An older
+          // server's exchange without the sign-in key can't be replayed (each one claims a
+          // use): the next try says so instead of sending it again.
+          keepUnansweredInvite(
+            server,
+            code,
+            isIdlessExchange(session) ? new LegacyExchangeUnansweredError() : payload,
+          );
           throw e;
         }
       } else {

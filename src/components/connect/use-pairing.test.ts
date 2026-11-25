@@ -8,10 +8,13 @@ const mockExchangeMarks: (boolean | undefined)[] = [];
 const mockExchangedAt: string[] = [];
 // `GET /me` with a stored token: (base, token) of each.
 const mockMe = jest.fn();
+// The sessions an older server answered to the exchange sent without the sign-in key.
+const mockIdless = new WeakSet<object>();
 jest.mock('@/api/client', () => {
   const actual = jest.requireActual('@/api/client');
   return {
     ...actual,
+    isIdlessExchange: (session: object) => mockIdless.has(session),
     ApiClient: class {
       base: string;
       token: string | null;
@@ -204,6 +207,20 @@ describe('useLinkPairing', () => {
 
   it('keeps an unanswered id-less QR exchange from being spent a second time', async () => {
     mockExchange.mockRejectedValueOnce(new LegacyExchangeUnansweredError());
+    const { result } = await renderHook(() => useLinkPairing());
+    await act(async () => {
+      expect(await result.current.pair(scan)).toBe('refused');
+      expect(await result.current.pair(scan)).toBe('refused');
+    });
+    expect(result.current.error).toMatch(/This device may already have used/);
+    expect(mockExchange).toHaveBeenCalledTimes(1);
+  });
+
+  it("never sends an older server's id-less QR exchange again after its session was lost", async () => {
+    const session = { token: 's', user: { id: 1, username: 'evie' }, server_id: 'a' };
+    mockIdless.add(session);
+    mockExchange.mockResolvedValue(session);
+    mockFinish.mockRejectedValueOnce(new Error('storage full'));
     const { result } = await renderHook(() => useLinkPairing());
     await act(async () => {
       expect(await result.current.pair(scan)).toBe('refused');

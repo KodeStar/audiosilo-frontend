@@ -156,7 +156,23 @@ export class ApiError extends Error {
 
 /** An older server accepted only an id-less exchange and its session reply was lost.
  * Repeating it could spend another use of a multi-device invite. */
-export class LegacyExchangeUnansweredError extends Error {}
+export class LegacyExchangeUnansweredError extends Error {
+  constructor() {
+    super('An id-less invite exchange got no answer');
+    this.name = 'LegacyExchangeUnansweredError';
+  }
+}
+
+/** Sessions an older server answered to an exchange sent again without `device_id`
+ * (`ApiClient.exchange`): no retry can recover one, and repeating its exchange could spend
+ * another use of a multi-device invite. */
+const idlessExchanges = new WeakSet<object>();
+
+/** Whether `session` came from an older server's exchange without `device_id`, so a device
+ * that could not keep it must never send that exchange again. */
+export function isIdlessExchange(session: object): boolean {
+  return idlessExchanges.has(session);
+}
 
 /** A /server response that cannot identify the connection at its current address.
  * It gives reachability no answer about that connection. */
@@ -1111,12 +1127,24 @@ export class ApiClient {
       if (!(e instanceof ApiError) || e.status !== 400) throw e;
       if (path === '/auth/login') return send(body);
       // The strict exchange decoder reports this even with a nonempty token when it
-      // rejects the device_id field (server v1.0 through v2.6).
-      if (!body.pairing_token || e.message !== 'pairing_token is required') throw e;
+      // rejects the device_id field (server v1.0 through v2.6). A 400 that is not the
+      // server's own envelope (a proxy's error page in its place) spent nothing either.
+      if (!body.pairing_token || (e.fromServer && e.message !== 'pairing_token is required')) {
+        throw e;
+      }
       try {
-        return await send(body);
+        const session = await send(body);
+        idlessExchanges.add(session);
+        return session;
       } catch (failure) {
-        if (!(failure instanceof ApiError) || failure.status >= 500 || failure.status === 408) {
+        // Anything but the server's own refusal (no answer, a 5xx or 408, an answer that
+        // could not be read) may have spent a use.
+        if (
+          !(failure instanceof ApiError) ||
+          failure.status < 400 ||
+          failure.status >= 500 ||
+          failure.status === 408
+        ) {
           throw new LegacyExchangeUnansweredError();
         }
         throw failure;

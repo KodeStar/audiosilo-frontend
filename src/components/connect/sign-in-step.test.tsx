@@ -52,8 +52,11 @@ const mockBases: string[] = [];
 const mockProxies: unknown[] = [];
 // What each client was told of the server's 401 mark (its eighth argument).
 const mockMarks: (undefined | (() => boolean | undefined))[] = [];
+// The sessions an older server answered to the exchange sent without the sign-in key.
+const mockIdless = new WeakSet<object>();
 jest.mock('@/api/client', () => ({
   ...jest.requireActual('@/api/client'),
+  isIdlessExchange: (session: object) => mockIdless.has(session),
   ApiClient: function ApiClient(base: string, ...rest: unknown[]) {
     mockBases.push(base);
     mockProxies.push(rest[4] ?? null);
@@ -432,6 +435,29 @@ describe('an invite whose exchange got no answer', () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
     expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt', 'pt']);
+  });
+
+  it("never sends an older server's id-less exchange again when keeping its session failed", async () => {
+    mockApi.redeemCode.mockResolvedValue({ server_name: 'Hearthside', pairing_token: 'pt' });
+    const session = { token: 's', server_id: 'srv-1', user };
+    mockIdless.add(session);
+    mockApi.exchange.mockResolvedValue(session);
+    const setSession = useSession.getState().setSession;
+    useSession.setState({
+      setSession: jest.fn().mockRejectedValueOnce(new Error('storage full')),
+    });
+    try {
+      await render(<SignInStep server={AWAY} />);
+      await submitCode('ABCD-1234');
+      expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    } finally {
+      useSession.setState({ setSession });
+    }
+    await submitCode('ABCD-1234');
+    expect(await screen.findByText(/This device may already have used/)).toBeTruthy();
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+    expect(mockApi.exchange).toHaveBeenCalledTimes(1);
+    expect(mockReplace).not.toHaveBeenCalled();
   });
 
   it('keeps every unanswered invite, so a second lost one never re-redeems the first', async () => {
