@@ -103,6 +103,10 @@ const mockSendBookmarks = jest.fn(async (_cid: string) => {});
 jest.mock('./annotation-outbox', () => ({
   sendBookmarksBeforeRemoval: (cid: string) => mockSendBookmarks(cid),
 }));
+jest.mock('./finish-delivery', () => ({
+  ...jest.requireActual('./finish-delivery'),
+  tellFinishChangedElsewhere: (...a: unknown[]) => mockTellUndone(...a),
+}));
 jest.mock('./progress-sync', () => ({
   saveProgress: (...a: unknown[]) => mockSaveProgress(...a),
   writeMirror: (...a: unknown[]) => mockWriteMirror(...a),
@@ -118,7 +122,6 @@ jest.mock('./progress-sync', () => ({
   updateMirror: (cid: string, lib: number, path: string, change: (r: never) => unknown) =>
     mockUpdateMirror(cid, lib, path, change),
   noteUndoneFinish: (...a: unknown[]) => mockNoteUndone(...a),
-  tellUndoneElsewhere: (...a: unknown[]) => mockTellUndone(...a),
   guardSettled: (id: string) => mockSettled.has(id),
   // No clock skew is known here: the two stamps as they are.
   mirrorIsNewest: async (record: { updated_at: string }, place: { updated_at: string }) =>
@@ -1978,7 +1981,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     await start();
     pushSnapshot(snap('playing', 0, 30));
     await usePlayer.getState().seekBook(10);
-    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    await expect(recordFinishEvent(ref)).resolves.toEqual(expect.any(Object));
     expect(mockClosed.at(-1)).toMatchObject({
       start: 'moved_back',
       from: { pos: 10 },
@@ -2002,20 +2005,22 @@ describe('Mark as finished outside the player (finish-route)', () => {
     pushSnapshot(snap('playing', 0, 5));
     await settle();
     pushSnapshot(snap('playing', 0, 9));
-    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    await expect(recordFinishEvent(ref)).resolves.toEqual(expect.any(Object));
     expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([['resume', 5, 9]]);
     expect(mockAppended.map((e) => e.kind)).toEqual(['finish']);
     expect(mockWriteMirror).toHaveBeenCalledWith(
       expect.objectContaining({ path: folder, finished: true, position: 100, duration: 100 }),
     );
     expect(mockSaveProgress).not.toHaveBeenCalled();
-    // Still playing: the next tick opens the next span.
-    pushSnapshot(snap('playing', 1, 40));
-    jest.advanceTimersByTime(15_000);
+    // Playback continued past the Mark before the periodic keep or save ran.
+    pushSnapshot(snap('playing', 0, 13));
+    jest.advanceTimersByTime(4_000);
+    pushSnapshot(snap('paused', 0, 24));
     await settle();
-    pushSnapshot(snap('paused', 1, 45));
-    await settle();
-    expect(mockClosed.at(-1)).toMatchObject({ from: { pos: 90 }, to: { pos: 95 } });
+    expect(mockClosed.map((s) => [s.start, s.from.pos, s.to.pos])).toEqual([
+      ['resume', 5, 9],
+      ['resume', 9, 24],
+    ]);
   });
 
   // fe#258: left playing, the book recorded listening past its finish, and a later save of
@@ -2028,7 +2033,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     pushSnapshot(snap('playing', 0, 9));
     const release = holdSaves(); // a reconcile check out (the server coming back)
     await leaveFinishedBook(ref);
-    await expect(recordFinishEvent(ref)).resolves.toBe(true);
+    await expect(recordFinishEvent(ref)).resolves.toEqual(expect.any(Object));
     await settle();
     expect(usePlayer.getState().nowPlaying).toBeNull();
     expect(mockSvc.reset).toHaveBeenCalled();
@@ -2071,6 +2076,64 @@ describe('Mark as finished outside the player (finish-route)', () => {
     // With the place saved: where an Undo goes back to.
     await expect(leaving).resolves.toBe(9);
     expect(left).toBe(true);
+  });
+
+  // An Undo of a finish whose leave skipped its save went to the book page's progress, read
+  // before that listening, and could move the server place backwards.
+  it('a save skipped as it leaves still names the place the store held, never behind its record', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    let release = holdSaves();
+    mockReadMirror.mockResolvedValue({ ack_version: 41 });
+    await expect(leaveFinishedBook(ref)).resolves.toBe(9);
+    release();
+
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    release = holdSaves();
+    // Another tab saved a further place this tab was behind: that one stands.
+    mockReadMirror.mockResolvedValue(row({ position: 30, device_id: 'phone' }));
+    await expect(leaveFinishedBook(ref)).resolves.toBe(30);
+    release();
+
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    release = holdSaves();
+    mockReadMirror.mockResolvedValue({ ack_version: 41 });
+    // The page read a further place from the server (another device's): not sent back over.
+    await expect(leaveFinishedBook({ ...ref, held: 50 })).resolves.toBe(50);
+    release();
+  });
+
+  // Until its load lands the snapshot is the previous book's: read through this book's queue
+  // it named a place this book never had, which the Undo's edit then sent to the server.
+  it('marked while its files load, the place is the one it resumes at, not the last book’s', async () => {
+    await usePlayer
+      .getState()
+      .playBook('c1', 2, { ...book, rel_path: 'Other/Book', title: 'Other' }, undefined);
+    await settle();
+    pushSnapshot(snap('playing', 1, 45));
+    await settle();
+    mockLoadInitialProgress.mockResolvedValueOnce({
+      kind: 'progress',
+      progress: row({ position: 20 }),
+    });
+    let loaded = () => {};
+    (mockSvc.load as jest.Mock).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (loaded = resolve)),
+    );
+    const starting = usePlayer.getState().playBook('c1', 2, book, chapters);
+    await settle();
+    expect(usePlayer.getState().loadingBook).not.toBeNull();
+    await expect(leaveFinishedBook(ref)).resolves.toBe(20);
+    loaded();
+    await starting;
   });
 
   // FE-1: the same race as `stop()`. The unload's reset came before the load landed in the
@@ -2324,6 +2387,40 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  it('a no-edit Undo captures the live book heard past the Mark before the next save', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 10));
+    await settle();
+    const before = {
+      ...ref,
+      finished: false,
+      position: 10,
+      updated_at: '2026-01-01T00:00:00Z',
+      device_id: 'dev-1',
+      playback_speed: 1,
+    };
+    mockReadMirror.mockResolvedValue(before);
+    try {
+      await recordFinishEvent(ref);
+      mockReadMirror.mockResolvedValue(mockFinishedRecords.at(-1));
+      pushSnapshot(snap('playing', 0, 18));
+      const edit = jest.fn(async () => {});
+      await expect(undoFinish({ ...ref, position: 10 }, edit)).resolves.toBe('undone');
+      expect(edit).not.toHaveBeenCalled();
+      expect(mockWriteMirror).toHaveBeenLastCalledWith(
+        expect.objectContaining({
+          finished: false,
+          position: 18,
+          file: order[0],
+          file_pos: 18,
+        }),
+        { advanceOnly: true },
+      );
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
   // The record before a finish is kept for its Undo, and stays once the toast is gone: a
   // Mark as not finished later put the mirror back to that old place, while its edit set
   // the server to its own.
@@ -2482,7 +2579,8 @@ describe('Mark as finished outside the player (finish-route)', () => {
     mockReadMirror.mockResolvedValue(before);
     try {
       mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
-      await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      const mark = await recordFinishEvent({ ...ref, path: 'Other/Book' });
+      expect(mark).toEqual({ before });
       // The server answered for the finish and its row was read again: a downloaded book's
       // record is that row by now, stamped by the server's clock, later than the finish's
       // own time. A record stamped with the finish's time was refused as older.
@@ -2493,7 +2591,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
       };
       mockReadMirror.mockResolvedValue(echo);
       const edit = jest.fn(async () => {});
-      await expect(undoFinish(undoRef, edit)).resolves.toBe('undone');
+      await expect(undoFinish({ ...undoRef, ...(mark || {}) }, edit)).resolves.toBe('undone');
       expect(edit).toHaveBeenCalledTimes(1);
       // The row read back replaced the record that carried the place before the finish
       // (`ProgressSave.before`): the tab that marked it still knows that place, so the Undo
@@ -2508,6 +2606,63 @@ describe('Mark as finished outside the player (finish-route)', () => {
         file_pos: 12,
         updated_at: '2999-01-01T00:00:00.001Z',
         ignored: ['watch|a'],
+      });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it("keeps the edit's chosen seconds when the device's old file place differs", async () => {
+    const prior = {
+      ...ref,
+      position: 21,
+      finished: false,
+      file: 'old.mp3',
+      file_pos: 21,
+      device_id: 'here',
+      updated_at: '2026-01-01T00:00:00Z',
+      playback_speed: 1,
+    };
+    const marked = { ...prior, position: 100, finished: true, before: prior };
+    mockReadMirror.mockResolvedValue(marked);
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    try {
+      const edit = jest.fn(async () => {});
+      await undoFinish({ ...ref, position: 60 }, edit);
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({ position: 60, finished: false });
+      expect(mockMirrorUpdates.at(-1)).not.toHaveProperty('file');
+      expect(mockMirrorUpdates.at(-1)).not.toHaveProperty('file_pos');
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
+  it("keeps the device's file place when the edit's seconds differ only in the last digits", async () => {
+    // The page reads the place on the chapters' timeline (`positionOn`), summing file
+    // lengths, so its seconds can miss the record's by a rounding step.
+    const prior = {
+      ...ref,
+      position: 21,
+      finished: false,
+      file: 'old.mp3',
+      file_pos: 21,
+      device_id: 'here',
+      updated_at: '2026-01-01T00:00:00Z',
+      playback_speed: 1,
+    };
+    const marked = { ...prior, position: 100, finished: true, before: prior };
+    mockReadMirror.mockResolvedValue(marked);
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    try {
+      const edit = jest.fn(async () => {});
+      await undoFinish({ ...ref, position: 21.000000000000004 }, edit);
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({
+        position: 21,
+        finished: false,
+        file: 'old.mp3',
+        file_pos: 21,
       });
     } finally {
       mockReadMirror.mockImplementation(async () => null);
@@ -2691,7 +2846,7 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
-  it('the lists read again once the finish was sent (the caller read them before the send)', async () => {
+  it('a flush without a delivery does not read the unfinished server lists', async () => {
     await start();
     let sent: () => void = () => {};
     mockFlushOutbox.mockImplementation(() => new Promise<void>((resolve) => (sent = resolve)));
@@ -2702,9 +2857,9 @@ describe('Mark as finished outside the player (finish-route)', () => {
       expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
       sent();
       await settle();
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.progress('c1', 2, 'Other/Book') });
-      expect(invalidate).toHaveBeenCalledWith({ queryKey: qk.myStatsAll('c1') });
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.allProgress('c1') });
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.progress('c1', 2, 'Other/Book') });
+      expect(invalidate).not.toHaveBeenCalledWith({ queryKey: qk.myStatsAll('c1') });
     } finally {
       mockFlushOutbox.mockImplementation(async () => {});
     }

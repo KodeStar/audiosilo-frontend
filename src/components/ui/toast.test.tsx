@@ -47,6 +47,18 @@ describe('toast / ToastHost', () => {
     });
   });
 
+  it('keeps a pending operation visible until it is dismissed', async () => {
+    await mountHost();
+    let id = 0;
+    await act(async () => {
+      id = toast({ title: 'Marking as not finished...', duration: null });
+      jest.advanceTimersByTime(60_000);
+    });
+    expect(screen.getByText('Marking as not finished...')).toBeTruthy();
+    await act(async () => dismissToast(id));
+    expect(screen.queryByText('Marking as not finished...')).toBeNull();
+  });
+
   it('runs its one action and dismisses', async () => {
     await mountHost();
     const onPress = jest.fn();

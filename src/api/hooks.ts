@@ -4,6 +4,7 @@ import {
   infiniteQueryOptions,
   type InfiniteData,
   MutationObserver,
+  onlineManager,
   type Query,
   type QueryClient,
   type QueryKey,
@@ -82,6 +83,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { isKeptOffline, refreshKeptMeta } from '@/downloads/kept-offline';
+import { onFinishDelivered, tellFinishChangedElsewhere } from '@/playback/finish-delivery';
 import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
   bookPlace,
@@ -92,7 +94,11 @@ import {
   saveProgress,
   writeMirror,
 } from '@/playback/progress-sync';
-import { useWithLocalPlaces } from '@/playback/use-local-places';
+import {
+  refreshLocalPlaces,
+  usePendingFinish,
+  useWithLocalPlaces,
+} from '@/playback/use-local-places';
 import { spanRecovered } from '@/playback/span-recovery';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
@@ -852,27 +858,24 @@ function hidesSpoilers(queryKey: readonly unknown[]): boolean {
   return (queryKey[4] as { hide?: boolean } | undefined)?.hide === true;
 }
 
-/** Refresh what else a change to a book's progress makes stale: the listening stats
- * and the goal when it can move a finish (they count finish dates), and the book's
- * `spoilers=hide` metadata when it can move the saved place the server cuts that at
- * (the position, or the finished flag). */
-function invalidateProgressDependents(
-  qc: QueryClient,
-  cid: string,
-  libraryId: number,
-  path: string,
-  changed: { finish: boolean; place: boolean },
-) {
-  if (changed.finish) {
-    void qc.invalidateQueries({ queryKey: qk.myStatsAll(cid) });
-    void qc.invalidateQueries({ queryKey: qk.listeningGoal(cid) });
-  }
-  if (changed.place) {
-    void qc.invalidateQueries({
-      queryKey: qk.bookMeta(cid, libraryId, path),
-      predicate: (q) => hidesSpoilers(q.queryKey),
-    });
-  }
+/** An invalidation normally joins an initial GET without data, even if that GET began
+ * before the finish. Cancel just those reads so the active observer gets a fresh answer.
+ * Only an observed one: a cancelled read with no data rejects its `fetchQuery` callers (the
+ * car's lists, what plays next), and nothing would read an unobserved one again. */
+function refreshProgressQuery(qc: QueryClient, queryKey: QueryKey, match?: (q: Query) => boolean) {
+  void qc.cancelQueries({
+    queryKey,
+    type: 'active',
+    fetchStatus: 'fetching',
+    predicate: (q) => q.state.data === undefined && (!match || match(q)),
+  });
+  void qc.invalidateQueries({ queryKey, predicate: match });
+}
+
+/** Refresh the book's `spoilers=hide` metadata, which a change to its saved place (the
+ * position, or the finished flag) makes stale: the server cuts it there. */
+function refreshHiddenMeta(qc: QueryClient, cid: string, libraryId: number, path: string) {
+  refreshProgressQuery(qc, qk.bookMeta(cid, libraryId, path), (q) => hidesSpoilers(q.queryKey));
 }
 
 /** Refresh what a book's finished flag moves: the progress list, the book's own row (its
@@ -883,10 +886,28 @@ export function invalidateFinishedProgress(
   libraryId: number,
   path: string,
 ) {
-  void qc.invalidateQueries({ queryKey: qk.allProgress(cid) });
-  void qc.invalidateQueries({ queryKey: qk.progress(cid, libraryId, path) });
-  invalidateProgressDependents(qc, cid, libraryId, path, { finish: true, place: true });
+  refreshDeliveredFinishes(qc, cid, [{ libraryId, path }]);
 }
+
+/** `invalidateFinishedProgress` for several books of one connection: the list, the stats and
+ * the goal read once for all of them. */
+export function refreshDeliveredFinishes(
+  qc: QueryClient,
+  cid: string,
+  books: readonly { libraryId: number; path: string }[],
+) {
+  refreshLocalPlaces();
+  refreshProgressQuery(qc, qk.allProgress(cid));
+  // The stats and the goal belong to the whole connection: read once for every book.
+  refreshProgressQuery(qc, qk.myStatsAll(cid));
+  refreshProgressQuery(qc, qk.listeningGoal(cid));
+  for (const { libraryId, path } of books) {
+    refreshProgressQuery(qc, qk.progress(cid, libraryId, path));
+    refreshHiddenMeta(qc, cid, libraryId, path);
+  }
+}
+
+onFinishDelivered((cid, books) => refreshDeliveredFinishes(queryClient, cid, books));
 
 /** The libraries of the connection in scope (`useCid`). */
 export function useLibraries() {
@@ -1288,13 +1309,28 @@ export function useBookProgress(
     },
     [files],
   );
-  return useQuery({
+  const query = useQuery({
     queryKey: qk.progress(cid, libraryId, path),
     queryFn: ({ signal }) => fetchBookProgress(api!, cid, libraryId, path, signal),
     enabled: enabled && !!api && path.length > 0,
     networkMode: 'always',
     select,
   });
+  const finish = useQueryPendingFinish(cid, libraryId, path, enabled && !!api, query);
+  return finish ? { ...query, data: finish } : query;
+}
+
+/** A book's undelivered finish over its progress query's row (`usePendingFinish`). A server
+ * that answered with an error (no such book, no access) shows none. */
+function useQueryPendingFinish(
+  cid: string,
+  libraryId: number,
+  path: string,
+  enabled: boolean,
+  query: { data?: PlacedProgress | null; error: unknown },
+) {
+  const active = enabled && !!path && !(query.error instanceof ApiError);
+  return usePendingFinish(cid, libraryId, path, active, query.data);
 }
 
 /**
@@ -1446,7 +1482,6 @@ export function useReadalong(
 export function useMarkFinished(connectionId?: string) {
   const api = useApi(connectionId);
   const cid = useCid(connectionId);
-  const qc = useQueryClient();
   return useMutation({
     mutationFn: async (p: {
       libraryId: number;
@@ -1456,13 +1491,16 @@ export function useMarkFinished(connectionId?: string) {
       playback_speed?: number;
     }) => {
       const ref = { connectionId: cid, ...p };
-      if (await recordFinishEvent(ref)) return;
-      await saveProgress(api, finishedSave(ref, await getDeviceId(), new Date().toISOString()));
+      const recorded = await recordFinishEvent(ref);
+      if (!recorded) {
+        await saveProgress(api, finishedSave(ref, await getDeviceId(), new Date().toISOString()));
+      }
+      refreshLocalPlaces();
+      return recorded || undefined;
     },
     // Both routes work offline (the event waits in the outbox, the save in the queue): held
     // for the online flag, an offline finish was never recorded, and a reload lost it.
     networkMode: 'always',
-    onSuccess: (_data, p) => invalidateFinishedProgress(qc, cid, p.libraryId, p.path),
   });
 }
 
@@ -2238,9 +2276,9 @@ export function useDeleteRating(connectionId?: string) {
  * mark finished or unfinished, move the position, set or clear the dates. The cache
  * takes the stored progress under `qk.progress` and as its row of the all-progress
  * list. The stats and the goal's finished count are read again when the edit could
- * move a finish (it names `finished` or `finished_at`), and the book's spoilers=hide
- * metadata when it could move the saved progress it is cut at (`finished` or
- * `position`). To mark unfinished a book finished at its end, send a `position` too
+ * move a finish (it names `finished` or `finished_at`), once with the edits queued behind
+ * it (`announceFinishEdits`), and the book's spoilers=hide metadata when it could move the
+ * saved progress it is cut at (`finished` or `position`). To mark unfinished a book finished at its end, send a `position` too
  * (see {@link ProgressEdit}).
  *
  * Server-side only: it does NOT touch the player's local progress mirror or offline
@@ -2254,10 +2292,13 @@ export function useEditProgress(connectionId?: string) {
     (api, v: { libraryId: number; path: string; edit: ProgressEdit }) =>
       api.editProgress(v.libraryId, v.path, v.edit),
     ({ qc, cid }, progress, { edit }) => {
-      invalidateProgressDependents(qc, cid, progress.library_id, progress.path, {
-        finish: edit.finished !== undefined || edit.finished_at !== undefined,
-        place: edit.finished !== undefined || edit.position !== undefined,
-      });
+      // A finish it moved is announced with the edits queued behind it (`announceFinishEdits`).
+      if (edit.finished !== undefined || edit.finished_at !== undefined) {
+        noteFinishEdit(cid, progress, edit.finished === true);
+      }
+      if (edit.finished !== undefined || edit.position !== undefined) {
+        refreshHiddenMeta(qc, cid, progress.library_id, progress.path);
+      }
       const same = (p: Progress) =>
         p.library_id === progress.library_id && p.path === progress.path;
       // The echo is a single book's read, which never carries `cover_version`: the list's
@@ -2275,7 +2316,51 @@ export function useEditProgress(connectionId?: string) {
         ),
       ]);
     },
+    ({ qc, cid }) => announceFinishEdits(qc, cid),
   );
+}
+
+/** The books whose finish a progress edit moved, per connection, by library and path, not
+ * announced yet (`announceFinishEdits`); `finished`: one of them finished the book. */
+const finishEdits = new Map<
+  string,
+  Map<string, { libraryId: number; path: string; finished: boolean }>
+>();
+
+function noteFinishEdit(cid: string, progress: Progress, finished: boolean) {
+  const books = finishEdits.get(cid) ?? new Map();
+  const key = `${progress.library_id}\n${progress.path}`;
+  books.set(key, {
+    libraryId: progress.library_id,
+    path: progress.path,
+    finished: finished || books.get(key)?.finished === true,
+  });
+  finishEdits.set(cid, books);
+}
+
+/**
+ * Announce the finishes the progress edits of `cid` moved (`noteFinishEdit`) once no other
+ * edit of the connection is still to run: the stats and the goal read again once for them
+ * all, and each book an edit finished told to the other tabs, which read their caches again
+ * (`tellFinishChangedElsewhere`), as a Sync v2 delivery does (an Undo, or Mark as not
+ * finished, tells them from the store as it puts this device's record back: `undoFinish`).
+ * A legacy server's finishes queued offline are edits the reconnect replays one at a time
+ * (one scope per connection): announced per edit, each refreshed the stats and goal over the
+ * last, and no other tab heard of any. Offline, what landed is announced now: the edits still
+ * waiting run once the network is back. Called as each edit settles, landed or not.
+ */
+function announceFinishEdits(qc: QueryClient, cid: string) {
+  const books = finishEdits.get(cid);
+  if (!books) return;
+  // The edit settling counts itself: it is still pending until this returns.
+  const { mutationKey } = mutationScope('progress_edit', cid);
+  if (qc.isMutating({ mutationKey, exact: true }) > 1 && onlineManager.isOnline()) return;
+  finishEdits.delete(cid);
+  refreshProgressQuery(qc, qk.myStatsAll(cid));
+  refreshProgressQuery(qc, qk.listeningGoal(cid));
+  for (const { libraryId, path, finished } of books.values()) {
+    if (finished) tellFinishChangedElsewhere({ connectionId: cid, libraryId, path });
+  }
 }
 
 /** What the stats hooks take besides the connection: `ready` (false: don't fetch, for a
@@ -3828,6 +3913,11 @@ export function useAllProgressAll({
   const apis = useApis();
   const combine = useCallback(
     (results: UseQueryResult<Progress[]>[]) => ({
+      sources: results.flatMap((r, i) =>
+        r.error instanceof ApiError
+          ? []
+          : [{ id: apis[i].connection.id, name: apis[i].connection.name }],
+      ),
       // Newest first across all connections (no cross-connection merge yet).
       progress: results
         .flatMap((r, i) =>
@@ -3865,8 +3955,9 @@ export function useAllProgressAll({
     })),
     combine,
   });
-  const progress = useWithLocalPlaces(listed.progress);
-  return { ...listed, progress };
+  const { sources, ...state } = listed;
+  const progress = useWithLocalPlaces(listed.progress, sources);
+  return { ...state, progress };
 }
 
 /** Where a book's saved progress is found: by (connection, library, path). */
@@ -3925,11 +4016,12 @@ export function useSavedProgress(
 ): Progress | undefined {
   const cid = useCid(connectionId);
   const client = useOptionalApi(connectionId);
-  return useQuery({
+  const query = useQuery({
     ...allProgressQuery(cid, enabled ? client : null),
     select: (rows) => progressIndex(rows).get(`${libraryId}\n${path}`),
     refetchOnMount: false,
-  }).data;
+  });
+  return useQueryPendingFinish(cid, libraryId, path, enabled && !!client, query) ?? query.data;
 }
 
 /**

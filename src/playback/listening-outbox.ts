@@ -33,6 +33,7 @@ import {
 } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
 
+import { finishDelivered } from './finish-delivery';
 import { captureConnectionGenerations, connectionGeneration } from './connection-generation';
 import { isPos, type OpenSpan, type SpanEnd, type StoredSpan, storedSpans } from './open-span-doc';
 import {
@@ -300,6 +301,7 @@ async function readOutbox(): Promise<OutboxEntry[]> {
       outboxCache = [...stored, ...(outboxCache ?? []).filter((e) => !have.has(e.event.id))];
       outboxRead = true;
     }
+    pruneReached(outboxCache);
   } catch {
     outboxCache ??= [];
   }
@@ -322,6 +324,7 @@ async function writeOutbox(next: OutboxEntry[]): Promise<boolean> {
       stored = false;
     }
   }
+  if (stored) pruneReached(next);
   notify();
   return stored;
 }
@@ -384,14 +387,22 @@ async function appendEntries(
       return;
     const queue = await readOutbox();
     const have = new Set(queue.map((e) => e.event.id));
-    const add = entries.filter((e) => !have.has(e.event.id));
-    if (add.length === 0) return;
-    const next = [...queue];
-    for (const entry of add) {
-      const at = before ? before(next, entry) : -1;
-      next.splice(at < 0 ? next.length : at, 0, entry);
+    const add = entries.filter(
+      ({ event }) => !have.has(event.id) && !queued.get(event.id)?.acknowledged,
+    );
+    if (add.length > 0) {
+      const next = [...queue];
+      for (const entry of add) {
+        const at = before ? before(next, entry) : -1;
+        next.splice(at < 0 ? next.length : at, 0, entry);
+      }
+      await writeOutbox(next);
     }
-    await writeOutbox(next);
+    // From here a reply claims the stored finish. Until publication a pagehide can
+    // still send its waiting copy, even while the write is in progress.
+    for (const { event } of entries) {
+      if (event.kind !== 'listen') queued.delete(event.id);
+    }
   });
 }
 
@@ -424,8 +435,9 @@ export async function appendInTurn(
           if (base === undefined) return;
           for (const event of events) {
             // Still waiting (in its place in the order: a key set again keeps it).
-            if (!queued.has(event.id) || (event.base_version ?? 0) >= base) continue;
-            queued.set(event.id, { connectionId, event: { ...event, base_version: base } });
+            const waiting = queued.get(event.id);
+            if (!waiting || (event.base_version ?? 0) >= base) continue;
+            waiting.event = { ...event, base_version: base };
           }
         });
     }
@@ -510,12 +522,29 @@ export async function waitingListens(): Promise<WaitingListen[]> {
   return waiting;
 }
 
-async function removeEvents(ids: Set<string>): Promise<void> {
-  if (ids.size === 0) return;
-  await withOutboxLock(async () => {
+/** Return the IDs this reply took, so concurrent replies publish a finish once. A
+ * keepalive can also take a finish still waiting for its append turn. */
+async function removeEvents(ids: Set<string>, takeWaitingFinishes = false): Promise<Set<string>> {
+  const removed = new Set<string>();
+  if (ids.size === 0) return removed;
+  return withOutboxLock(async () => {
     const queue = await readOutbox();
-    const next = queue.filter((e) => !ids.has(e.event.id));
+    const next = queue.filter(({ event }) => {
+      if (!ids.has(event.id)) return true;
+      removed.add(event.id);
+      return false;
+    });
+    if (takeWaitingFinishes) {
+      for (const id of ids) {
+        const waiting = queued.get(id);
+        if (waiting && waiting.event.kind !== 'listen' && !waiting.acknowledged) {
+          waiting.acknowledged = true;
+          removed.add(id);
+        }
+      }
+    }
     if (next.length !== queue.length) await writeOutbox(next);
+    return removed;
   });
 }
 
@@ -644,13 +673,15 @@ async function closeLeftBehind(
  * the tab that left them is gone, so no send of its own follows (fe#211: the events waited
  * for this tab's next span to close). While another tab's live span is still stored, look
  * again once it would be stale. */
-function sweepLeftBehind(launch = false): Promise<void> {
+function sweepLeftBehind(launch = false, willSend?: (cid: string) => boolean): Promise<void> {
   const generations = captureConnectionGenerations();
   return spanOps(() => closeLeftBehind(launch, generations)).then(({ live, swept }) => {
     if (live) checkAgainLater();
     // Not waited for: a flush waits on the launch's recovery, which is this sweep. The web
     // only: the app's one sweep is its launch's, which sends every outbox next.
-    if (Platform.OS === 'web' && sessionReady()) for (const cid of swept) void flushOutbox(cid);
+    if (Platform.OS === 'web' && sessionReady()) {
+      for (const cid of swept) if (!willSend?.(cid)) void flushOutbox(cid);
+    }
   });
 }
 
@@ -667,10 +698,11 @@ function checkAgainLater(): void {
  * Close a span a kill left open (a stored open span, at its last stored values) into the
  * outbox. Once per launch, before this launch's first span is written: every span write
  * waits on it. On the web a span another tab is still playing is left to it (looked at
- * again once it would be stale).
+ * again once it would be stale). `willSend`: the connections the launch's first caller sends
+ * next, which the recovery leaves to it; a later caller joins the recovery as it is.
  */
-export function recoverOpenSpan(): Promise<void> {
-  recovery ??= sweepLeftBehind(true).catch((e: unknown) =>
+export function recoverOpenSpan(willSend?: (cid: string) => boolean): Promise<void> {
+  recovery ??= sweepLeftBehind(true, willSend).catch((e: unknown) =>
     console.warn('[listening] could not recover the open span', e),
   );
   return recovery;
@@ -803,7 +835,7 @@ export function waitingInTurn(connectionId: string): boolean {
  * turn, by event id, in the order they came. The web's `pagehide` sends them too: one queued
  * behind a lock may never run once the page is going (a `localStorage` lease waits on a
  * timer, which an unloading page never fires). */
-const queued = new Map<string, OutboxEntry>();
+const queued = new Map<string, OutboxEntry & { acknowledged?: true }>();
 
 /** This tab's stored open span (tests), else the first one stored. */
 export async function storedOpenSpan(): Promise<OpenSpan | null> {
@@ -944,17 +976,17 @@ const chunkSizes = new Map<string, number>();
 /** Events whose request is out now from this tab, to the end of its answer (`sending`): a
  * withdrawal waits for it. Another tab's are read from the stored outbox (`OutboxEntry.out`). */
 const sendingNow = new Map<string, Promise<unknown>>();
-/** Events taken back here (`withdrawFinish`): a chunk read before still holding one drops
- * it. One another tab took back is gone from the stored outbox (`markOut`). */
-const withdrawn = new Set<string>();
-/** Finish events a request carried while their server looked reachable and that got no
- * answer: the request may have arrived and only its answer been lost, so the server may
- * hold them (`carried`). This launch's only (an Undo is a toast of the launch that
- * marked the book). Never forgotten on an answer: an answered finish has left the outbox, so
- * nothing reads its mark, and one put back after a failed edit still takes the edit. This
- * tab's own; on the web the stored entry says it too (`OutboxEntry.maybeReached`), for the
- * tab whose Undo it is. */
+/** A request with no answer may have delivered its finish. Keep this tab's knowledge
+ * while its event waits, even if storage refused its mark. */
 const maybeReached = new Set<string>();
+
+function pruneReached(queue: OutboxEntry[]): void {
+  if (maybeReached.size === 0) return;
+  const waiting = new Set(queue.map((entry) => entry.event.id));
+  for (const id of maybeReached) {
+    if (!waiting.has(id) && !queued.has(id)) maybeReached.delete(id);
+  }
+}
 
 /** Whether a request to `connectionId`'s server can be expected to leave this device: the
  * server is not marked down, and the browser is not offline (it sends nothing then). */
@@ -1063,6 +1095,12 @@ function markOut(ids: string[]): Promise<ReadonlySet<string>> {
  */
 function markSettled(ids: string[], lost: string[]): Promise<void> {
   if (ids.length === 0) return Promise.resolve();
+  // The answer normally removed every finish and its mark together. Confirm that from
+  // storage before skipping the lock: a queued storage event can leave our cache behind.
+  if (!outboxCache?.some((e) => ids.includes(e.event.id))) {
+    const stored = storedOutboxNow();
+    if (stored && !stored.entries.some((e) => ids.includes(e.event.id))) return Promise.resolve();
+  }
   return withOutboxLock(async () => {
     const queue = await readOutbox();
     let changed = false;
@@ -1089,7 +1127,7 @@ function markSettled(ids: string[], lost: string[]): Promise<void> {
  * runs: in this tab's memory (`sendingNow`) and, for a finish on the web, in the stored
  * outbox (`markOut`), so a withdrawal in this tab or another either took an event back
  * first or finds it out and waits. The memory mark is set with no wait after the last
- * check of `withdrawn`.
+ * check of this tab's queue.
  */
 async function sending<T>(
   chunk: OutboxEntry[],
@@ -1101,7 +1139,14 @@ async function sending<T>(
   // Asked before the mark is written, held until it is taken off.
   const releaseOut = marked.length > 0 ? holdOutMark() : () => {};
   const gone = marked.length > 0 ? await markOut(marked) : NONE;
-  const live = chunk.filter((e) => !withdrawn.has(e.event.id) && !gone.has(e.event.id));
+  // A withdrawal in this tab already published its new queue. Recheck synchronously
+  // before sending, including on native where there is no shared mark.
+  const waiting = chunk.some((e) => e.event.kind === 'finish')
+    ? new Set(outboxCache?.map((e) => e.event.id))
+    : null;
+  const live = chunk.filter(
+    (e) => e.event.kind !== 'finish' || (waiting?.has(e.event.id) && !gone.has(e.event.id)),
+  );
   const leaving = finishesLeaving(live);
   const run = send(live);
   // Settled once its marks are: a withdrawal that waited reads them next.
@@ -1239,17 +1284,21 @@ export async function withdrawFinish(
       }
       if (mine.some(carried) && !looksReachable(connectionId)) return { down: true as const };
       if (mine.length === 0) return null;
-      // Before the write: a send that read the outbox before this leaves them out.
-      for (const e of mine) withdrawn.add(e.event.id);
+      // Capture any memory-only mark before a successful removal prunes it. An edit
+      // that fails must put a possibly delivered finish back with that knowledge.
+      const removed = mine.map((entry): Taken => ({
+        entry: {
+          connectionId,
+          event: entry.event,
+          ...(carried(entry) ? { maybeReached: true } : {}),
+        },
+        after: new Set(queue.slice(0, queue.indexOf(entry)).map((e) => e.event.id)),
+      }));
       if (!(await writeOutbox(queue.filter((e) => !isMine(e))))) {
-        for (const e of mine) withdrawn.delete(e.event.id);
         await writeOutbox(queue);
         throw new Error('the outbox could not store the withdrawal');
       }
-      for (const entry of mine) {
-        const at = queue.indexOf(entry);
-        taken.push({ entry, after: new Set(queue.slice(0, at).map((e) => e.event.id)) });
-      }
+      taken.push(...removed);
       return null;
     });
     if (!wait) break;
@@ -1262,23 +1311,18 @@ export async function withdrawFinish(
   // One a request carried may be on the server, which looked reachable as it was taken
   // (else nothing was: `unreachable`), so the Undo takes its edit. Not asked again here: the
   // server marked down since, the Undo was done on this device alone (fe#258).
-  const held = taken.some((t) => carried(t.entry));
+  const held = taken.some(({ entry }) => entry.maybeReached);
   return {
     unsent: taken.length > 0 && !answered && !held,
     restore: async () => {
       if (taken.length === 0) return;
-      for (const t of taken) withdrawn.delete(t.entry.event.id);
       const after = new Map(taken.map((t) => [t.entry.event.id, t.after]));
       // Back where it was, ahead of what came after it then and since (listens made after
       // the Mark, an unfinish and a restart): put back at the end it finished the book
       // again over them. Without a send's mark; what the server may hold stays marked for
       // every tab.
       await appendEntries(
-        taken.map(({ entry: { event, maybeReached: reached, out } }) => ({
-          connectionId,
-          event,
-          ...(reached || out ? { maybeReached: true as const } : {}),
-        })),
+        taken.map(({ entry }) => entry),
         since,
         (queue, entry) => {
           const ahead = after.get(entry.event.id) ?? new Set<string>();
@@ -1392,11 +1436,13 @@ export async function resendMismatched(): Promise<void> {
 export async function flushAllOutboxes(): Promise<void> {
   if (!sessionReady()) return;
   const recovered = recovery !== null;
-  await recoverOpenSpan();
+  const willSend = () => true;
+  await recoverOpenSpan(willSend);
   await resendMismatched().catch(() => undefined);
   // The web: another tab's span may have been left since (that tab closed or crashed). The
   // launch's first call has just looked (the recovery).
-  if (Platform.OS === 'web' && recovered) await sweepLeftBehind().catch(() => undefined);
+  if (Platform.OS === 'web' && recovered)
+    await sweepLeftBehind(false, willSend).catch(() => undefined);
   const ids = new Set((await currentOutbox()).map((e) => e.connectionId));
   await Promise.all([...ids].map((cid) => flushOutbox(cid)));
 }
@@ -1409,7 +1455,7 @@ export async function flushAllOutboxes(): Promise<void> {
  * So does the span playing through it (`cutPlayingSpan`, a span opening where it ended).
  */
 export async function unsentListens(connectionId: string): Promise<number> {
-  await sweepLeftBehind().catch(() => undefined);
+  await sweepLeftBehind(false, (id) => sameConnection(id, connectionId)).catch(() => undefined);
   cutPlayingSpan(connectionId);
   // Behind its close's turn (`closeSpan`), as a sign-out's stop waits it out.
   await appendInTurn(connectionId, []).catch(() => undefined);
@@ -1432,7 +1478,9 @@ const MAX_ROUNDS = 50;
 
 async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
-  await recoverOpenSpan();
+  // Only this id's: a span recovered under the id the identity migration moved it from is no
+  // event this flush sends (`outboxEvents` reads this id alone), so the recovery sends it.
+  await recoverOpenSpan((id) => id === connectionId);
   // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
   // the wait is over (`onRateLimitOver`, below). Not a sign-out's last chance.
   if (rateLimited(connectionId) && !lastChance.has(resolveConnectionId(connectionId))) return;
@@ -1695,7 +1743,7 @@ async function applyAnswer(
     if (r.status === 'rejected') rejected.push({ event, reason: r.reason ?? 'invalid' });
     else done.add(event.id);
   }
-  await removeEvents(done);
+  const removed = await removeEvents(done, true);
   await moveToFailed(connectionId, rejected);
   const skew = timing && clockSkewOf(answer.server_time, timing.sentAt, timing.answeredAt);
   if (skew !== undefined) noteClockSkew(connectionId, skew);
@@ -1721,6 +1769,16 @@ async function applyAnswer(
     const place = await bookPlace(row, connectionId, row.library_id, row.path).catch(() => null);
     queryClient.setQueryData(qk.progress(connectionId, row.library_id, row.path), place ?? row);
   }
+  const finished = new Map<string, { libraryId: number; path: string }>();
+  for (const event of events) {
+    if ((event.kind === 'finish' || event.kind === 'unfinish') && removed.has(event.id)) {
+      finished.set(contentKey(connectionId, event.library_id, event.path), {
+        libraryId: event.library_id,
+        path: event.path,
+      });
+    }
+  }
+  if (finished.size) finishDelivered(connectionId, [...finished.values()]);
   if (events.some((e) => e.kind === 'listen')) {
     void queryClient.invalidateQueries({ queryKey: qk.historyAll(connectionId) });
   }
@@ -1863,7 +1921,7 @@ export function sendOnPageHide(extra: OutboxEntry[], deviceId: string): void {
   const stored = waiting.some((e) => e.event.kind === 'finish') ? storedOutboxNow() : null;
   const storedIds = stored && new Set(stored.entries.map((e) => e.event.id));
   for (const entry of waiting) {
-    if (seen.has(entry.event.id)) continue;
+    if (seen.has(entry.event.id) || queued.get(entry.event.id)?.acknowledged) continue;
     // A finish another tab took back a moment ago (its Undo), before this tab's copy heard.
     // Not one still waiting its turn here (`queued`): it was never stored to be taken back.
     if (
@@ -2012,7 +2070,6 @@ export function resetOutboxForTests(): void {
   rolledBack.clear();
   chunkSizes.clear();
   sendingNow.clear();
-  withdrawn.clear();
   maybeReached.clear();
   inFlight.clear();
   flushAgain.clear();

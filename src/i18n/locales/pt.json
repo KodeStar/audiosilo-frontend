@@ -1040,6 +1040,7 @@
       "markedFinished": "Marcado como terminado",
       "markedUnfinished": "Marcado como não terminado",
       "markingFinished": "A marcar como terminado...",
+      "markingUnfinished": "A marcar como não terminado...",
       "undoUnreachable": "Não é possível anular enquanto o servidor estiver inacessível. Tenta novamente quando voltar.",
       "unfinishUnreachable": "Não é possível marcar como não terminado enquanto o servidor estiver inacessível. Tenta novamente quando voltar.",
       "downloading": "A transferir para ouvir offline",
@@ -1921,7 +1922,8 @@
       "stay": "Ficar"
     },
     "otherTab": {
-      "title": "A reproduzir noutro separador"
+      "title": "A reprodução começou noutro separador",
+      "castPauseFailed": "Não foi possível pôr o dispositivo Cast em pausa. Usa os comandos do dispositivo para o fazer."
     },
     "partialDownload": {
       "title": "O resto deste livro não está transferido"

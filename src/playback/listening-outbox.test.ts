@@ -55,7 +55,9 @@ import { setDownloadEndCheck, setDownloadLengthCheck } from '@/downloads/kept-of
 import { setConnectionAliases } from '@/lib/connection-id';
 import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
 import { onConnectionRemoved } from '@/stores/session';
+import { until } from '@/testing/fake-browser';
 
+import { onFinishDelivered, setFinishChannelForTests } from './finish-delivery';
 import { connectionGeneration } from './connection-generation';
 import {
   appendEvents,
@@ -178,6 +180,9 @@ function client(
 
 const sent = (c: { syncListening: jest.Mock }) =>
   c.syncListening.mock.calls.map((call) => call[0] as ListeningSyncRequest);
+
+beforeAll(() => setFinishChannelForTests(null));
+afterAll(() => setFinishChannelForTests(undefined));
 
 beforeEach(async () => {
   await AsyncStorage.clear();
@@ -1247,6 +1252,31 @@ describe('flushOutbox', () => {
   });
 
   // fe#208: an Undo's progress edit must not be followed by the finish it undoes.
+  it('only a reply for the queued finish refreshes its book, once per batch', async () => {
+    const delivered = jest.fn();
+    const stop = onFinishDelivered(delivered);
+    const finish = (id: string) => ({
+      id,
+      kind: 'finish' as const,
+      library_id: 3,
+      path: 'Author/Book',
+      at: new Date().toISOString(),
+    });
+    const c = client(async (body) => answer(body, () => ({ status: 'duplicate' })));
+    c.syncListening.mockRejectedValueOnce(new Error('offline'));
+    try {
+      await appendEvents('c1', [finish('one'), finish('two')]);
+      await flushOutbox('c1');
+      expect(delivered).not.toHaveBeenCalled();
+      await flushOutbox('c1');
+      expect(c.syncListening).toHaveBeenCalledTimes(2);
+      expect(delivered).toHaveBeenCalledTimes(1);
+      expect(delivered).toHaveBeenCalledWith('c1', [{ libraryId: 3, path: 'Author/Book' }]);
+    } finally {
+      stop();
+    }
+  });
+
   describe("withdrawFinish (before an Undo's edit)", () => {
     const finish = (id: string, path = 'Author/Book') =>
       ({
@@ -1257,6 +1287,66 @@ describe('flushOutbox', () => {
         at: '2026-10-25T08:00:00.000Z',
       }) as ListeningEvent;
     const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    it.each([true, false])(
+      'publishes a finish once when flush and keepalive overlap (keepalive first: %s)',
+      async (keepaliveFirst) => {
+        await appendEvents('c1', [finish('f')]);
+        const replies = new Map<boolean, () => void>();
+        const c = client(async (body, opts) => {
+          const keepalive = !!opts?.keepalive;
+          await new Promise<void>((resolve) => replies.set(keepalive, resolve));
+          return answer(body, () => ({
+            status: keepalive === keepaliveFirst ? 'applied' : 'duplicate',
+          }));
+        });
+        const delivered = jest.fn();
+        const stop = onFinishDelivered(delivered);
+        const answers = jest.fn();
+        const stopAnswers = onSyncAnswer(answers);
+        try {
+          const flushing = flushOutbox('c1');
+          while (c.syncListening.mock.calls.length === 0) await tick();
+          sendOnPageHide([], 'dev');
+          replies.get(keepaliveFirst)!();
+          await until(() => answers.mock.calls.length === 1, 'the first reply');
+          replies.get(!keepaliveFirst)!();
+          await flushing;
+          await until(() => answers.mock.calls.length === 2, 'both replies');
+          expect(delivered.mock.calls).toEqual([['c1', [{ libraryId: 3, path: 'Author/Book' }]]]);
+        } finally {
+          stop();
+          stopAnswers();
+        }
+      },
+    );
+
+    it('publishes a keepalive finish answered before its append and leaves no duplicate to send', async () => {
+      await recoverOpenSpan();
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const c = client(async (body) => answer(body));
+      const delivered = jest.fn();
+      const stop = onFinishDelivered(delivered);
+      const appending = appendInTurn('c1', [finish('f')], () => held.then(() => 1));
+      try {
+        sendOnPageHide([], 'dev');
+        await until(() => delivered.mock.calls.length === 1, 'the keepalive reply');
+        sendOnPageHide([], 'dev');
+        release();
+        await appending;
+        await flushOutbox('c1');
+        expect(c.syncListening).toHaveBeenCalledTimes(1);
+        expect(delivered.mock.calls).toEqual([['c1', [{ libraryId: 3, path: 'Author/Book' }]]]);
+        expect(await outboxEvents('c1')).toEqual([]);
+      } finally {
+        release();
+        await appending;
+        stop();
+      }
+    });
 
     it("takes the book's waiting finish back (only it); the restore sends it after all", async () => {
       await appendEvents('c1', [listen('a'), finish('f'), finish('g', 'Other/Book')]);
@@ -1273,6 +1363,27 @@ describe('flushOutbox', () => {
           .at(-1)
           ?.events.map((e) => e.id),
       ).toEqual(['f']);
+    });
+
+    it("rechecks this launch's withdrawn finish even when its chunk was already read", async () => {
+      await appendEvents('c1', [listen('listen'), finish('f')]);
+      const c = client(async (body) => answer(body));
+      const sync = jest.requireActual<typeof import('./progress-sync')>('./progress-sync');
+      let release!: (id: string) => void;
+      const held = new Promise<string>((resolve) => {
+        release = resolve;
+      });
+      const device = jest.spyOn(sync, 'getDeviceId').mockImplementationOnce(() => held);
+      const flushing = flushOutbox('c1');
+      try {
+        while (device.mock.calls.length === 0) await tick();
+        expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(true);
+      } finally {
+        release('dev-1');
+        await flushing;
+        device.mockRestore();
+      }
+      expect(sent(c).map((body) => body.events.map((event) => event.id))).toEqual([['listen']]);
     });
 
     it('a finish being sent is waited for: the withdrawal ends after its answer', async () => {
@@ -1376,6 +1487,25 @@ describe('flushOutbox', () => {
       expect(await outboxEvents('c1')).toEqual([]);
     });
 
+    it('a failed edit restores a memory-marked finish with its delivery history', async () => {
+      await appendEvents('c1', [finish('f')]);
+      const c = client(async () => {
+        throw new TimeoutError(15000);
+      });
+      await flushOutbox('c1');
+      const taken = await withdrawFinish('c1', 3, 'Author/Book');
+      c.syncListening.mockRejectedValue(new ApiError(503, 'busy'));
+      await taken.restore();
+      await flushOutbox('c1');
+      expect(await outboxEvents('c1')).toEqual([
+        expect.objectContaining({
+          maybeReached: true,
+          event: expect.objectContaining({ id: 'f' }),
+        }),
+      ]);
+      expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
+    });
+
     // Asked again after the take, a server marked down in between made the Undo one of this
     // device alone, over a finish the server may hold (fe#258).
     it('a carried finish taken while its server looked reachable still takes the edit', async () => {
@@ -1394,19 +1524,8 @@ describe('flushOutbox', () => {
       }
     });
 
-    it('a gateway that gave up waiting (504) is no answer from the server either', async () => {
-      await appendEvents('c1', [finish('f')]);
-      client(async () => {
-        throw new ApiError(504, 'gateway timeout');
-      });
-      await flushOutbox('c1');
-      expect((await withdrawFinish('c1', 3, 'Author/Book')).unsent).toBe(false);
-    });
-
-    // A proxy whose server broke off after storing the batch (502, Cloudflare's 520), a
-    // Cloudflare timeout (524), and a 2xx whose body could not be read (an `ApiError` with
-    // its status).
-    it.each([502, 520, 524, 200])(
+    // A gateway lost the server, or a 2xx body could not be read.
+    it.each([502, 504, 520, 524, 200])(
       'a %i is no answer from the server either: it may hold the finish',
       async (status) => {
         await appendEvents('c1', [finish('f')]);
@@ -1508,10 +1627,10 @@ describe('flushOutbox', () => {
       expect(c.syncListening).toHaveBeenCalledTimes(1);
     });
 
-    it('a finish the server refused (an HTTP error is its answer) is unsent', async () => {
+    it.each([500, 503, 521, 522, 523])('a finish refused with %i is unsent', async (status) => {
       await appendEvents('c1', [finish('f')]);
       client(async () => {
-        throw new ApiError(503, 'unavailable');
+        throw new ApiError(status, 'refused');
       });
       await flushOutbox('c1');
       const taken = await withdrawFinish('c1', 3, 'Author/Book');

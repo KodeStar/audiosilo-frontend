@@ -2524,7 +2524,7 @@ media GETs only.
   stream, in the stream's order); `persist` and `onRemoteMove` still refuse a place at
   another index of that book until the download's queue is committed, which on a load is
   before the rate and the play. The commit moves the store's snapshot onto the download's
-  index by file too (a stream in `error` holds back the engine's own report). A download
+  index by file too (a stream in `error` holds back the engine's own report). So does a move to another tab's place still out (`moveLateTabSeek`): its saves stay held and its deadline still holds the book at the shared place for Retry. A download
   landing while a load holds the store (`loadingBook`: a start, an adoption's reload) or a
   start is on its way (`startsInFlight`: one of the book already loaded holds nothing, and
   one that has not made its book the store's yet is seen by nothing) swaps once they are
@@ -3108,13 +3108,19 @@ media GETs only.
     book stops and unloads first on every route, as its own end does (`leaveFinishedBook`,
     fe#258: its place saved and its span closed ahead of the finish. If a seek is still
     landing, the span closes at the target with the seek's reason. Finish consumes that
-    reason. If playback continues across the finish, the next span starts with `resume`.
+    reason. If the book started again while the Mark was on its way, its next span starts with
+    `resume` immediately at the close.
     Listen again sends `unfinish` and starts a `restart` span. Left loaded it went on
     recording past the finish, a later save of its place put the device record back in progress,
     and its page read "Resume"; the place it saved is the one the Undo goes back to, since the
     page's progress was read before that listening), the mirror records it finished, offline it
     waits in the outbox,
-    so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`;
+    so `useMarkFinished` runs whatever the online flag says, `networkMode: 'always'`.
+    A waiting finish from the event outbox or legacy PUT queue also shows in its
+    connection's lists and tiles, including a book the server has never listed.
+    A sync reply or successful PUT refreshes the affected books, lists, stats and goal
+    once the server has the finish, including after reconnect. Other tabs read the book
+    and their lists again on the same book-identity message that Undo sends.
     Undo is a progress edit, sent only after `undoFinish` took the book's waiting finish
     back out of the outbox (`withdrawFinish`; one whose request is out is waited for, the
     page's keepalive request included (`sendingNow`: a page only hidden comes back from the
@@ -3132,7 +3138,7 @@ media GETs only.
     reload and another tab see it, another tab's finish or a place saved since is never undone
     from an earlier look, and a place another device saved after it, read next, is newer and
     wins; a finished record without it, the server's row read back since, goes to the place
-    the tab that marked it kept in memory, `placeBefore`, file place included, else to the
+    its Undo toast kept from that Mark, file place included if it is within a second of the edit's position, else to the
     Undo's own place). One a request carried with no answer while its server looked
     reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
     server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
@@ -3154,15 +3160,16 @@ media GETs only.
     here as an Undo is, the mirror back to its record before the finish, not at its own place:
     the server never got the finish and keeps that place, and no edit put it at the other
     (the two disagreed until the next read). Only while the mirror's finished record carries
-    that place (`restorePlaceBefore` resolves whether it did): else it takes the edit at its
+    that place (`restorePlaceBefore` resolves whether it did). A book still playing through an
+    Undo captures the extra listening immediately, only when it advances the restored place.
+    Without that record Mark as not finished takes the edit at its
     own place, as for a finish
     the server has, and an edit that fails (offline) puts the finish back. On a server
     without `listening_sync` nothing waits to be taken back and both take the edit, then
     the same mirror change and hold below. After an edit that went
-    through the mirror goes back as well (`unrecordFinish`, to the record the finished one
-    carries, else the Undo's place, under the mirror's lock,
-    `updateMirror`: the edit's answer only reaches
-    the query caches, and the finished record would start the book again at 0 on the next
+    through the mirror takes the edit's position (`unrecordFinish`), keeping the prior file
+    place when its seconds agree within a second, under the mirror's lock (`updateMirror`). The edit's
+    answer only reaches the query caches, and the finished record would start the book again at 0 on the next
     offline Play; the record put back is stamped as the finished one it replaces, which for
     a downloaded book may be the server's row for the finish, newer than the finish's own
     time, and for a minute the mirror takes no finished record of the book stamped before the
@@ -3171,14 +3178,16 @@ media GETs only.
     tabs write one mirror, under one lock across them, `tabLock`: a lock per tab let one tab
     write its read of the whole mirror over another tab's change; the writes asked while one
     waits for that lock join it, `waitingWrites`, one read and one write for them all: on
-    plain http each job pays the lease's wait); the other tabs' pages read the book again
+    plain http each job pays the lease's wait. The other tabs' pages read the book again
     once the undoing tab's mirror record went back, told on a tab channel
-    (`tellUndoneElsewhere`, heard by `onFinishUndoneElsewhere`, `startUndoneElsewhere` among
+    (`tellFinishChangedElsewhere`, heard by `onFinishChangedElsewhere`, `startFinishChangesElsewhere` among
     the root's services): they showed "Listen again" until clicked; fe#208). The loaded book is left before any route
     records the finish (`leaveFinishedBook`), and a start of it still on its way is called off
     (a load that lands after the unload is reset, `stop()`'s race too); a finish or a
     progress edit that then fails loads it again, paused where it was (`reloadLeftBook`), and
-    the page shows a toast while a slow one waits on its server. A `finish` event that could
+    the page shows a toast while a slow one waits on its server. A slow Undo or Mark as not
+    finished also names the book after 600 ms, including while another tab's send settles.
+    The notice clears when the operation settles. A `finish` event that could
     not be queued puts the mirror back to its record before the finish first, or removes the
     finish's own record when the book had none (`updateMirror` changing it to null)
     (`recordFinish`: read finished, the book loaded again started over at 0). Undo of Mark as not
@@ -3261,9 +3270,11 @@ media GETs only.
     tab went with the request), as "the server may hold it": the Undo then takes its edit. A
     page that is going marks the finishes its keepalive request carries for
     `PAGE_HIDE_MARK_MS` (written to `localStorage` at once, outside the lock: a page that is
-    going cannot wait) and leaves out one another tab took back. The memory marks
-    (`sendingNow`, `withdrawn`, the `maybeReached` set) stay as this tab's own, and are all
-    there is in the app. A tab that closes the span another tab left (`sweepLeftBehind`)
+    going cannot wait) and leaves out one another tab took back. A send rechecks its own
+    queue for withdrawn finishes before sending. An acknowledged finish leaves with its
+    mark, so settling takes the lock again only if a mark could remain. The memory marks
+    (`sendingNow`, `maybeReached`) belong to pending events. A failed edit restores the
+    finish with the mark it had when withdrawn. A tab that closes the span another tab left (`sweepLeftBehind`)
     sends it at once: the tab that would have is gone. In a test, two tabs are two copies of
     the modules (`jest.isolateModules`) over `src/testing/fake-browser.ts`, with
     `@/lib/storage` mocked per tab (`tabStorage`), not the AsyncStorage package: Babel
@@ -3317,11 +3328,14 @@ media GETs only.
   the newest tab wins). A tab reaching `playing` for a requested play claims the connection
   before its span opens (`claimPlaying` in `store.ts`). A tab on the same connection that
   is playing or loading an older play gives way (`giveWayTo`). Its span closes at the claim
-  time, it pauses its engine and it shows "Playing in another tab" when the listener looks
-  there (`other-tab-notice.ts`). The book stays loaded. A press in that tab can take it back.
+  time, it pauses its engine and it shows "Playback started in another tab" when the listener
+  looks there, unless playback has started again here (`other-tab-notice.ts`). The book
+  stays loaded. A press in that tab can take it back.
   A tab with a failed stream also pauses its engine when another tab takes over. A Cast
   receiver's `playing` sent before a give-way pause reached it is paused again, never read as
   the receiver's own Play, until the receiver reports the pause (`CAST_GIVE_WAY_FENCE_MS`).
+  A rejected Cast pause tells the listener to use the receiver's controls. Its old playing
+  reports continue asking it to pause until it stops or the listener asks for a new play.
   `playAskedAt` dates a book start from the press, before its metadata and place lookups.
   The web player carries it through the player route, a seek before resuming a paused book,
   and a podcast episode waiting to be fetched. A web Media
@@ -3352,15 +3366,18 @@ media GETs only.
     (`catchingUp`). The move is the engine's seek, **not** `seekBook`: `adoptTabPlace` sets
     the resume floor and the next span begins there as a `resume`, so no `jump` or
     `moved_back` event tells the server the listener chose the place the tab was at. The
-    Undo jump chip still offers the way back (it reads the snapshot stream, so a move of
-    more than a minute makes one), and that Undo is the listener's own `seekBook`. A seek
-    the engine refuses puts back what `adoptTabPlace` set (`moveToTabPlace`): the play goes
-    on from where the engine is, and a floor left at a place far ahead would refuse its
-    every save and span; so does a move that has not settled within 5 s (`TAB_MOVE_MAX_MS`,
-    fe#262: a seek that never settled held the play's spans and saves until another book).
-    One that lands after that is taken then (`landTabPlaceLate`: the floor at the place, the
-    listening begun where the engine was dropped and begun again there). The landing report
-    reopens the span before that report's save tick can cut it. A Cast status can confirm
+    Undo jump chip still offers the way back after a move of more than a minute, even after
+    the paused tab was suspended. That Undo is the listener's own `seekBook`. Taking the
+    shared place clears the web engine's local pause age for auto-rewind. A seek the engine
+    refuses holds the book in error at the shared place, where Retry reloads it. A move
+    still unanswered after 5 s (`TAB_MOVE_MAX_MS`) releases the play to follow a new
+    answer or a late landing. The old place produces no save, listening span or handoff
+    answer. A landing starts the listening at the shared place (`landTabPlaceLate`).
+    With no landing within 10 s of the ask (`ASK_SETTLE_MAX_MS`), the engine pauses
+    and Retry holds the shared place. A confirmed move (its call resolved) whose book plays
+    on ahead of the place, by no more than it could have played since the ask, landed there
+    (`playedOnFromLateTabPlace`: sparse reports can skip the two seconds around it). The landing report opens the span before that
+    report's save tick can cut it. A Cast status can confirm
     the same landing before the receiver publishes its position, while the call could still
     land (`ASK_SETTLE_MAX_MS` from the ask): a Cast move there later is the listener's own. This
     applies unless the listener
@@ -3391,9 +3408,9 @@ media GETs only.
     claims again within milliseconds: to a tab that has asked for no play since it noted
     that one (`notedPlay.own`, its `playAskedAt` then) the claim is nothing at all, not a
     second give-way (a second pause and toast, and a note over a seek made in between).
-  - A paused tab looked at again shows the other tab's place
-    (`showOtherTabsPlace`, on the foreground from `other-tab-notice.ts`; the note stays, so
-    the play that follows reads again; a finished book stays where it is).
+  - A visible paused tab follows another tab's mirror writes (`showOtherTabsPlace`).
+    Returning from a hidden tab reads the mirror again. The next play also reads again.
+    A book finished elsewhere stays where it was while paused.
   - *The tab that gives way says where it stopped.* The mirror is the other tab's last
     **save** (every 15 s, hidden or playing a download too: `placeLoop`, *The periodic
     save's pace*), so a tab that takes over
@@ -3421,7 +3438,7 @@ media GETs only.
     chain (one tab's begins where the other's ended) and the saved place never goes back.
     The answer is read against the place the play **began** at (`ownPlay.pos`, moved with
     each tab place taken), not where it has played to since. Ignored: an answer to an
-    older play than the tab's last (a press since; an answer with no `askedAt` matches
+    older play than the tab last claimed (an answer with no `askedAt` matches
     none), or later than `GAVE_WAY_ANSWER_MS` (5 s) after the play's first claim;
     another connection or book; while a book loads; a place the listener chose here
     (`placeChosen`: an explicit start, a seek
@@ -3436,9 +3453,6 @@ media GETs only.
     `openListeningSpan` does): the listening begins where the move lands. The
     web engine places a seek made before its metadata where the load
     starts (`placeAt`), so an answer during a load lands there.
-  - Limit: two windows both in view never get a foreground event, so the paused one shows
-    the place it stopped at (right when it gave way, older as the other plays on) until it
-    plays, which then takes the other's place exactly.
 - **Stall → error watchdog lives in shared JS** (`store.ts`), not per-engine, and is
   **armed by the play/retry action, not by interpreting engine events** - this is the key
   to robustness, because the native bridge's resume/retry event stream is noisy and

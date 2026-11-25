@@ -204,6 +204,8 @@ export interface PlaybackService {
    * loaded until its next load (a Retry, a start, the download hot-swap).
    */
   restream?(tracks: PlaybackTrack[]): void;
+  /** The loaded place came from another tab. Its next play has no local pause to rewind. */
+  forgetPauseAge?(): void;
   play(): Promise<void>;
   pause(): Promise<void>;
   /** Seek within the current track. */

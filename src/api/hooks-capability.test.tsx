@@ -133,6 +133,13 @@ jest.mock('@/playback/finish-route', () => ({
   recordFinishEvent: (...a: unknown[]) => mockRecordFinish(...a),
 }));
 
+// The other tabs hear of a finish a progress edit moved (`tellFinishChangedElsewhere`).
+const mockTellElsewhere = jest.fn();
+jest.mock('@/playback/finish-delivery', () => ({
+  ...jest.requireActual('@/playback/finish-delivery'),
+  tellFinishChangedElsewhere: (...a: unknown[]) => mockTellElsewhere(...a),
+}));
+
 /* eslint-disable import/first */
 import {
   CapabilityError,
@@ -1291,6 +1298,63 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
   });
 
+  // A legacy server's finishes queued offline are edits replayed one at a time on reconnect:
+  // each refreshed the stats and goal (a wave per book) and no other tab heard of any.
+  it('a replay of finishing edits refreshes the stats and goal once and tells the other tabs', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    mockTellElsewhere.mockClear();
+    const refreshes = jest.spyOn(qc, 'invalidateQueries');
+    const paths = ['A/Book', 'B/Book'];
+    onlineManager.setOnline(false);
+    try {
+      let replay: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        replay = Promise.all(
+          paths.map((path) =>
+            result.current.m.mutateAsync({ libraryId: 2, path, edit: { finished: true } }),
+          ),
+        );
+      });
+      expect(mockClients.c1.editProgress).not.toHaveBeenCalled();
+      await act(async () => onlineManager.setOnline(true));
+      await act(() => replay);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    expect(mockClients.c1.editProgress).toHaveBeenCalledTimes(2);
+    const of = (key: readonly unknown[]) =>
+      refreshes.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(key));
+    expect(of(qk.myStatsAll('c1'))).toHaveLength(1);
+    expect(of(qk.listeningGoal('c1'))).toHaveLength(1);
+    expect(mockTellElsewhere.mock.calls).toEqual(
+      paths.map((path) => [{ connectionId: 'c1', libraryId: 2, path }]),
+    );
+  });
+
+  // The store's Undo tells the other tabs as it puts this device's record back (`undoFinish`).
+  it('an unfinishing edit refreshes the stats and goal and leaves the other tabs to the store', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    mockTellElsewhere.mockClear();
+    qc.setQueryData(qk.myStats('c1', '30d'), {});
+    await act(async () => {
+      await result.current.m.mutateAsync({
+        libraryId: 2,
+        path: 'A/Book',
+        edit: { finished: false, position: 30 },
+      });
+    });
+    expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(true);
+    expect(mockTellElsewhere).not.toHaveBeenCalled();
+  });
+
   it("a progress edit keeps the listed row's cover_version (the echo carries none)", async () => {
     const { result, qc } = await mountMutation(
       { progress_edit: true },
@@ -1665,7 +1729,7 @@ describe('Phase 1b mutation cache updates', () => {
     expect(qc.getQueryState(qk.collection('c1', 5))?.isInvalidated).toBe(true);
   });
 
-  it('marking a book finished refreshes the stats, the goal and the spoilers=hide metadata', async () => {
+  it('enqueueing a finish leaves the server reads for its delivery', async () => {
     const { result, qc } = await mountMutation({ user_stats: true }, 'user_stats', useMarkFinished);
     qc.setQueryData(qk.myStats('c1', '30d'), {});
     qc.setQueryData(qk.listeningGoal('c1'), {});
@@ -1679,9 +1743,9 @@ describe('Phase 1b mutation cache updates', () => {
         duration: 100,
       });
     });
-    expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(true);
-    expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(true);
-    expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(true);
+    expect(qc.getQueryState(qk.myStats('c1', '30d'))?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(qk.listeningGoal('c1'))?.isInvalidated).toBe(false);
+    expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(false);
     expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
   });
 
@@ -1691,7 +1755,7 @@ describe('Phase 1b mutation cache updates', () => {
       mockTakesEvent = false;
     });
 
-    it('Sync v2: the event, no PUT, the same refreshes', async () => {
+    it('Sync v2: the event without a PUT or an early list refresh', async () => {
       mockTakesEvent = true;
       mockSaveProgress.mockClear();
       const { result, qc } = await mountMutation(
@@ -1705,7 +1769,7 @@ describe('Phase 1b mutation cache updates', () => {
       });
       expect(mockRecordFinish).toHaveBeenLastCalledWith({ connectionId: 'c1', ...p });
       expect(mockSaveProgress).not.toHaveBeenCalled();
-      expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(true);
+      expect(qc.getQueryState(qk.allProgress('c1'))?.isInvalidated).toBe(false);
     });
 
     it('an older server: the PUT save at the end', async () => {

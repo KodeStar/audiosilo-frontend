@@ -20,7 +20,7 @@ describe('undoFinish', () => {
       generation: () => generation,
       leave: async () => undefined,
       reload: async () => {},
-      record: async () => {},
+      record: async () => undefined,
       withdraw: async (...args) => {
         steps.push(`withdraw ${args.join(' ')}`);
         return { unsent, restore, ...(unreachable ? { unreachable: true as const } : {}) };
@@ -30,6 +30,7 @@ describe('undoFinish', () => {
           `unrecord at ${r.position}${r.atPosition ? ' (own place)' : ''} for sign-in ${since}`,
         );
       },
+      capturePlayingUndo: async () => {},
       restoreBefore: async (_r, since) => {
         if (knowsBefore) steps.push(`back to the place before for sign-in ${since}`);
         return knowsBefore;

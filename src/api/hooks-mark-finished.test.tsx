@@ -1,7 +1,8 @@
-import { onlineManager, QueryClientProvider } from '@tanstack/react-query';
-import { act, renderHook } from '@testing-library/react-native';
+import { onlineManager, QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 import type { ReactNode } from 'react';
 
+import { setConnectionAliases } from '@/lib/connection-id';
 import { notifyQueriesSynchronously } from '@/testing/query-notify';
 
 // `useMarkFinished`: both of its routes work offline (a `finish` event waits in the outbox,
@@ -28,7 +29,8 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useMarkFinished } from '@/api/hooks';
+import { finishDelivered } from '@/playback/finish-delivery';
+import { qk, useMarkFinished } from '@/api/hooks';
 import { queryClient } from '@/api/provider';
 /* eslint-enable import/first */
 
@@ -65,4 +67,77 @@ it('offline on the PUT path, the save is queued at once', async () => {
     expect.anything(),
     expect.objectContaining({ finished: true, position: 3600, duration: 3600 }),
   );
+});
+
+it('one delivery refreshes the shared list, stats and goal once and each affected book', async () => {
+  const invalidate = jest.spyOn(queryClient, 'invalidateQueries');
+  try {
+    const { result } = await renderHook(() => useMarkFinished('c1'), { wrapper });
+    await act(async () => result.current.mutateAsync(finish));
+    expect(invalidate).not.toHaveBeenCalled();
+    finishDelivered('c1', [finish, { libraryId: 2, path: 'Other' }]);
+    const keys = invalidate.mock.calls.map(([options]) => options?.queryKey);
+    for (const key of [
+      qk.allProgress('c1'),
+      qk.myStatsAll('c1'),
+      qk.listeningGoal('c1'),
+      qk.progress('c1', 1, 'A/Book'),
+      qk.progress('c1', 2, 'Other'),
+      qk.bookMeta('c1', 1, 'A/Book'),
+      qk.bookMeta('c1', 2, 'Other'),
+    ]) {
+      expect(keys.filter((k) => JSON.stringify(k) === JSON.stringify(key))).toHaveLength(1);
+    }
+  } finally {
+    invalidate.mockRestore();
+  }
+});
+
+it('replaces an older first list GET after the migrated connection delivers, without cancelling a sibling account', async () => {
+  onlineManager.setOnline(true);
+  setConnectionAliases({ legacy: 'legacy.7' });
+  let settleOld!: (rows: string[]) => void;
+  const list = jest
+    .fn<Promise<string[]>, []>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          settleOld = resolve;
+        }),
+    )
+    .mockResolvedValue(['finished']);
+  const sibling = jest.fn(() => new Promise<string[]>(() => {}));
+  try {
+    const { result } = await renderHook(
+      () => ({
+        book: useQuery({ queryKey: qk.allProgress('legacy.7'), queryFn: list }),
+        sibling: useQuery({ queryKey: qk.allProgress('legacy.8'), queryFn: sibling }),
+      }),
+      { wrapper },
+    );
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(1));
+    await act(async () => finishDelivered('legacy', [finish]));
+    await waitFor(() => expect(result.current.book.data).toEqual(['finished']));
+    await act(async () => settleOld(['in progress']));
+    expect(result.current.book.data).toEqual(['finished']);
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(sibling).toHaveBeenCalledTimes(1);
+  } finally {
+    setConnectionAliases({});
+  }
+});
+
+it('leaves a first list GET nobody observes to its fetchQuery caller (the car, what plays next)', async () => {
+  onlineManager.setOnline(true);
+  let settle!: (rows: string[]) => void;
+  const read = queryClient.fetchQuery({
+    queryKey: qk.allProgress('c1'),
+    queryFn: () =>
+      new Promise<string[]>((resolve) => {
+        settle = resolve;
+      }),
+  });
+  finishDelivered('c1', [finish]);
+  settle(['in progress']);
+  await expect(read).resolves.toEqual(['in progress']);
 });

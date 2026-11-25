@@ -5,7 +5,13 @@ import { quietly } from '@/lib/quietly';
 import { ticker } from '@/lib/ticker';
 
 import { type BookQueue, sameTrackOrder } from './book-queue';
-import { selectBookKey, selectBookPosition, showsFaultPlace, usePlayer } from './store';
+import {
+  followsOtherTab,
+  selectBookKey,
+  selectBookPosition,
+  showsFaultPlace,
+  usePlayer,
+} from './store';
 
 /**
  * Undo jump (STYLEGUIDE section 8, "Undo jump chip"): after ANY jump of more than a
@@ -298,7 +304,8 @@ export function startJumpUndo(): () => void {
     if (live && !expiry) setJump({ ...live, until: Date.now() + UNDO_WINDOW_MS });
 
     const now = Date.now();
-    const unobserved = now <= suspendedUntil || (!foreground() && stalled(now));
+    const unobserved =
+      (now <= suspendedUntil || (!foreground() && stalled(now))) && !followsOtherTab();
     suspendedUntil = 0;
     lastAlive = now;
     const sample = {

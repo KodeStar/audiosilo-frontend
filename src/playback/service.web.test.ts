@@ -353,24 +353,42 @@ describe('WebPlaybackService (transcoded tracks)', () => {
     expect(el().src).toBe(`${STREAM}&t=120`);
   });
 
-  it('auto-rewind on resume re-requests further back', async () => {
-    await svc.configure({
-      autoRewindMax: 30,
-      jumpForward: 30,
-      jumpBackward: 15,
-      smartSpeed: false,
-      voiceBoost: false,
-    });
-    await startPlaying(200);
-    el().currentTime = 10;
-    el().emit('timeupdate'); // at 210
-    await svc.pause();
-    now += 8_000; // paused 8s -> rewind 8s
-    await svc.play();
-    expect(el().src).toBe(`${STREAM}&t=202`);
-    el().emit('loadedmetadata');
-    expect(el().paused).toBe(false);
-  });
+  it.each([
+    { transcoded: true, shared: false },
+    { transcoded: true, shared: true },
+    { transcoded: false, shared: true },
+  ])(
+    'resumes with the pause age of this place (transcoded $transcoded, shared $shared)',
+    async ({ transcoded, shared }) => {
+      await svc.configure({
+        autoRewindMax: 30,
+        jumpForward: 30,
+        jumpBackward: 15,
+        smartSpeed: false,
+        voiceBoost: false,
+      });
+      await svc.load(transcoded ? transcodedTracks : directTracks, 0, 200);
+      el().emit('loadedmetadata');
+      await svc.play();
+      el().emit('playing');
+      el().currentTime = transcoded ? 10 : 210;
+      el().emit('timeupdate');
+      await svc.pause();
+      now += 8_000;
+      if (shared) {
+        await svc.seekTo(300);
+        svc.forgetPauseAge!();
+      }
+      await svc.play();
+      if (transcoded) {
+        expect(el().src).toBe(`${STREAM}&t=${shared ? 300 : 202}`);
+        el().emit('loadedmetadata');
+      } else {
+        expect(el().currentTime).toBe(300);
+      }
+      expect(el().paused).toBe(false);
+    },
+  );
 
   it('a short pause resumes the same connection', async () => {
     await startPlaying(200);

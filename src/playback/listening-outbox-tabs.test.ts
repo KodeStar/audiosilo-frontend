@@ -25,6 +25,11 @@ jest.mock('@/lib/storage', () => {
   const { tabStorage } = jest.requireActual('@/testing/fake-browser');
   return { ...jest.requireActual('@/lib/storage'), ...tabStorage(mockTab.localStorage) };
 });
+jest.mock('@/lib/tab-channel', () => {
+  const actual = jest.requireActual('@/lib/tab-channel');
+  const tab = mockTab;
+  return { ...actual, tabChannel: (name: string) => actual.tabChannel(name, tab) };
+});
 jest.mock('@/api/reachability', () => ({
   isReachable: () => mockReachable,
   noteFailure: jest.fn(),
@@ -211,6 +216,25 @@ afterEach(async () => {
 });
 
 describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)", () => {
+  it('removes the finish and its send mark in the same lock round on acknowledgement', async () => {
+    const original = Object.getOwnPropertyDescriptor(navigator, 'locks');
+    const locks = fakeWebLocks();
+    const requests = jest.spyOn(locks, 'request');
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: locks });
+    try {
+      await a.appendEvents('c1', [finish('f')]);
+      requests.mockClear();
+      await a.flushOutbox('c1');
+      expect(a.sent()).toEqual([['f']]);
+      expect(storedIds()).toEqual([]);
+      // Mark before sending, then remove on the answer. No third round to unmark.
+      expect(requests.mock.calls.filter(([name]) => name === OUTBOX)).toHaveLength(2);
+    } finally {
+      if (original) Object.defineProperty(navigator, 'locks', original);
+      else Reflect.deleteProperty(navigator, 'locks');
+    }
+  });
+
   it("waits for a finish another tab's request carries: answered there, the Undo needs its edit", async () => {
     await a.appendEvents('c1', [finish('f')]);
     const answer = gate();
@@ -629,6 +653,31 @@ describe('a tab that sweeps the span another tab left sends it (fe#211)', () => 
         if (entries) Object.defineProperty(performance, 'getEntriesByType', entries);
         else Reflect.deleteProperty(performance, 'getEntriesByType');
       }
+    },
+  );
+
+  it.each(['launch', 'foreground', 'one connection', 'sign-out'] as const)(
+    '%s sends a swept span once even when the server refuses it',
+    async (when) => {
+      if (when === 'foreground') await a.recoverOpenSpan();
+      browser.data.set(
+        OPEN_SPAN,
+        JSON.stringify([
+          {
+            ...keptSpan(),
+            owner: 'gone',
+            keptAt: Date.now() - a.LIVE_SPAN_MS - 1,
+          },
+        ]),
+      );
+      a.sync(async () => {
+        throw a.refusal(503);
+      });
+      if (when === 'sign-out') await a.unsentListens('c1');
+      else if (when === 'one connection') await a.flushOutbox('c1');
+      else await a.flushAllOutboxes();
+      expect(a.sent()).toEqual([['crashed']]);
+      expect(storedIds()).toEqual(['crashed']);
     },
   );
 

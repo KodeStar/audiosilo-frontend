@@ -25,7 +25,9 @@ jest.mock('@/playback/listening-sync', () => ({ startListeningSync: service('lis
 jest.mock('@/playback/annotation-outbox', () => ({ startBookmarkSync: service('bookmarkSync') }));
 jest.mock('@/playback/queue-replays', () => ({ startQueueReplays: service('queueReplays') }));
 jest.mock('@/playback/other-tab-notice', () => ({ startOtherTabNotice: service('otherTab') }));
-jest.mock('@/playback/undone-elsewhere', () => ({ startUndoneElsewhere: service('undone') }));
+jest.mock('@/playback/finish-changes-elsewhere', () => ({
+  startFinishChangesElsewhere: service('undone'),
+}));
 jest.mock('@/playback/removed-in-other-tab', () => ({
   startRemovedInOtherTab: service('removedInOtherTab'),
 }));
