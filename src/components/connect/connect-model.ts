@@ -227,7 +227,8 @@ export function httpFallback(typed: string): string | null {
 }
 
 /**
- * Where to exchange a pairing link's token when its base could not connect during discovery: its `home` address, or null to give up.
+ * Where to exchange a pairing link's token when its base could not connect during
+ * discovery: its `home` address, or null to give up.
  * A server on its own (self-signed) certificate, which the device can't trust, also
  * answers plain http to home-network devices on the same port, and its links carry that
  * as `home=http://<host:port>` with its `sid=<server_id>`. The token would cross the

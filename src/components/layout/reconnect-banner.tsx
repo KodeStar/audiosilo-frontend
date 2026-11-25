@@ -39,7 +39,8 @@ let pushed: { id: string; at: number } | null = null;
  * Signing in keeps the connection's own `serverUrl` (`repairPlan`). The connection it
  * re-pairs is handed over in memory (`holdReconnect`). One at a time: a double tap while
  * one is on its way, while its pushed step has yet to reach the stack, or once that step is
- * on screen, pushes no second step. */
+ * on screen, pushes no second step. A tap on another server takes over: its step replaces
+ * the one on screen or landing. */
 export function reconnectConnection(conn: Connection): Promise<void> {
   if (reconnecting?.id === conn.id) return reconnecting.done;
   const state = currentNavState();
