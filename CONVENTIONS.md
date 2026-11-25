@@ -5849,7 +5849,8 @@ under their empty state).
   undefined while the native network is unknown. A downloaded book waits up to 750 ms
   for the first reading, then uses its manifest if the reading is still unknown (its queue
   too, as offline). Its resume still asks the server's place then, within
-  `DOWNLOADED_PLACE_WAIT_MS`: only a known "no network" skips that read. Other API
+  `DOWNLOADED_PLACE_WAIT_MS`: only a known "no network" skips that read, and the start
+  begins that read beside its own (`readPlaceEarly`). Other API
   requests can proceed. An iOS one-shot negative at its five-second timeout leaves
   the state unknown. An HTTP response during a reading can correct its probe (one heard
   while nothing watched never hides the next reading's), and an offline monitor event

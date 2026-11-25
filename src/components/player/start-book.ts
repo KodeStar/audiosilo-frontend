@@ -210,9 +210,18 @@ async function startNow(
       return false;
   }
   const asked = download && online ? reachableClient() : null;
+  // A network still unknown starts from the download, but `playBook` still asks the place
+  // then (only a known "no network" skips it): begun here, its wait runs beside the rest.
+  const placeClient = download && online !== false ? reachableClient() : null;
   const saved = download?.manifest.book;
-  if (asked && saved && opts.position === undefined && opts.track === undefined && !opts.file) {
-    readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
+  if (
+    placeClient &&
+    saved &&
+    opts.position === undefined &&
+    opts.track === undefined &&
+    !opts.file
+  ) {
+    readPlaceEarly(placeClient, target.connectionId, target.libraryId, saved.rel_path);
   }
   const source = await startSourceOf(target, asked);
   if (!source) return false;

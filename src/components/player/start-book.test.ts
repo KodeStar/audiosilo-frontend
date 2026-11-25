@@ -411,6 +411,22 @@ describe('startBookInPlace', () => {
     }
   });
 
+  // The store still asks the place while the network is unknown: begun here, its wait runs
+  // beside the start instead of after it (a car's 10 s for a start).
+  it('reads the place early from the download while the network stays unknown', async () => {
+    useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
+    mockDeviceOnline = undefined;
+    try {
+      mockFirstNetwork.mockResolvedValueOnce(undefined);
+      await expect(startBookInPlace(target)).resolves.toBe(true);
+      expect(mockPlayBook.mock.calls[0][2].title).toBe('From the download');
+      expect(mockItem).not.toHaveBeenCalled();
+      expect(mockReadEarly).toHaveBeenCalledWith(mockClient, 'c1', 2, target.path);
+    } finally {
+      mockDeviceOnline = true;
+    }
+  });
+
   // iPhone airplane mode: Play on a downloaded book spun while the server was asked.
   it('starts a downloaded book from its download at once when there is no one to ask', async () => {
     useDownloads.setState({ entries: { [`c1:2:${target.path}`]: downloadedEntry() } });
