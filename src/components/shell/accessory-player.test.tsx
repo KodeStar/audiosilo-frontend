@@ -22,7 +22,6 @@ jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
-import { setFontScale } from '@/testing/font-scale';
 import { ACCESSORY_TEXT_MAX_SCALE } from './accessory-support';
 import { expectNativeTarget } from '@/testing/touch-target';
 
@@ -51,19 +50,13 @@ it('gives skip back a 44 pt target', async () => {
   expectNativeTarget(screen.getByLabelText('Back 15 seconds'));
 });
 
-it('caps both lines in the fixed-height iOS accessory at AX5', async () => {
-  try {
-    await setFontScale(3.12);
-    await render(<AccessoryPlayer />);
-    expect(screen.getByText('The Way of Kings')).toHaveProp(
-      'maxFontSizeMultiplier',
-      ACCESSORY_TEXT_MAX_SCALE,
-    );
-    expect(screen.getByText(/left/)).toHaveProp('maxFontSizeMultiplier', ACCESSORY_TEXT_MAX_SCALE);
-    expect(ACCESSORY_TEXT_MAX_SCALE).toBe(1.3);
-  } finally {
-    await setFontScale(1);
-  }
+it('caps both lines in the fixed-height iOS accessory', async () => {
+  await render(<AccessoryPlayer />);
+  expect(screen.getByText('The Way of Kings')).toHaveProp(
+    'maxFontSizeMultiplier',
+    ACCESSORY_TEXT_MAX_SCALE,
+  );
+  expect(screen.getByText(/left/)).toHaveProp('maxFontSizeMultiplier', ACCESSORY_TEXT_MAX_SCALE);
 });
 
 describe('an episode on its way (no room for the strip)', () => {

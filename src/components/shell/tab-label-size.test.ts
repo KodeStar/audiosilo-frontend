@@ -46,14 +46,15 @@ describe('tab label size', () => {
   );
 
   it('is a different value at every scale and display size, so a live change is applied', () => {
+    // Unmeasured labels (0): the drawn size is the same in both slots, only the sliver differs.
     const values = [0.85, 1, 1.15, 1.3, 1.5, 2].flatMap((s) => [
-      tabLabelFontSize(s, MAX_SLOT, 15),
-      tabLabelFontSize(s, DEFAULT_SLOT, 15),
+      tabLabelFontSize(s, MAX_SLOT, 0),
+      tabLabelFontSize(s, DEFAULT_SLOT, 0),
     ]);
     expect(new Set(values).size).toBe(values.length);
     // As react-native-screens compares them (32-bit floats): a Pixel's display size steps at
     // the default text size draw the same 12 dp, and must still be different values.
-    const steps = [411, 392, 373, 345, 320].map((w) => Math.fround(tabLabelFontSize(1, w / 5, 9)));
+    const steps = [411, 392, 373, 345, 320].map((w) => Math.fround(tabLabelFontSize(1, w / 5, 0)));
     expect(new Set(steps).size).toBe(steps.length);
     // The sliver never shows: under 0.001 sp.
     expect(tabLabelFontSize(2, MAX_SLOT, 98) * 2 - tabLabelDrawnDp(2, MAX_SLOT, 98)).toBeLessThan(

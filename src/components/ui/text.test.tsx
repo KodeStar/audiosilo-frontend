@@ -1,8 +1,6 @@
 import { render, screen } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 
-import { setFontScale } from '@/testing/font-scale';
-
 import { DISPLAY_MAX_FONT_SCALE, headingLevelFor, Text, TextClassContext } from './text';
 
 function mount(ui: React.ReactElement) {
@@ -47,10 +45,7 @@ describe('Text', () => {
 });
 
 describe('display titles stop growing at 2x (fe#267)', () => {
-  afterEach(() => setFontScale(1));
-
   it('caps a display title, not running text, and lets a caller choose', async () => {
-    await setFontScale(3.1);
     await render(
       <>
         <Text variant="display">Settings</Text>

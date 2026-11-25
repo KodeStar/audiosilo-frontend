@@ -1,5 +1,3 @@
-import { RankList } from './rank-list';
-import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 
@@ -7,6 +5,7 @@ import type { ListeningGoalStatus, MyListening, UserStats } from '@/api/types';
 import { addDays } from '@/components/home/listening';
 import { mountWithPortal } from '@/testing/render-overlay';
 import { nativeTarget } from '@/testing/touch-target';
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 
 jest.mock('@/theme/theme-provider', () => ({ useTheme: () => ({ scheme: 'light' }) }));
 jest.mock('expo-router', () => ({ router: { navigate: jest.fn(), push: jest.fn() } }));
@@ -89,6 +88,7 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
+import { RankList } from './rank-list';
 import { StatsSection } from './stats-section';
 /* eslint-enable import/first */
 
