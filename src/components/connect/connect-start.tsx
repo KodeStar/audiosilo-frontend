@@ -435,7 +435,7 @@ export function ConnectStart() {
     const ask = new AbortController();
     servedAsk.current = ask;
     setServed('pending');
-    void connect(origin, 'manual', ask.signal);
+    void connect(origin, 'manual', ask.signal, true);
   };
   // Cancel on "Finding your server": the address field, filled in with the origin.
   const cancelServed = () => {
@@ -449,8 +449,9 @@ export function ConnectStart() {
 
   // Ask the server who it is. The typed address and the served player's own server show what
   // was found (or why not); a remembered server goes straight on to sign-in unless it runs a
-  // demo. The automatic host probe has a signal so Cancel and unmount discard its answer.
-  const connect = async (target: string, tag: string, signal?: AbortSignal) => {
+  // demo. Nothing is recorded once the screen is gone or the ask was cancelled (`signal`).
+  // `own`: the production player asking its own origin, which nobody typed.
+  const connect = async (target: string, tag: string, signal?: AbortSignal, own = false) => {
     setFieldError(null);
     setDemoError(null);
     setProbe(null);
@@ -499,11 +500,12 @@ export function ConnectStart() {
       if (tag === 'manual' && onlyOwnServer(productionWebOrigin(), [base])) setServed('found');
     } catch (e) {
       if (gone()) return;
-      if (signal) {
+      // An answer that isn't an AudioSilo server's (a 404, a page that isn't JSON, no id).
+      const wrongApi = e instanceof ApiError && (e.status < 300 || e.status === 404);
+      if (own) {
         // On a static host these replies come from asking for an API it doesn't serve.
         // The same answers on a server's own player need to stay visible.
-        const ambiguous =
-          e instanceof ApiError && (e.status < 300 || e.status === 403 || e.status === 404);
+        const ambiguous = wrongApi || (e instanceof ApiError && e.status === 403);
         const expected = url && sameOrigin(url, { origin: target });
         if (ambiguous && !expected && (await playerAllowsOtherServers(signal))) {
           if (!gone()) setServed(null);
@@ -518,11 +520,9 @@ export function ConnectStart() {
           ? {
               kind: 'error',
               // A proxy's own 401 or 403 (fe#295) or a 429: what to do about it, not the raw status.
-              message:
-                e.status < 300 || e.status === 404
-                  ? t('connect.probe.wrongApi')
-                  : (sharedRefusalText(e, t) ??
-                    t('connect.probe.errorBody', { message: e.message })),
+              message: wrongApi
+                ? t('connect.probe.wrongApi')
+                : (sharedRefusalText(e, t) ?? t('connect.probe.errorBody', { message: e.message })),
             }
           : {
               kind: 'unreachable',
