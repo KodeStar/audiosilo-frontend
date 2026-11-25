@@ -75,6 +75,19 @@ jest.mock('@/components/ui/cover', () => {
     },
   };
 });
+// Each mount of This week, the real card still rendering: a remount cancels its reads in
+// flight and asks them again.
+const mockWeekMounts = jest.fn();
+jest.mock('./this-week-card', () => {
+  const actual = jest.requireActual('./this-week-card');
+  const { useEffect } = jest.requireActual('react');
+  return {
+    ThisWeekCard: (p: { className?: string }) => {
+      useEffect(() => mockWeekMounts(), []);
+      return actual.ThisWeekCard(p);
+    },
+  };
+});
 let mockFavourites: unknown[] = [];
 
 type Progress = {
@@ -608,6 +621,19 @@ describe('HomeScreen', () => {
       nativeEvent: { layout: { width: 1200, height: 900 } },
     });
     expect(screen.getByTestId('home-hero-beside')).toBeTruthy();
+  });
+
+  it('keeps This week mounted when the column measures too narrow for it beside the Now card', async () => {
+    mockCaps = { user_stats: true };
+    mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
+    mockWeekMounts.mockClear();
+    await mountHome();
+    await fireEvent(screen.getByTestId('home-column'), 'layout', {
+      nativeEvent: { layout: { width: 600, height: 900 } },
+    });
+    expect(screen.queryByTestId('home-hero-beside')).toBeNull();
+    // Mounted once: a second mount would have cancelled the stats reads the first asked.
+    expect(mockWeekMounts).toHaveBeenCalledTimes(1);
   });
 
   it('suggests the next book in a series, saying why', async () => {
