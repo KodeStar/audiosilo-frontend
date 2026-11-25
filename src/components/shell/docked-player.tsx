@@ -77,6 +77,10 @@ const BOOK_MIN = 640 - 2 * DOCK_PAD - 2 * DOCK_GAP - scaledTransportWidth('sm') 
 /** The space between the floating Undo chip and the bar, and the band it floats in. */
 const CHIP_GAP = 8;
 const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
+/** The row's padding above and below once larger text grows it past `DOCK_HEIGHT` (the
+ * room the default row leaves around the 68 of the transport over the scrubber), so the
+ * play button never sits on the window's bottom edge. */
+const GROWN_PAD_Y = 8;
 
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
@@ -458,6 +462,7 @@ export function DockedPlayer() {
           style={{
             minHeight: DOCK_HEIGHT,
             paddingHorizontal: DOCK_PAD,
+            paddingVertical: fontScale > 1 ? GROWN_PAD_Y : undefined,
             gap: stacked ? 0 : DOCK_GAP,
           }}
           className={cn(!stacked && 'flex-row', 'items-center justify-center')}

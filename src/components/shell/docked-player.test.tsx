@@ -265,6 +265,12 @@ describe('DockedPlayer', () => {
       expect(screen.getByLabelText('Play')).toHaveStyle({ height: 66, width: 66 });
       expect(screen.getByTestId('dock-row').props.className).not.toContain('flex-row');
       expect(screen.getByTestId('dock-row')).toHaveStyle({ minHeight: 84 });
+      // Room above and below, so the window's bottom edge never cuts the play button.
+      expect(screen.getByTestId('dock-row')).toHaveStyle({ paddingVertical: 8 });
+      // The same beside the book and actions, where the grown transport is the tallest.
+      await renderAt(1440);
+      expect(screen.getByTestId('dock-row').props.className).toContain('flex-row');
+      expect(screen.getByTestId('dock-row')).toHaveStyle({ paddingVertical: 8 });
     } finally {
       await setFontScale(1);
     }
@@ -483,6 +489,7 @@ describe('DockedPlayer', () => {
     expect(screen.getByTestId('dock-book').props.className).toContain('p-1.5');
     expect(screen.getByTestId('dock-actions').props.className).toContain('px-1.5');
     expect(screen.getByTestId('dock-row').props.style).toMatchObject({ paddingHorizontal: 16 });
+    expect(screen.getByTestId('dock-row').props.style.paddingVertical).toBeUndefined();
     expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 436 });
     expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');
   });
