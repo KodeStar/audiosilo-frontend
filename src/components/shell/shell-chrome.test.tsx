@@ -162,10 +162,18 @@ describe('PhoneTabBar', () => {
     // A label too long for its slot ends in "..." instead of widening the tab: French
     // "Téléchargements" at a 20 px browser font pushed "Moi" off a 320 px screen.
     expect(screen.getByText('Downloads').props.numberOfLines).toBe(1);
+    expect(screen.getByText('Downloads').props.style).toBeUndefined();
     expect(screen.getByLabelText('Downloads').props.className).not.toMatch(/min-w|basis-auto/);
     try {
       await setFontScale(2);
       expect(screen.getByText('Downloads').props.numberOfLines).toBeUndefined();
+      // It wraps between words only: a word wider than its slot ends in "..." (French
+      // "Accueil" broke as "Accue/il" at 32 px on a 320 px screen).
+      expect(screen.getByText('Downloads')).toHaveStyle({
+        wordWrap: 'normal',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      });
       expect(screen.getByLabelText('Downloads').props.className).toContain('basis-auto');
     } finally {
       await setFontScale(1);

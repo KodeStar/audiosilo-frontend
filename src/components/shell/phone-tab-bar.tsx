@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
-import { Text as RNText, View } from 'react-native';
+import { Text as RNText, type TextStyle, View } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
@@ -11,6 +11,14 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { PHONE_TABS, useTabPress } from './destinations';
 import { useChromeEdge } from './shell-metrics';
+
+// Under large text a label wraps between words only: react-native-web's Text breaks inside a
+// word ("Accue/il"), so a word wider than its slot ends in "..." on its line instead.
+const LARGE_LABEL_STYLE = {
+  wordWrap: 'normal',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+} as TextStyle;
 
 /**
  * The phone tab bar on web (iOS and Android use the native tab bar): the five
@@ -56,9 +64,10 @@ export function PhoneTabBar() {
               {/* The label follows the browser's text size up to 13.5 px (about 1.3x). Below
                   large text its slot is a fifth of the width and a long name ends in "...", so
                   no tab is pushed off screen; under large text a long label can borrow space
-                  from its neighbours or wrap. */}
+                  from its neighbours or wrap between words. */}
               <RNText
                 numberOfLines={linesFor(1, large)}
+                style={large ? LARGE_LABEL_STYLE : undefined}
                 className={`${large ? 'max-w-full text-center ' : ''}font-sans-semibold text-[10.5px] web:text-[length:min(0.65625rem,13.5px)] ${
                   selected ? 'text-foreground' : 'text-muted-foreground'
                 }`}
