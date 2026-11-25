@@ -2,7 +2,7 @@ import { replaceEqualDeep } from '@tanstack/react-query';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
 import type { SourcedProgress } from '@/api/hooks';
-import { sameConnection } from '@/lib/connection-id';
+import { resolveConnectionId, sameConnection } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 
 import { onOutboxChange } from './listening-outbox';
@@ -82,7 +82,11 @@ function listedPlaces(
 ): readonly (SourcedProgress & PlacedProgress)[] {
   const placed = withLocalPlaces(rows, local);
   if (!local?.finishes?.size) return placed;
-  const listed = new Set(rows.map((row) => contentKey(row.connectionId, row.library_id, row.path)));
+  // Under the id the finishes are kept by (`readLocalPlaces`): a row under the id the identity
+  // migration moved its connection from is that book all the same, not one to add.
+  const listed = new Set(
+    rows.map((row) => contentKey(resolveConnectionId(row.connectionId), row.library_id, row.path)),
+  );
   const added: SourcedProgress[] = [];
   for (const [key, finish] of local.finishes) {
     if (listed.has(key)) continue;
