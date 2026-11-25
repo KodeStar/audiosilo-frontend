@@ -60,6 +60,9 @@ export function isDeviceOnline(): boolean | undefined {
 
 let online: boolean | undefined;
 let monitorOffline = false;
+/** How many HTTP answers have confirmed a network (`deviceNetworkAnswered`): a reading
+ * only gives way to one that came while it was running, never to an older one. */
+let answers = 0;
 let firstRead: Promise<void> | undefined;
 let finishFirstRead: (() => void) | undefined;
 // A cold car start also has to load the book within the head unit's deadline.
@@ -85,6 +88,7 @@ export async function waitForDeviceOnline(): Promise<boolean | undefined> {
  * event wins over an in-flight request finishing as the network goes away. */
 export function deviceNetworkAnswered(): void {
   if (Platform.OS !== 'web' && !monitorOffline) {
+    answers++;
     setOnline(true);
     finishFirstRead?.();
   }
@@ -135,6 +139,9 @@ function listen(): () => void {
   let live = true;
   let heard = false;
   const started = performance.now();
+  // An answer while nothing watched (the app's screen gone, playback going on) left a "yes"
+  // no one checks since: this reading's probe still applies over it.
+  const answersAtStart = answers;
   firstRead = new Promise<void>((resolve) => {
     finishFirstRead = resolve;
   });
@@ -164,7 +171,7 @@ function listen(): () => void {
     });
     Promise.resolve(Network.getNetworkStateAsync()).then(
       (s) => {
-        if (!heard && online !== true) apply(s, false);
+        if (!heard && answers === answersAtStart) apply(s, false);
       },
       () => {
         if (live) finishFirstRead?.();

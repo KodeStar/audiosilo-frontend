@@ -5851,7 +5851,8 @@ under their empty state).
   too, as offline). Its resume still asks the server's place then, within
   `DOWNLOADED_PLACE_WAIT_MS`: only a known "no network" skips that read. Other API
   requests can proceed. An iOS one-shot negative at its five-second timeout leaves
-  the state unknown. An HTTP response can correct a probe, and an offline monitor event
+  the state unknown. An HTTP response during a reading can correct its probe (one heard
+  while nothing watched never hides the next reading's), and an offline monitor event
   takes precedence over a request finishing in flight. On every platform the same source drives TanStack's `onlineManager`
   (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; on the web it replaced
   TanStack's own window listeners, which start online and hear only the events, so a cold launch

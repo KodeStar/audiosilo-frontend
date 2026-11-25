@@ -73,6 +73,20 @@ describe('useDeviceOnline (app)', () => {
     stop();
   });
 
+  // Android with the app's screen gone and playback going on: nothing watches the system,
+  // and a request's answer then must not hide the next reading's "no network".
+  it('lets the next reading correct an answer heard while nothing watched', async () => {
+    deviceNetworkAnswered();
+    mockState = { isConnected: false, type: 'NONE' };
+    const stop = watchDeviceOnline(() => {});
+    try {
+      await act(async () => {});
+      expect(isDeviceOnline()).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
   it('follows the system network state', async () => {
     mockState = { isConnected: false, isInternetReachable: false };
     const { result } = await renderHook(() => useDeviceOnline());
