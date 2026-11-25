@@ -209,7 +209,7 @@ export function SignInStep({
           (p) => keepUnansweredInvite(server, code, p),
           (next) => (stage = next),
         );
-        if (kept) forgetUnansweredInvite();
+        if (kept) forgetUnansweredInvite(server, code);
         try {
           await finishConnect({
             serverUrl: server,

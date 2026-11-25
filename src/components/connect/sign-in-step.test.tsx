@@ -434,6 +434,26 @@ describe('an invite whose exchange got no answer', () => {
     expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt', 'pt']);
   });
 
+  it('keeps every unanswered invite, so a second lost one never re-redeems the first', async () => {
+    mockApi.redeemCode
+      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-abcd' })
+      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-wxyz' });
+    mockApi.exchange
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockRejectedValueOnce(new TypeError('Network request failed'))
+      .mockResolvedValueOnce({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} />);
+    await submitCode('ABCD');
+    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await submitCode('WXYZ');
+    await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await submitCode('ABCD');
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.redeemCode.mock.calls).toEqual([['ABCD'], ['WXYZ']]);
+    expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt-abcd', 'pt-wxyz', 'pt-abcd']);
+  });
+
   it('keeps the unanswered token while another code is tried, and retries it on the way back', async () => {
     mockApi.redeemCode
       .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-abcd' })

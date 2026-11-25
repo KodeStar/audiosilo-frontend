@@ -69,30 +69,34 @@ export function takeInviteCode(server: string | null): string | undefined {
  * an old server's unanswered exchange, which ends the retries. */
 export type UnansweredInvite = PairingPayload | LegacyExchangeUnansweredError;
 
-/** The invite code redeemed last whose exchange got no answer (memory only). */
-let unanswered: { server: string; key: string; kept: UnansweredInvite } | null = null;
+/** The invite codes redeemed whose exchange got no answer, by server and code (memory only,
+ * `unansweredKey`). */
+const unanswered = new Map<string, UnansweredInvite>();
+
+/** One invite at one server: the address as `sameUrl` reads it, the code as the server does. */
+const unansweredKey = (server: string, code: string) =>
+  `${server.replace(/\/+$/, '')}\n${inviteKey(code)}`;
 
 /**
  * Keep what an invite's lost exchange left (`code` at `server`), so a later sign-in step for
  * the same invite retries the exchange instead of redeeming the code again, which could spend
  * another of its uses: a step left by Back and opened again by the same link or code too, not
- * only the one that sent it. Only the last such invite is kept; leaving the connect flow
- * drops it (`dropConnectHandoffs`).
+ * only the one that sent it, and after another code's own lost exchange. Leaving the connect
+ * flow drops them all (`dropConnectHandoffs`).
  */
 export function keepUnansweredInvite(server: string, code: string, kept: UnansweredInvite): void {
-  unanswered = { server, key: inviteKey(code), kept };
+  unanswered.set(unansweredKey(server, code), kept);
 }
 
 /** What `keepUnansweredInvite` kept for `code` at `server`, if anything. */
 export function unansweredInvite(server: string, code: string): UnansweredInvite | null {
-  return unanswered && sameUrl(unanswered.server, server) && unanswered.key === inviteKey(code)
-    ? unanswered.kept
-    : null;
+  return unanswered.get(unansweredKey(server, code)) ?? null;
 }
 
-/** The kept invite signed in: its token is spent, nothing is left to retry. */
-export function forgetUnansweredInvite(): void {
-  unanswered = null;
+/** The kept invite (`code` at `server`) signed in: its token is spent, nothing is left to
+ * retry. */
+export function forgetUnansweredInvite(server: string, code: string): void {
+  unanswered.delete(unansweredKey(server, code));
 }
 
 /** The connection the scanner was opened to re-pair (memory only). */
@@ -189,7 +193,7 @@ export function peekReconnect(server: string | null): string | undefined {
  * code again). */
 export function dropConnectHandoffs(): void {
   held = null;
-  unanswered = null;
+  unanswered.clear();
   scanFor = undefined;
   scanned = null;
   reconnecting = null;
