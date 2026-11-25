@@ -1,6 +1,7 @@
 import {
   TAB_LABEL_BASE_SP,
   TAB_LABEL_MAX_SCALE,
+  TAB_LABEL_MIN_SP,
   tabLabelDrawnDp,
   tabLabelFontSize,
 } from './tab-label-size';
@@ -32,16 +33,29 @@ describe('tab label size', () => {
     ).toBeLessThan(MAX_SLOT);
   });
 
+  // A long translation, or a wider OEM font, can exceed the slot at 12 sp.
+  const TELECHARGEMENTS = 98;
+
   it.each([DEFAULT_SLOT, 390 / 5, MAX_SLOT])(
-    'fits Téléchargements into a %i dp slot at default and large text',
+    'keeps Téléchargements at the system size below large text in a %i dp slot',
     (slot) => {
-      // A long translation, or a wider OEM font, can exceed the slot at 12 sp.
-      const measuredWidth = 98;
-      for (const scale of [0.85, 1, 1.3, 2]) {
-        const size = drawn(scale, slot, measuredWidth);
-        expect(size).toBeLessThan(TAB_LABEL_BASE_SP);
-        expect((size * measuredWidth) / TAB_LABEL_BASE_SP).toBeLessThan(slot);
+      // As without the measurement: the name ends in "..." instead of shrinking every label.
+      expect(drawn(1, slot, TELECHARGEMENTS)).toBeCloseTo(TAB_LABEL_BASE_SP, 2);
+      expect(drawn(1.15, slot, TELECHARGEMENTS)).toBeCloseTo(TAB_LABEL_BASE_SP, 2);
+      // A smaller system text size is still followed down, never further.
+      expect(drawn(0.85, slot, TELECHARGEMENTS)).toBeCloseTo(TAB_LABEL_BASE_SP * 0.85, 2);
+    },
+  );
+
+  it.each([DEFAULT_SLOT, 390 / 5, MAX_SLOT])(
+    'shrinks a large label to fit a %i dp slot, never below the floor',
+    (slot) => {
+      for (const scale of [1.3, 2]) {
+        expect(tabLabelDrawnDp(scale, slot, TELECHARGEMENTS)).toBe(TAB_LABEL_MIN_SP);
       }
+      // A name that fits between the floor and the default size is drawn whole.
+      const between = ((slot - 2) * TAB_LABEL_BASE_SP) / 11;
+      expect(tabLabelDrawnDp(2, slot, between)).toBeCloseTo(11, 5);
     },
   );
 

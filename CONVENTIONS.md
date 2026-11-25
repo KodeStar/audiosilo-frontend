@@ -5017,8 +5017,9 @@ tokens, type and components; its section 17 maps them onto these files.
     display title drawn in design px,
     use `text-display-38 leading-display-42`: the utilities take native px and resolve
     against the capped unit on the web, including at a breakpoint. The
-    Android tab labels grow up to 1.3x and fit the widest translated name measured in the
-    system typeface. In the iOS tab accessory, a 1.3x cap leaves room for both lines. Elsewhere prefer a row that stacks or a min width over capping: a value
+    Android tab labels grow up to 1.3x; under large text they shrink to fit the widest
+    translated name measured in the system typeface, down to 10 sp (`TAB_LABEL_MIN_SP`),
+    and below it never draw smaller than the system size (a long name ends in "..."). In the iOS tab accessory, a 1.3x cap leaves room for both lines. Elsewhere prefer a row that stacks or a min width over capping: a value
     in a fixed width ("15 / s") is a bug.
   - **px text on the web**: every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in
     rem, N/16, with the same variants (`text-[13px] web:text-[0.8125rem]`, `lg:text-[17px]

@@ -203,15 +203,16 @@ describe('Android tab label measurement', () => {
       expect(probe).toHaveProp('allowFontScaling', false);
       expect(screen.queryByText(/Téléchargements/)).toBeNull();
       const slot = Dimensions.get('window').width / 5;
-      const measured = Math.ceil(slot * 1.3);
+      // Too wide for the slot at 12 sp, narrow enough at the 10 sp floor.
+      const measured = Math.ceil(slot * 1.1);
       await fireEvent(probe, 'layout', { nativeEvent: { layout: { width: measured } } });
-      const drawn = screen.getByTestId('drawn-size').props.style.fontSize;
-      expect(drawn).toBeLessThan(12);
-      expect((drawn * measured) / 12).toBeLessThan(slot);
+      // The default text size keeps the system's 12 sp (the name ends in "...").
+      expect(screen.getByTestId('drawn-size').props.style.fontSize).toBeCloseTo(12, 2);
       await setFontScale(2);
-      expect(
-        (screen.getByTestId('drawn-size').props.style.fontSize * 2 * measured) / 12,
-      ).toBeLessThan(slot);
+      const drawn = screen.getByTestId('drawn-size').props.style.fontSize * 2;
+      expect(drawn).toBeLessThan(12);
+      expect(drawn).toBeGreaterThanOrEqual(10);
+      expect((drawn * measured) / 12).toBeLessThan(slot);
     } finally {
       await setFontScale(1);
       await act(async () => {

@@ -1,9 +1,16 @@
+import { isLargeText } from '@/lib/text-scale';
+
 /**
  * The Android tab bar's label size (fe#267). react-native-screens sets the Material bar's
  * labels in sp, so they grow with the system font scale with no limit: at Android's 2.0
  * even the one label `labelVisibilityMode="selected"` leaves ended in "Ho...". The label
  * follows the text size up to the cap and fits the widest translated label. Android
  * measures all five names in its own system font at the base size.
+ *
+ * Below large text (all five labels show) a label never draws smaller than the system's
+ * size for the text scale, 12 sp at the default: a name too long for its slot (French
+ * "Téléchargements") ends in "...". Under large text (the chosen tab's label only) it
+ * shrinks to fit, down to `TAB_LABEL_MIN_SP`. TalkBack reads every tab's name in full.
  */
 
 /** Material's bar label, `design_bottom_navigation_text_size` (sp). */
@@ -12,12 +19,19 @@ export const TAB_LABEL_BASE_SP = 12;
 /** How far the bar's labels follow the text size. */
 export const TAB_LABEL_MAX_SCALE = 1.3;
 
-/** Fit the widest label, measured at the base size, inside one slot. Leave two dp
- * clear for native rounding of the label and each tab's share of the window. */
+/** The smallest a label shrinks to under large text so the widest name fits (dp, as drawn):
+ * the size of iOS's own tab labels (10 pt), still readable; a name wider ends in "...". */
+export const TAB_LABEL_MIN_SP = 10;
+
+/** Fit the widest label, measured at the base size, inside one slot, within the floor for
+ * the scale (the file's comment). Leave two dp clear for native rounding of the label and
+ * each tab's share of the window. */
 export function tabLabelDrawnDp(scale: number, slotDp: number, measuredWidth: number): number {
   const grown = TAB_LABEL_BASE_SP * Math.min(scale, TAB_LABEL_MAX_SCALE);
   if (slotDp <= 2 || measuredWidth <= 0) return grown;
-  return Math.min(grown, (TAB_LABEL_BASE_SP * (slotDp - 2)) / measuredWidth);
+  const fits = (TAB_LABEL_BASE_SP * (slotDp - 2)) / measuredWidth;
+  const floor = isLargeText(scale) ? TAB_LABEL_MIN_SP : TAB_LABEL_BASE_SP * Math.min(scale, 1);
+  return Math.max(Math.min(grown, fits), floor);
 }
 
 /**
