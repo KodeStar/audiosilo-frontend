@@ -53,6 +53,7 @@ import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 
 import { PlayerSeekBar, SeekBar, seekBarHeight, SeekTimes, seekTextureKey } from './seek-bar';
+import { controlScale } from './transport-controls';
 /* eslint-enable import/first */
 
 const player = usePlayer as unknown as UseBoundStore<StoreApi<MockPlayer>>;
@@ -317,15 +318,10 @@ describe('PlayerSeekBar', () => {
   });
 
   it('fits the waveform height with the transport in a narrow player at large text', async () => {
-    try {
-      await setFontScale(2);
-      await render(<PlayerSeekBar room={280} transportSize="md" />);
-      expect(screen.getByRole('adjustable')).toHaveStyle({ height: 58 });
-      await screen.rerender(<PlayerSeekBar room={600} transportSize="md" />);
-      expect(screen.getByRole('adjustable')).toHaveStyle({ height: 80 });
-    } finally {
-      await setFontScale(1);
-    }
+    await render(<PlayerSeekBar scale={controlScale('md', 2, 280)} />);
+    expect(screen.getByRole('adjustable')).toHaveStyle({ height: 58 });
+    await screen.rerender(<PlayerSeekBar scale={controlScale('md', 2, 600)} />);
+    expect(screen.getByRole('adjustable')).toHaveStyle({ height: 80 });
   });
 
   it('is the current chapter, seeking in the whole book', async () => {

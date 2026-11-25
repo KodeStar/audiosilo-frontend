@@ -71,6 +71,7 @@ jest.mock('./use-playing-pins', () => ({ usePlayingPins: () => ({ bookmarks: [],
 jest.mock('./transport-controls', () => {
   const { Text: T } = jest.requireActual('react-native');
   return {
+    controlScale: jest.requireActual('./transport-controls').controlScale,
     TransportControls: ({ size, room }: { size: string; room: number }) => (
       <T testID="transport" accessibilityHint={String(room)}>{`transport ${size}`}</T>
     ),

@@ -21,7 +21,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { headFraction, Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
 import { barCountFor, barsPath, seekBars } from './seek-texture';
-import { CONTROL_MAX_SCALE, controlScale, type TransportSize } from './transport-controls';
+import { CONTROL_MAX_SCALE } from './transport-controls';
 import { SEGMENT_LABEL, type SegmentKind, usePlayingSegment } from './use-playing-segment';
 
 /** The bars' band at the default text size (`scale` grows it). */
@@ -380,16 +380,16 @@ export function PlayerSeekBar({
   hoverTip,
   timesHidden = false,
   bars,
-  room,
-  transportSize = 'md',
+  scale: controlsScale,
 }: {
   bookmarks?: readonly number[];
   onTip?: (showing: boolean) => void;
   hoverTip?: boolean;
   timesHidden?: boolean;
   bars?: number;
-  room?: number;
-  transportSize?: TransportSize;
+  /** The transport's control scale (`controlScale`), so the band grows with it; the text
+   * scale when not given. */
+  scale?: number;
 }) {
   const { t } = useTranslation();
   const bookKey = usePlayer(selectBookKey);
@@ -406,7 +406,8 @@ export function PlayerSeekBar({
     onSeek,
     bookmarks: inSegment,
   } = usePlayingSegment(bookmarks, { hold: scrub !== null });
-  const scale = controlScale(transportSize, useFontScale(), room);
+  const fontScale = useFontScale();
+  const scale = controlsScale ?? fontScale;
   if (!bookKey) return null;
 
   return (

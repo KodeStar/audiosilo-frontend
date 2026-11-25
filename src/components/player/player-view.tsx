@@ -21,7 +21,7 @@ import { Text } from '@/components/ui/text';
 import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { chapterLabel } from '@/lib/chapter-label';
 import { useLayout } from '@/lib/layout';
-import { linesFor, useLargeText } from '@/lib/text-scale';
+import { linesFor, useFontScale, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { prettifyChapterTitle } from '@/playback/prettify-title';
 import { selectCurrentChapter, selectIsPlaying, usePlayer } from '@/playback/store';
@@ -52,7 +52,7 @@ import {
 } from './player-view-model';
 import { PlayerSeekBar } from './seek-bar';
 import { trackLabel } from './transport';
-import { TransportControls } from './transport-controls';
+import { controlScale, TransportControls } from './transport-controls';
 import { useUndoVisible } from './undo-chip';
 import { usePlayingPins } from './use-playing-pins';
 
@@ -151,6 +151,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const insets = useSafeAreaInsets();
   const { width: windowWidth, height } = useWindowDimensions();
   const [width, setWidth] = useState(0);
+  const fontScale = useFontScale();
   const layout = playerLayout(width, useLayout());
   const phone = layout === 'phone';
   const desktop = layout === 'desktop';
@@ -178,7 +179,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // the rest leaves (measured), so the player fits a phone without scrolling; the column
   // scrolls only once the slot is at its minimum.
   const [coverSlot, setCoverSlot] = useState(0);
-  const [room, setRoom] = useState(0);
+  // The controls column's width, which the transport (grown with the text size) must fit.
+  const [column, setColumn] = useState(0);
 
   // Entrance: the cover scales up and fades in, the titles and the controls rise after
   // it, once per open (the view stays mounted as chapters change). Reduced motion
@@ -217,7 +219,11 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const bottomPad = insets.bottom + (phone ? 12 : 24);
   const coverSize = phone ? phoneCoverSize(w, coverSlot) : playerCoverSize(layout, w, height);
   const columnMax = desktop ? 640 : 560;
+  // Until the column is laid out, its width at a 16 px root, so the first frame fits.
+  const room =
+    column || Math.min(columnMax, desktop ? w - COMPANION_WIDTH - 80 : w - (phone ? 40 : 96));
   const transportSize = phone ? 'md' : 'lg';
+  const controlsScale = controlScale(transportSize, fontScale, room);
   const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
 
   const main = (
@@ -241,7 +247,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
       <Animated.View
         style={restStyle}
         className="w-full items-center gap-3"
-        onLayout={(e) => setRoom(e.nativeEvent.layout.width)}
+        onLayout={(e) => setColumn(e.nativeEvent.layout.width)}
         testID="player-controls-column"
       >
         <PlayerTitles phone={phone} onChapters={onChapters} />
@@ -258,8 +264,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         </View>
         <View className="w-full gap-3">
           <PlayerSeekBar
-            room={room}
-            transportSize={transportSize}
+            scale={controlsScale}
             bookmarks={pins.bookmarks}
             bars={phone ? 56 : 96}
             onTip={setTip}
