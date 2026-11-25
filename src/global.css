@@ -322,17 +322,19 @@
 }
 
 /* Display titles in design pixels. Native scales the text itself and the web
- * supplies the capped unit from Text. */
+ * supplies the capped unit from Text. Outside a display Text there is no unit: the
+ * fallback, a rem's px, follows the browser font as the native text follows its scale
+ * (an unset variable would leave the size the parent's). */
 @utility text-display-* {
   font-size: calc(--value(integer) * 1px);
   @variant web {
-    font-size: calc(--value(integer) * var(--display-px));
+    font-size: calc(--value(integer) * var(--display-px, 0.0625rem));
   }
 }
 @utility leading-display-* {
   line-height: calc(--value(integer) * 1px);
   @variant web {
-    line-height: calc(--value(integer) * var(--display-px));
+    line-height: calc(--value(integer) * var(--display-px, 0.0625rem));
   }
 }
 
