@@ -44,11 +44,7 @@ export function IdentityCard({
     <Card className="flex-row flex-wrap items-center gap-x-4 gap-y-3">
       <Portrait name={name} kind="user" size={64} />
       <View className="min-w-[160px] flex-1 gap-1">
-        <Text
-          variant="display"
-          numberOfLines={1}
-          className="text-2xl leading-7 web:leading-display-28"
-        >
+        <Text variant="display" numberOfLines={1} className="text-2xl leading-display-28">
           {name}
         </Text>
         {lines.map((line) =>

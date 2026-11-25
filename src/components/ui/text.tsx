@@ -135,17 +135,18 @@ export function Text({ variant = 'body', className, style, level, ...props }: Ap
           'aria-level': level ?? headingLevelFor(variant),
         } as TextProps)
       : null;
+  const display = isDisplay(variant);
+  const base =
+    display && Platform.OS === 'web'
+      ? WEB_DISPLAY_STYLE
+      : TABULAR.has(variant)
+        ? tabularNums
+        : null;
   return (
     <RNText
       className={cn(variants[variant], contextClass, className)}
-      style={
-        Platform.OS === 'web' && isDisplay(variant)
-          ? [WEB_DISPLAY_STYLE, style]
-          : TABULAR.has(variant)
-            ? [tabularNums, style]
-            : style
-      }
-      maxFontSizeMultiplier={isDisplay(variant) ? DISPLAY_MAX_FONT_SCALE : undefined}
+      style={base ? [base, style] : style}
+      maxFontSizeMultiplier={display ? DISPLAY_MAX_FONT_SCALE : undefined}
       {...heading}
       {...props}
     />
