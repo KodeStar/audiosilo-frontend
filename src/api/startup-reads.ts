@@ -18,10 +18,11 @@ import { qk } from './query-keys';
 import type { BookPage, Capabilities, Library, Progress, StatsRange } from './types';
 
 type MaybeClient = ApiClient | null | undefined;
-type Page = 'shell' | 'homeAndLibrary' | 'home' | 'library';
+/** The page a read is asked for at a cold start (`startupQueries`). */
+export type StartupPage = 'shell' | 'homeAndLibrary' | 'home' | 'library';
 type StartupMeta = {
   startup: true;
-  page?: Page;
+  page?: StartupPage;
   capability?: keyof Capabilities;
   owner?: 'default' | 'queue';
 };
@@ -40,7 +41,10 @@ export type StartupRead = {
   ask: (client: QueryClient) => Promise<void>;
 };
 
-function read<T, K extends QueryKey>(options: FetchQueryOptions<T, Error, T, K>): StartupRead {
+/** A startup read of `options`: its key and meta, asked with `prefetchQuery`. */
+export function startupRead<T, K extends QueryKey>(
+  options: FetchQueryOptions<T, Error, T, K>,
+): StartupRead {
   return {
     queryKey: options.queryKey,
     meta: options.meta as StartupMeta | undefined,
@@ -69,14 +73,14 @@ function onConnection<T, K extends QueryKey>(
   { cid, api }: ReadInputs,
   make: (cid: string, api: MaybeClient) => FetchQueryOptions<T, Error, T, K>,
 ) {
-  return read(make(cid, api));
+  return startupRead(make(cid, api));
 }
 
 function inLibrary<T, K extends QueryKey>(
   { cid, api, libraryId }: ReadInputs,
   make: (cid: string, api: MaybeClient, lib: number) => FetchQueryOptions<T, Error, T, K>,
 ) {
-  return read(make(cid, api, libraryId));
+  return startupRead(make(cid, api, libraryId));
 }
 
 /** `/server`: the version and flags don't change within a session. Kept while nothing
@@ -163,7 +167,7 @@ export const recentQuery = declareRead(
       meta: (limit === RECENT_LIMIT ? { ...STARTUP, page: 'home' } : STARTUP) satisfies StartupMeta,
       queryFn: client ? ({ signal }) => client.recentBooks(limit, signal) : skipToken,
     }),
-  ({ cid, api, recentLimit }, make) => read(make(cid, api, recentLimit)),
+  ({ cid, api, recentLimit }, make) => startupRead(make(cid, api, recentLimit)),
 );
 
 /** The caller's favourites on a server. */
@@ -246,7 +250,7 @@ export const myStatsQuery = declareRead(
         : undefined) satisfies StartupMeta | undefined,
       queryFn: client ? ({ signal }) => client.myStats(range, signal) : skipToken,
     }),
-  ({ cid, api }, make) => read(make(cid, api, STATS_HOME_RANGE)),
+  ({ cid, api }, make) => startupRead(make(cid, api, STATS_HOME_RANGE)),
 );
 
 export const myListeningQuery = declareRead(
@@ -258,7 +262,7 @@ export const myListeningQuery = declareRead(
         : undefined) satisfies StartupMeta | undefined,
       queryFn: client ? ({ signal }) => client.myListening(range, signal) : skipToken,
     }),
-  ({ cid, api }, make) => read(make(cid, api, LISTENING_HOME_RANGE)),
+  ({ cid, api }, make) => startupRead(make(cid, api, LISTENING_HOME_RANGE)),
 );
 
 export const listeningGoalQuery = declareRead(
@@ -289,14 +293,8 @@ export const householdQuery = declareRead(
 
 /** Readers share these options with the cold start. The metadata on each option
  * chooses its page, connection and capability. Cache-only reads have no page. */
-export function startupReads(
-  cid: string,
-  api: MaybeClient,
-  libraryId: number,
-  memberships = false,
-  recentLimit = RECENT_LIMIT,
-): StartupRead[] {
-  const inputs = { cid, api, libraryId, memberships, recentLimit };
+export function startupReads(cid: string, api: MaybeClient, libraryId: number): StartupRead[] {
+  const inputs = { cid, api, libraryId, memberships: false, recentLimit: RECENT_LIMIT };
   return factories.map((make) => make(inputs));
 }
 
@@ -349,7 +347,8 @@ export const seriesListQuery = declareRead(
         ? ({ signal }: { signal: AbortSignal }) => client.seriesList(lib, { memberships }, signal)
         : skipToken,
     }) as const,
-  ({ cid, api, libraryId, memberships }, make) => read(make(cid, api, libraryId, memberships)),
+  ({ cid, api, libraryId, memberships }, make) =>
+    startupRead(make(cid, api, libraryId, memberships)),
 );
 
 let storedByHead: Map<unknown, typeof factories> | undefined;

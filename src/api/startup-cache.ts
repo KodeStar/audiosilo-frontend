@@ -1,4 +1,4 @@
-import type { InfiniteData, QueryClient } from '@tanstack/react-query';
+import type { InfiniteData, Query, QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
 import type { MyDevice } from './types';
@@ -110,6 +110,12 @@ function pickFields(
   return Object.fromEntries(fields.filter((f) => rec[f] !== undefined).map((f) => [f, rec[f]]));
 }
 
+/** Whether `query` is one the startup cache keeps: marked `meta.startup`, or a manually
+ * seeded one (including a restored one) with no options yet whose key a marked spec emits. */
+function isStartupQuery(query: Query): boolean {
+  return query.meta?.startup === true || (!query.options.queryFn && !!startupMeta(query.queryKey));
+}
+
 /** The kept entries of `client`'s cache: each startup query's last answer (of an infinite
  * one only the first page, the one a reload starts from), of the queries `keep` takes. */
 export function snapshot(
@@ -121,9 +127,7 @@ export function snapshot(
   for (const q of client.getQueryCache().getAll()) {
     // The last answer, also when the latest ask failed (a server down for a moment).
     if (q.state.data === undefined) continue;
-    // A manually seeded query (including a restored one) may have no options yet.
-    const startup = q.meta?.startup === true || (!q.options.queryFn && !!startupMeta(q.queryKey));
-    if (!startup || !keep(q.queryKey)) continue;
+    if (!isStartupQuery(q) || !keep(q.queryKey)) continue;
     if (q.queryKey[0] === PROGRESS_BOOKS) continue; // rebuilt below
     // The startup cache keeps only `['progress', 'all', cid]` of the progress queries.
     const cid = q.queryKey[2];
@@ -354,8 +358,7 @@ export function startSaving(
     // The kept progress-row books are set by the save itself: never a reason to save again.
     if (key[0] === PROGRESS_BOOKS) return;
     const startup =
-      event.query.meta?.startup === true ||
-      (event.action.manual && !event.query.options.queryFn && !!startupMeta(key));
+      isStartupQuery(event.query) && (event.query.meta?.startup === true || event.action.manual);
     if (!startup && !(key[0] === 'item' && onProgressRow(client, key))) return;
     dirty = true;
     if (timer) clearTimeout(timer);

@@ -1,11 +1,12 @@
-import type { QueryClient, QueryKey } from '@tanstack/react-query';
+import type { QueryClient } from '@tanstack/react-query';
 
 import type { ApiConnection } from '@/api/provider';
-import { qk } from '@/api/query-keys';
 import {
   librariesQuery,
   serverInfoQuery,
+  startupRead,
   startupReads,
+  type StartupPage,
   type StartupRead,
 } from '@/api/startup-reads';
 import type { Library, ServerInfo } from '@/api/types';
@@ -33,10 +34,8 @@ import { profileConnections } from '@/stores/profiles';
 export const STARTUP_WAIT_MS = 200;
 
 /** One answer the first screen reads: its cache key, and how to ask for it. */
-export type StartupQuery = {
-  queryKey: QueryKey;
+export type StartupQuery = Omit<StartupRead, 'meta'> & {
   enabled?: (client: QueryClient) => boolean;
-  ask: (client: QueryClient) => Promise<void>;
 };
 
 /** The page a load opens on, as far as its first answers go. */
@@ -55,7 +54,7 @@ export function startPage(pathname: string, mode?: string | null): StartPage {
  * waiting, provided the connection is still visible and the answer allows it. */
 function afterAnswer<T>(
   read: StartupRead,
-  dependency: { queryKey: QueryKey; ask: (qc: QueryClient) => Promise<void> },
+  dependency: StartupRead,
   allows: (data: T) => boolean,
   current: () => boolean,
 ): StartupQuery {
@@ -71,6 +70,13 @@ function afterAnswer<T>(
       if (phase === 'waiting' && permitted(qc) && current()) await read.ask(qc);
     },
   };
+}
+
+/** Whether a read marked for `readPage` is asked on a load opening on `page`. */
+function opensOn(readPage: StartupPage, page: StartPage): boolean {
+  if (readPage === 'shell') return true;
+  if (readPage === 'homeAndLibrary') return page !== 'other';
+  return readPage === page;
 }
 
 /** Build the first page's reads from the same marked options its components observe. */
@@ -91,13 +97,7 @@ export function startupQueries(
       );
     for (const read of startupReads(cid, client, selected)) {
       const meta = read.meta;
-      if (!meta?.page) continue;
-      if (
-        meta.page === 'homeAndLibrary'
-          ? page === 'other'
-          : meta.page !== 'shell' && meta.page !== page
-      )
-        continue;
+      if (!meta?.page || !opensOn(meta.page, page)) continue;
       if (
         (meta.owner === 'default' && defaultCid !== cid) ||
         (meta.owner === 'queue' && queueCid !== cid)
@@ -108,10 +108,7 @@ export function startupQueries(
         out.push(
           afterAnswer<ServerInfo>(
             read,
-            {
-              queryKey: qk.server(cid),
-              ask: (qc) => qc.prefetchQuery(serverInfoQuery(cid, client)),
-            },
+            startupRead(serverInfoQuery(cid, client)),
             (info) => info.capabilities?.[flag] === true,
             current,
           ),
@@ -121,10 +118,7 @@ export function startupQueries(
         out.push(
           afterAnswer<Library[]>(
             read,
-            {
-              queryKey: qk.libraries(cid),
-              ask: (qc) => qc.prefetchQuery(librariesQuery(cid, client)),
-            },
+            startupRead(librariesQuery(cid, client)),
             (libs) => libs.some((lib) => lib.id === selected && !isPodcastLibrary(lib)),
             current,
           ),

@@ -168,11 +168,9 @@ export { qk } from './query-keys';
 export {
   allProgressQuery,
   collectionsQuery,
-  favouritesQuery,
   fetchLibraries,
   librariesQuery,
   libraryBooksQuery,
-  myDevicesQuery,
   myStatsQuery,
   queueQuery,
   recentQuery,

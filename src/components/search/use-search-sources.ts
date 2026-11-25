@@ -96,13 +96,7 @@ export function usePeopleSources(enabled: boolean): PeopleSources {
           : kind === 'narrators'
             ? narratorsQuery(cid, api, lib)
             : seriesListQuery(cid, api, lib, memberships);
-      return {
-        queryKey: spec.queryKey,
-        queryFn: spec.queryFn,
-        meta: spec.meta,
-        enabled,
-        staleTime: BROWSE_STALE_MS,
-      };
+      return { ...spec, enabled, staleTime: BROWSE_STALE_MS };
     }),
     combine: (results): PeopleSources => {
       const authors: PeopleSources['authors'] = [];
