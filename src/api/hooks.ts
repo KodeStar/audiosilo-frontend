@@ -2276,9 +2276,9 @@ export function useDeleteRating(connectionId?: string) {
  * mark finished or unfinished, move the position, set or clear the dates. The cache
  * takes the stored progress under `qk.progress` and as its row of the all-progress
  * list. The stats and the goal's finished count are read again when the edit could
- * move a finish (it names `finished` or `finished_at`), and the book's spoilers=hide
- * metadata when it could move the saved progress it is cut at (`finished` or
- * `position`). To mark unfinished a book finished at its end, send a `position` too
+ * move a finish (it names `finished` or `finished_at`), once with the edits queued behind
+ * it (`announceFinishEdits`), and the book's spoilers=hide metadata when it could move the
+ * saved progress it is cut at (`finished` or `position`). To mark unfinished a book finished at its end, send a `position` too
  * (see {@link ProgressEdit}).
  *
  * Server-side only: it does NOT touch the player's local progress mirror or offline
@@ -2343,11 +2343,11 @@ function noteFinishEdit(cid: string, progress: Progress, finished: boolean) {
  * edit of the connection is still to run: the stats and the goal read again once for them
  * all, and each book an edit finished told to the other tabs, which read their caches again
  * (`tellFinishChangedElsewhere`), as a Sync v2 delivery does (an Undo, or Mark as not
- * finished, tells them from the store as it puts this device's record back: `undoFinish`). A legacy server's finishes
- * queued offline are edits the reconnect replays one at a time (one scope per connection):
- * announced per edit, each refreshed the stats and goal over the last, and no other tab heard
- * of any. Offline, what landed is announced now: the edits still waiting run once the
- * network is back. Called as each edit settles, landed or not.
+ * finished, tells them from the store as it puts this device's record back: `undoFinish`).
+ * A legacy server's finishes queued offline are edits the reconnect replays one at a time
+ * (one scope per connection): announced per edit, each refreshed the stats and goal over the
+ * last, and no other tab heard of any. Offline, what landed is announced now: the edits still
+ * waiting run once the network is back. Called as each edit settles, landed or not.
  */
 function announceFinishEdits(qc: QueryClient, cid: string) {
   const books = finishEdits.get(cid);
