@@ -4360,7 +4360,9 @@ async function createService(): Promise<PlaybackService> {
     // A load or a start still on its way keeps it (`runDueSwap`).
     if (swapDue !== null && svc.reportedBook?.()) void Promise.resolve().then(runDueSwap);
     // Reached online (the network came back while it played): it plays on, streaming the
-    // rest, when its server answers; else the listener is told.
+    // rest, when its server answers; else the listener is told. A network still unknown counts
+    // as none here, as it does for the queue (`offlineShort` in `playBook`): a play-on would
+    // only load the same short queue again, at its end.
     if (partialEnd && prev.state !== 'paused') {
       const cid = usePlayer.getState().nowPlaying?.connectionId ?? '';
       if (isDeviceOnline() && isReachable(cid) && resolveClient(cid)) {
@@ -4809,9 +4811,13 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
         // to be unreachable, else for `DOWNLOADED_PLACE_WAIT_MS` (a frozen server held a car's
         // start for the whole request timeout, and the car gave up on it). Started from this
         // device's records, as offline: its saves go guarded (`unchecked`, fe#198). A server
-        // that answers later is followed once the book is loaded (`followLatePlace`).
+        // that answers later is followed once the book is loaded (`followLatePlace`). A network
+        // still unknown after the first reading's wait is asked within that bound: only a known
+        // "no network" skips it, so another device's newer place is still followed.
         const placeApi =
-          dl && (!(isDeviceOnline() ?? online) || !isReachable(connectionId)) ? null : clientNow();
+          dl && ((isDeviceOnline() ?? online) === false || !isReachable(connectionId))
+            ? null
+            : clientNow();
         const r = await loadInitialProgress(
           placeApi,
           connectionId,

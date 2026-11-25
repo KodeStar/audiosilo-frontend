@@ -5847,8 +5847,10 @@ under their empty state).
   online, a network Android can't name (`type: UNKNOWN`) included, and the first read never
   undoes a change the listener told before it landed). `isDeviceOnline()` returns
   undefined while the native network is unknown. A downloaded book waits up to 750 ms
-  for the first reading, then uses its manifest if the reading is still unknown. Other
-  API requests can proceed. An iOS one-shot negative at its five-second timeout leaves
+  for the first reading, then uses its manifest if the reading is still unknown (its queue
+  too, as offline). Its resume still asks the server's place then, within
+  `DOWNLOADED_PLACE_WAIT_MS`: only a known "no network" skips that read. Other API
+  requests can proceed. An iOS one-shot negative at its five-second timeout leaves
   the state unknown. An HTTP response can correct a probe, and an offline monitor event
   takes precedence over a request finishing in flight. On every platform the same source drives TanStack's `onlineManager`
   (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; on the web it replaced
