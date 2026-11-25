@@ -260,6 +260,12 @@ describe('TopBar', () => {
     expect(screen.getByText('upnext-bar')).toBeTruthy();
   });
 
+  it('is at least 64 tall, so larger text grows it rather than cutting the name', async () => {
+    await render(<TopBar />);
+    expect(screen.getByTestId('top-bar-row').props.className).toContain('min-h-[64px]');
+    expect(screen.getByTestId('top-bar-row').props.className).not.toMatch(/(^| )h-\[64px\]/);
+  });
+
   it('drops the destination labels on a tablet', async () => {
     mockLayout = 'tablet';
     await render(<TopBar />);
