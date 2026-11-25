@@ -1,7 +1,7 @@
-import { appPath, servedOrigin } from '@/lib/base-url';
+import { appPath, productionWebOrigin } from '@/lib/base-url';
 import { firstParam } from '@/lib/paths';
 
-import { takeOidcIntent } from './oidc-intent';
+import { clearHeldOidcIntent } from './oidc-intent';
 
 /**
  * Telling a single sign-on's return (`oidc-sign-in.ts`) from any other page load. Its own
@@ -17,7 +17,7 @@ export function oidcReturnOrigin(
   oidc: string | string[] | undefined,
   token?: string | string[],
 ): string | null {
-  return !token && firstParam(oidc) === '1' ? servedOrigin() : null;
+  return !token && firstParam(oidc) === '1' ? productionWebOrigin() : null;
 }
 
 /** The key of the flow a single sign-on's return names (`/connect?oidc=1&flow=<key>`): the
@@ -37,9 +37,9 @@ export const oidcReturnCleared = { oidc: undefined, flow: undefined } as const;
  * address itself (`oidcReturnOrigin`'s rule, on the flow's first step: the one route that
  * finishes it, so `?oidc=1` on any other of the flow's routes is no return): the connect
  * flow's layout must know before any route's params reach it, to put back what the flow was
- * for (`takeOidcIntent`). */
+ * for (`peekOidcIntent`). */
 export function oidcReturnOnLoad(): boolean {
-  if (!servedOrigin()) return false;
+  if (!productionWebOrigin()) return false;
   const at = globalThis.location;
   if (appPath(at?.pathname ?? '').replace(/\/+$/, '') !== '/connect') return false;
   const q = new URLSearchParams(at?.search ?? '');
@@ -63,5 +63,5 @@ export function oidcReturnOnLoad(): boolean {
  * for it (audiosilo#202). Only the return itself keeps the intent, for the layout to take.
  */
 export function endOidcTripOnLoad(): void {
-  if (!oidcReturnOnLoad()) void takeOidcIntent(false);
+  if (!oidcReturnOnLoad()) clearHeldOidcIntent();
 }

@@ -15,7 +15,7 @@ import { sameOrigin } from '@/lib/same-origin';
  * the return would be turned away by kids mode, sign in as the person listening, or end on
  * the library. The sign-in step writes them to this tab's `sessionStorage` as it leaves
  * (`holdOidcIntent`); the connect flow's layout takes them once as it opens on the return
- * (`takeOidcIntent`). Only script on the player's own origin writes
+ * (`peekOidcIntent`, `clearHeldOidcIntent`). Only script on the player's own origin writes
  * there, never a link.
  *
  * The connection a reconnect re-pairs goes too, with the address its sign-in step signed in
@@ -115,33 +115,25 @@ export function holdOidcIntent(book?: ConnectBook, reconnect?: OidcReconnect): s
   }
 }
 
-/**
- * The intent held before the trip, taken (read and removed) as the connect flow opens on a
- * page load: what it was when this load is the provider's return (`returning`) and it was
- * held within `MAX_AGE_MS`, else null. Either way it is gone, so a trip abandoned at the
- * provider leaves nothing for a later flow. The layout reads it as it renders
- * (`peekOidcIntent`) and takes it once it is on screen (`useHandoff`): a first render that
- * is thrown away and run again must still find it.
- */
-export function takeOidcIntent(returning: boolean): OidcIntent | null {
-  const held = peekOidcIntent(returning);
+/** The layout has read the held trip, or a different page load ended it. */
+export function clearHeldOidcIntent(): void {
   try {
     storage()?.removeItem(KEY);
   } catch {
     // Refused storage holds nothing.
   }
-  return held;
 }
 
-/** `takeOidcIntent`'s answer, left in the tab (`useHandoff`). */
-export function peekOidcIntent(returning: boolean): OidcIntent | null {
+/** The intent still held in this tab for a return. The layout clears it after mounting
+ * so a render that is thrown away and run again can read it too. */
+export function peekOidcIntent(): OidcIntent | null {
   let raw: string | null = null;
   try {
     raw = storage()?.getItem(KEY) ?? null;
   } catch {
     return null;
   }
-  if (!returning || !raw) return null;
+  if (!raw) return null;
   try {
     const v = JSON.parse(raw) as Record<string, unknown>;
     const age = typeof v.at === 'number' ? Date.now() - v.at : NaN;
@@ -239,9 +231,5 @@ export function takeOidcResumed(origin: string): { book?: ConnectBook; reconnect
 export function dropOidcIntent(): void {
   resumed = {};
   pass = null;
-  try {
-    storage()?.removeItem(KEY);
-  } catch {
-    // Refused storage holds nothing.
-  }
+  clearHeldOidcIntent();
 }

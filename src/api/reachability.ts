@@ -31,15 +31,12 @@ let clients: Map<string, ApiClient> = new Map();
 let probe: ReturnType<typeof setInterval> | null = null;
 let probing = false;
 const PROBE_MS = 20_000;
-const reconnectHandlers = new Set<(connectionId: string) => void>();
+type ReconnectHandler = (connectionId: string, answeredQuery?: readonly unknown[]) => void;
+const reconnectHandlers = new Set<ReconnectHandler>();
 /** Each connection's check in flight (`checkReachability`, one at a time) and the client
  * it asks through. Removal drops the entry, so a check that outlives its connection
  * records nothing. */
-const checking = new Map<string, ApiClient>();
-/** How many answers each connection's server has given (every `setOnline(id, true)`, and
- * every HTTP response its client got: `noteAnswer`), so a check that got none can tell
- * another request was answered while it waited. */
-const answers = new Map<string, number>();
+const checking = new Map<string, { client: ApiClient; answered: boolean }>();
 /** Connections whose check in flight must run again once it ends without an answer: a
  * query succeeded meanwhile (`recheckReachability`), so the check may be a stale one. */
 const recheck = new Set<string>();
@@ -82,28 +79,25 @@ export function firstOffline<C extends Pick<Connection, 'id' | 'needsReconnect'>
 
 /** Run `cb(connectionId)` whenever a connection's connectivity is restored. Returns an
  * unsubscribe fn. */
-export function onReconnect(cb: (connectionId: string) => void): () => void {
+export function onReconnect(cb: ReconnectHandler): () => void {
   reconnectHandlers.add(cb);
   return () => reconnectHandlers.delete(cb);
 }
 
 /**
  * The server of `connectionId` answered a request (any status; the ApiClient's
- * `onAnswer`). Counted only, the state is left alone: a check that got no answer then
+ * `onAnswer`). A check already waiting on this address then
  * leaves this server up (it is slow, not gone; FU-SLOWOK), while marking a down server up
  * stays the probe's job. `at`: the address that answered. An answer on an address the
  * connection no longer uses (a request sent before a home / away switch) says nothing of the
- * one it uses now, so it is not counted (fe#147).
+ * one it uses now. The check verifies its address again before marking the server down (fe#147).
  */
 export function noteAnswer(connectionId: string, at?: string): void {
-  if (at !== undefined) {
-    const now = clientFor(connectionId);
-    if (now && now.baseUrl !== at) return;
-  }
-  answers.set(connectionId, (answers.get(connectionId) ?? 0) + 1);
+  const check = checking.get(connectionId);
+  if (check && (at === undefined || at === check.client.baseUrl)) check.answered = true;
 }
 
-function setOnline(connectionId: string, online: boolean) {
+function setOnline(connectionId: string, online: boolean, answeredQuery?: readonly unknown[]) {
   if (online) noteAnswer(connectionId);
   const current = useReachability.getState().online;
   const prev = current[connectionId] ?? true;
@@ -115,7 +109,7 @@ function setOnline(connectionId: string, online: boolean) {
   useReachability.setState({ online: next });
   if (online) {
     if (!anyOffline(next)) stopProbe();
-    for (const cb of reconnectHandlers) cb(connectionId);
+    for (const cb of reconnectHandlers) cb(connectionId, answeredQuery);
   } else {
     startProbe();
   }
@@ -133,8 +127,8 @@ export function noteFailure(connectionId: string, e: unknown): void {
 }
 
 /** A completed request proves that connection's server is reachable. */
-export function noteSuccess(connectionId: string) {
-  setOnline(connectionId, true);
+export function noteSuccess(connectionId: string, answeredQuery?: readonly unknown[]) {
+  setOnline(connectionId, true, answeredQuery);
 }
 
 function startProbe() {
@@ -173,8 +167,8 @@ export async function checkReachability(connectionId: string): Promise<void> {
   if (checking.has(connectionId)) return;
   const client = clientFor(connectionId);
   if (!client) return; // connection gone; removal purges its state
-  checking.set(connectionId, client);
-  const answersBefore = answers.get(connectionId) ?? 0;
+  const check = { client, answered: false };
+  checking.set(connectionId, check);
   let answered: boolean | null = true;
   try {
     await client.serverInfo();
@@ -184,13 +178,13 @@ export async function checkReachability(connectionId: string): Promise<void> {
     answered = e instanceof UnexpectedServerAnswerError ? null : !isUnreachableError(e);
   }
   // Removed while it ran (removal drops its entry): nothing to record.
-  if (checking.get(connectionId) !== client) return;
+  if (checking.get(connectionId) !== check) return;
   checking.delete(connectionId);
   const again = recheck.delete(connectionId);
   const now = clientFor(connectionId);
   if (now && now.baseUrl === client.baseUrl) {
     if (answered) setOnline(connectionId, true);
-    else if (answered === false && (answers.get(connectionId) ?? 0) === answersBefore) {
+    else if (answered === false && !check.answered) {
       setOnline(connectionId, false);
     }
   } else if (now && !answered && isReachable(connectionId)) {
@@ -237,7 +231,6 @@ async function runProbe() {
 // longer exists.
 onConnectionRemoved((id) => {
   checking.delete(id);
-  answers.delete(id);
   recheck.delete(id);
   const current = useReachability.getState().online;
   if (!(id in current)) return;

@@ -57,11 +57,11 @@ jest.mock('@/components/connect/ready-screen', () => ({
     return <T>{`ready ${name}`}</T>;
   },
 }));
-// The page's own server (`servedOrigin`): null in the app and under Metro.
+// The page's own server (`productionWebOrigin`): null in the app and under Metro.
 let mockServed: string | null = null;
 jest.mock('@/lib/base-url', () => ({
   ...jest.requireActual('@/lib/base-url'),
-  servedOrigin: () => mockServed,
+  productionWebOrigin: () => mockServed,
 }));
 jest.mock('@/api/provider', () => ({
   ConnectionScope: ({ children }: { children: unknown }) => children,

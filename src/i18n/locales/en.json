@@ -494,6 +494,8 @@
         "waitOver": "Too many tries from this network. You can try again now.",
         "badCode": "That invite code didn't work. Check it, or ask your admin for a new invite.",
         "usedInvite": "This invite can't add another device: it is used up or has expired. Ask your admin for a new invite.",
+        "inviteMayBeUsedByThisDevice": "This device may already have used the invite. Sign in with your password or ask your admin for a new invite.",
+        "inviteUsedByThisDevice": "This invite was already used by this device. Sign in with your password or ask your admin for a new invite.",
         "inviteUsed": "This invite has been used on all the devices it allows. Ask your admin for a new invite.",
         "inviteExpired": "This invite has expired. Ask your admin for a new invite.",
         "badPassword": "The username or password is wrong. Check them and try again.",
@@ -540,6 +542,7 @@
       "hint": "Check the spelling and that the server is online. A home address like 192.168.1.20:8080 only works on the same network as the server.",
       "homeHint": "This is a home-network address, so it only answers on the same network as the server. Check that this device is on that network, and the spelling.",
       "selfSignedHint": "If the server uses its own (self-signed) certificate, update it, or on your home network enter its address without https://.",
+      "wrongApi": "The server address must serve the AudioSilo API at /api/v1/server. Check the address and the proxy settings.",
       "errorTitle": "The server answered with an error",
       "errorBody": "It said: {{message}}"
     },

@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-import { IS_DEV, onlyOwnServer, servedOrigin, webOrigin } from '@/lib/base-url';
+import { IS_DEV, onlyOwnServer, productionWebOrigin, webOrigin } from '@/lib/base-url';
 
 // base-url.ts branches on Platform.OS at call time, so we flip it per case.
 function setPlatform(os: string) {
@@ -37,7 +37,7 @@ describe('webOrigin', () => {
   });
 });
 
-describe('servedOrigin', () => {
+describe('productionWebOrigin', () => {
   const realWindow = globalThis.window;
 
   afterEach(() => {
@@ -52,7 +52,7 @@ describe('servedOrigin', () => {
     globalThis.window = {
       location: { origin: 'http://localhost:8081' },
     } as unknown as Window & typeof globalThis;
-    expect(servedOrigin()).toBeNull();
+    expect(productionWebOrigin()).toBeNull();
   });
 
   it('is the origin in a production web build, and null on native', () => {
@@ -66,9 +66,9 @@ describe('servedOrigin', () => {
         globalThis.window = {
           location: { origin: 'https://books.example.com/' },
         } as unknown as Window & typeof globalThis;
-        expect(prod.servedOrigin()).toBe('https://books.example.com');
+        expect(prod.productionWebOrigin()).toBe('https://books.example.com');
         setPlatform('ios');
-        expect(prod.servedOrigin()).toBeNull();
+        expect(prod.productionWebOrigin()).toBeNull();
       } finally {
         process.env.NODE_ENV = env;
       }
@@ -86,5 +86,6 @@ describe('onlyOwnServer', () => {
   it('is false with a server on another origin, or with no served origin', () => {
     expect(onlyOwnServer(ORIGIN, [ORIGIN, 'http://192.168.1.20:8080'])).toBe(false);
     expect(onlyOwnServer(null, [ORIGIN])).toBe(false);
+    expect(onlyOwnServer(ORIGIN, [])).toBe(false);
   });
 });

@@ -12,11 +12,21 @@ import { notifyQueriesSynchronously } from '@/testing/query-notify';
 const mockApis = [
   {
     connection: { id: 'a', name: 'Home' },
-    client: { favourites: jest.fn(), allProgress: jest.fn() },
+    client: {
+      favourites: jest.fn(),
+      allProgress: jest.fn(),
+      libraries: jest.fn(),
+      search: jest.fn(),
+    },
   },
   {
     connection: { id: 'b', name: "Maya's Shelf" },
-    client: { favourites: jest.fn(), allProgress: jest.fn() },
+    client: {
+      favourites: jest.fn(),
+      allProgress: jest.fn(),
+      libraries: jest.fn(),
+      search: jest.fn(),
+    },
   },
 ];
 jest.mock('@/api/provider', () => ({
@@ -32,7 +42,13 @@ jest.mock('@/playback/progress-sync', () => ({
 }));
 
 /* eslint-disable import/first */
-import { qk, useAllProgressAll, useFavouritesAll } from '@/api/hooks';
+import {
+  qk,
+  useAllProgressAll,
+  useFavouritesAll,
+  useLibrariesAll,
+  useSearchAll,
+} from '@/api/hooks';
 /* eslint-enable import/first */
 
 notifyQueriesSynchronously();
@@ -111,4 +127,16 @@ describe("a fan-out's unreadError", () => {
     expect(result.current.failed).toEqual([]);
     expect(result.current.unreadError).toBeNull();
   });
+});
+
+it('shows a failure on another server when the first server refuses sign-in', async () => {
+  for (const method of ['libraries', 'search', 'favourites'] as const) {
+    a[method].mockRejectedValue(new ApiError(401, 'signed out'));
+    b[method].mockRejectedValue(down);
+  }
+  const { result } = await renderHook(
+    () => [useLibrariesAll().error, useSearchAll('book').error, useFavouritesAll().error],
+    { wrapper },
+  );
+  await waitFor(() => expect(result.current).toEqual([down, down, down]));
 });

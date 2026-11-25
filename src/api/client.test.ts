@@ -12,6 +12,7 @@ jest.mock('@/lib/device-online', () => ({
 import {
   ApiClient,
   ApiError,
+  LegacyExchangeUnansweredError,
   apiErrorKind,
   isNotInLibraryError,
   isPlainSeriesQuery,
@@ -1823,6 +1824,45 @@ describe('ApiClient.login and the device id (fe#159)', () => {
       status: 400,
     });
     expect(bodies(noId)).toEqual([{ username: 'u', password: 'pw', device_name: 'Phone' }]);
+  });
+});
+
+describe('ApiClient.exchange with a device id', () => {
+  const client = new ApiClient('https://h');
+  const body = { pairing_token: 'pt', device_name: 'Phone' };
+
+  it('retries a strict older server once without the unknown field', async () => {
+    const fetchMock = installFetch((_url, init) =>
+      JSON.parse(String(init.body)).device_id
+        ? { status: 400, body: { error: 'pairing_token is required' } }
+        : { status: 200, body: { token: 'session', server_id: 's' } },
+    );
+    await expect(client.exchange('pt', 'Phone', 'device-1')).resolves.toMatchObject({
+      token: 'session',
+    });
+    expect(fetchMock.mock.calls.map(([, init]) => JSON.parse(String(init.body)))).toEqual([
+      { ...body, device_id: 'device-1' },
+      body,
+    ]);
+  });
+
+  it('identifies a lost reply to an older server’s id-less exchange', async () => {
+    const fetchMock = installFetch((_url, init) =>
+      JSON.parse(String(init.body)).device_id
+        ? { status: 400, body: { error: 'pairing_token is required' } }
+        : { status: 502, text: 'Bad gateway' },
+    );
+    await expect(client.exchange('pt', 'Phone', 'device-1')).rejects.toBeInstanceOf(
+      LegacyExchangeUnansweredError,
+    );
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([400, 401, 429, 503])('keeps the device binding on a %i', async (status) => {
+    const fetchMock = installFetch(() => ({ status, body: { error: 'refused' } }));
+    await expect(client.exchange('pt', 'Phone', 'device-1')).rejects.toMatchObject({ status });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(sent(fetchMock).body).toEqual({ ...body, device_id: 'device-1' });
   });
 });
 

@@ -10,7 +10,6 @@ import { PressableRow } from '@/components/ui/row-surface';
 import { Spinner } from '@/components/ui/spinner';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { touchTarget } from '@/components/ui/touch-target';
-import { servedOrigin } from '@/lib/base-url';
 import type { KnownServer } from '@/lib/known-servers';
 import { clothColor } from '@/lib/monogram';
 import { hostOf } from '@/lib/pairing';
@@ -73,7 +72,7 @@ export function ProbeNotice({
         ? probe.home
           ? t('connect.probe.homeHint')
           : t('connect.probe.hint')
-        : t('connect.probe.errorBody', { message: probe.message });
+        : probe.message;
   return (
     <Card
       testID="probe-notice"
@@ -216,13 +215,13 @@ export function addressesBody(name: string, t: TFunction): string {
 
 /** "Another server": back to the first step (only "Back" on the served player, which has no
  * other server to offer). */
-export function BackToStart({ onPress }: { onPress: () => void }) {
+export function BackToStart({ ownServer, onPress }: { ownServer: boolean; onPress: () => void }) {
   const { t } = useTranslation();
   const themed = useThemeColors();
   return (
     <Button variant="ghost" onPress={onPress} className="self-start">
       <Icon name="arrow-left" size={16} color={themed.foreground} />
-      <Text>{servedOrigin() ? t('nav.back') : t('onboarding.anotherServer')}</Text>
+      <Text>{ownServer ? t('nav.back') : t('onboarding.anotherServer')}</Text>
     </Button>
   );
 }

@@ -36,7 +36,7 @@ jest.mock('@/lib/device', () => ({ getDeviceName: () => 'Test device' }));
 let mockServed: string | null = null;
 jest.mock('@/lib/base-url', () => ({
   ...jest.requireActual('@/lib/base-url'),
-  servedOrigin: () => mockServed,
+  productionWebOrigin: () => mockServed,
 }));
 
 const mockApi = {
@@ -64,7 +64,7 @@ jest.mock('@/api/client', () => ({
     });
   },
 }));
-const { ApiError } = jest.requireActual('@/api/client');
+const { ApiError, LegacyExchangeUnansweredError } = jest.requireActual('@/api/client');
 
 const user: User = {
   id: 1,
@@ -127,7 +127,7 @@ it('an invite code: the redeem payload and the exchange answer teach the address
   await fireEvent.press(screen.getByRole('button', { name: 'Sign in' }));
   await waitFor(() => expect(mockReplace).toHaveBeenCalled());
   expect(mockApi.redeemCode).toHaveBeenCalledWith('7QX-4KD');
-  expect(mockApi.exchange).toHaveBeenCalledWith('pt', 'Test device');
+  expect(mockApi.exchange).toHaveBeenCalledWith('pt', 'Test device', await getSignInKey(AWAY));
   expect(conn('srv-1')).toMatchObject({
     name: 'Hearthside',
     addresses: { home: HOME, away: AWAY },
@@ -142,8 +142,22 @@ describe("an invite link's code (a scanned or pasted invite, #98)", () => {
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
     expect(mockApi.redeemCode).toHaveBeenCalledWith('ABCD-1234');
-    expect(mockApi.exchange).toHaveBeenCalledWith('pt', 'Test device');
+    expect(mockApi.exchange).toHaveBeenCalledWith('pt', 'Test device', await getSignInKey(AWAY));
     expect(conn('srv-1')?.name).toBe('Hearthside');
+  });
+
+  it("waits for the server's 401 mark before submitting a pasted invite", async () => {
+    let ready: (info: unknown) => void = () => {};
+    mockApi.serverInfo.mockImplementationOnce(() => new Promise((r) => (ready = r)));
+    mockApi.redeemCode.mockResolvedValue({ pairing_token: 'pt' });
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    await render(<SignInStep server={AWAY} initialCode="ABCD-1234" />);
+    await fireEvent(screen.getByPlaceholderText('Enter your invite code'), 'submitEditing');
+    expect(mockApi.redeemCode).not.toHaveBeenCalled();
+    await act(async () => ready({ capabilities: { unauthorized_mark: true } }));
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockMarks.at(-1)?.()).toBe(true);
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
   });
 
   it("never redeems it again from the field's return key while it is on its way", async () => {
@@ -305,31 +319,50 @@ describe('an invite whose exchange got no answer', () => {
       .mockRejectedValueOnce(new TypeError('Network request failed'))
       .mockResolvedValueOnce({ token: 's', server_id: 'srv-1', user });
     await render(<SignInStep server={AWAY} />);
-    await submitCode('ABCD');
+    await submitCode('V0 11-abcd');
     expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
-    await submitCode('ABCD');
+    await submitCode('uoil ABCD');
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
     expect(mockApi.exchange.mock.calls).toEqual([
-      ['pt', 'Test device'],
-      ['pt', 'Test device'],
+      ['pt', 'Test device', await getSignInKey(AWAY)],
+      ['pt', 'Test device', await getSignInKey(AWAY)],
     ]);
   });
 
-  it('redeems afresh when the kept token is refused (expired meanwhile)', async () => {
-    mockApi.redeemCode
-      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-1' })
-      .mockResolvedValueOnce({ server_name: 'Hearthside', pairing_token: 'pt-2' });
-    mockApi.exchange
-      .mockRejectedValueOnce(new ApiError(503, 'unavailable'))
-      .mockRejectedValueOnce(new ApiError(401, 'invalid or expired pairing token'))
-      .mockResolvedValueOnce({ token: 's', server_id: 'srv-1', user });
+  it.each([
+    ['invite_used_by_this_device', 'This invite was already used by this device.'],
+    [undefined, 'This device may already have used the invite.'],
+    ['invite_used', 'This device may already have used the invite.'],
+  ])(
+    'shows how to sign in after a refused retry (%s), without another redeem',
+    async (errorCode, message) => {
+      mockApi.redeemCode.mockResolvedValue({ pairing_token: 'pt' });
+      mockApi.exchange
+        .mockRejectedValueOnce(new TypeError('reply lost'))
+        .mockRejectedValue(new ApiError(401, 'used', errorCode));
+      await render(<SignInStep server={AWAY} />);
+      await submitCode('ABCD');
+      await screen.findByText('Sign in failed. Please try again.');
+      await submitCode('ABCD');
+      expect(await screen.findByText(message!, { exact: false })).toBeTruthy();
+      await submitCode('ABCD');
+      expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt', 'pt', 'pt']);
+      expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+      expect(mockReplace).not.toHaveBeenCalled();
+    },
+  );
+
+  it("never repeats an older server's id-less exchange when the answer was lost", async () => {
+    mockApi.redeemCode.mockResolvedValue({ pairing_token: 'pt' });
+    mockApi.exchange.mockRejectedValue(new LegacyExchangeUnansweredError());
     await render(<SignInStep server={AWAY} />);
     await submitCode('ABCD');
-    expect(await screen.findByText('Sign in failed. Please try again.')).toBeTruthy();
+    await screen.findByText(/This device may already have used/);
     await submitCode('ABCD');
-    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockApi.exchange.mock.calls.map((c) => c[0])).toEqual(['pt-1', 'pt-1', 'pt-2']);
+    await submitCode('ABCD');
+    expect(mockApi.redeemCode).toHaveBeenCalledTimes(1);
+    expect(mockApi.exchange).toHaveBeenCalledTimes(1);
   });
 
   it('never exchanges a kept token at another server', async () => {

@@ -602,8 +602,16 @@ link alike) ends on that book instead (`endConnect`, the one ending `finishConne
 when the device is already signed in as `uid` on `sid` (`signedInAs`) and the server still takes
 that stored token (`stillSignedIn`: `GET /me` through the connection's own client, never the
 link's base; `needsReconnect` is never stored, so a fresh tab can't tell otherwise), never for
-"Add someone"; an invalid `book` is ignored. A
-pairing link whose https base can't connect (a server on its own self-signed certificate) exchanges
+"Add someone"; an invalid `book` is ignored.
+
+Invite-code and QR sign-in read the chosen address's `/server` capabilities before submitting.
+A device can recover a lost invite exchange once within 60 seconds. It sends the same
+`pairing_token` and its per-address sign-in key as `device_id`. The server rotates the
+bearer on the original session. A marked `invite_used_by_this_device` names the spent
+retry. A strict older server can take a first exchange without the key. If that answer
+is lost, the player directs the listener to sign in or get a new invite.
+
+A pairing link whose https discovery can't connect (a server on its own self-signed certificate) exchanges
 once at the link's `home` instead (native only): only when that is plain http on the base's own
 host and port, never after an `ApiError` or a timeout, and only when the link names the server
 (`sid=<server_id>`, `PairingScan.serverId`; an older server's link has none, so no fallback) and
@@ -632,7 +640,7 @@ while a kids-mode pass waits; dropped as the screen leaves for another sign-in),
 that answers once the screen has gone is signed out again, never kept. Nothing in memory
 survives the page load, so what the flow is for (a grown-up's pass through kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
 (`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect
-layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
+layout takes it once as it opens (`peekOidcIntent`, only on the return: `oidcReturnOnLoad` reads
 the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and
 the book back once the profiles are read (`resumeConnectIntent`). The grown-up's pass is never
 put back by the address alone (typed within the stamp's 10 minutes of a trip abandoned at the
@@ -677,7 +685,7 @@ re-pair through one of a connection's own addresses keeps its paired `serverUrl`
 banner signs in through `effectiveUrl` and hands the sign-in step the connection it re-pairs in
 memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens: read as
 the screen renders and taken once it is on screen, `useHandoff`, as every hand-off of the flow is,
-the layout's `takeOidcIntent` too, since a first render can be thrown away and run again; never a
+the layout's `peekOidcIntent` too, since a first render can be thrown away and run again; never a
 `/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
 sign-in replaces), so a reset server reached through its away address still retires its dead
 identity. Whether that hand-off still re-pairs is decided once the server answered, by who
@@ -705,11 +713,12 @@ bounce when it opens and when it is back on top, never while the flow is over it
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new
 field there; Android edge to edge doesn't resize the window). The cascade panel is generated art:
-never put fake titles on it. **The served player** (`servedOrigin()`, `src/lib/base-url.ts`: a
-production web build, whose origin IS the server and whose CSP, `connect-src 'self'`, reaches no
-other) asks for no address: `/connect` asks its own origin who it is and shows the found card
+never put fake titles on it. **The served player** (its server sends `connect-src 'self'`, so it reaches only its own origin) asks for no address: `/connect` asks its own origin who it is and shows the found card
 (Sign in, Try the demo) with no field or remembered servers, falling back to the field filled with
-the origin only when that fails; "Add a server" (profile menu, Account) is hidden while every
+the origin when that fails. If the API path returns a 403, a 404 or no server identity,
+the browser checks the player document's policy separately: a static host leaves the field free
+for another server, while the served player shows the error at its own address.
+"Add a server" (profile menu, Account) is hidden while every
 connection is that origin (`onlyOwnServer`: a production build on a static host of its own, beside
 servers whose CORS let it in, still adds them) and the sign-in step's "Another server" reads "Back"
 and goes back (to the card, or to the app the reconnect banner was tapped in). Metro dev
@@ -2065,7 +2074,7 @@ rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `a
 true / false / undefined while a server's flags load; a non-kid server whose `/server` read
 failed, from `useCapabilitiesAllRead` (`useCapabilitiesAll` plus `failed` ids and `retry`, the
 same shared reads), is `unreadable`, settled and not loading, so a cold link never waits on it
-forever; `useUpcomingAvailable` reads only `available`; a failed read asked again stays
+forever; the You hub reads module flags and Upcoming eligibility from this same result; a failed read asked again stays
 `failed` while it is, `failedRead`, since a fetch with no data clears the query's error and
 only its `errorUpdateCount` still says it failed, so a Retry stays on screen, busy, rather
 than the section vanishing or a skeleton taking its place),
@@ -5193,7 +5202,7 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   Journal and Household (v2.5.1; Settings is the gear, Account the profile menu). Its sections are `StatsSection`,
   `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
   `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
-  `TabPageScroll` (below); the Journal and Settings scroll themselves. Upcoming (Track U2; `UpcomingContent`, `embedded` under the phone's title) and then an active module's sections follow the hub's own (`youExtraSections`; Slots, under Player modules): Upcoming only while `useUpcomingAvailable()` is true (a server offers it, not to a kid), else a link to it opens Stats. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
+  `TabPageScroll` (below); the Journal and Settings scroll themselves. Upcoming (Track U2; `UpcomingContent`, `embedded` under the phone's title) and then an active module's sections follow the hub's own (`youExtraSections`; Slots, under Player modules): Upcoming only while `useUpcomingEligibility().available` is true (a server offers it, not to a kid), else a link to it opens Stats. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
   "You" with a chart (`wideLabelKey`, `wideIcon`).
 - **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
   current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`

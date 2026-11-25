@@ -2,15 +2,8 @@ const mockDrop = jest.fn();
 jest.mock('./queue-drop', () => ({ dropFromQueue: (...a: unknown[]) => mockDrop(...a) }));
 jest.mock('@/playback/store', () => {
   const { create } = jest.requireActual('zustand');
-  const { contentKey } = jest.requireActual('@/lib/content-key');
   return {
     usePlayer: create(() => ({ nowPlaying: null, snapshot: { state: 'paused' } })),
-    selectBookKey: (s: {
-      nowPlaying: { connectionId: string; libraryId: number; path: string };
-    }) =>
-      s.nowPlaying
-        ? contentKey(s.nowPlaying.connectionId, s.nowPlaying.libraryId, s.nowPlaying.path)
-        : null,
   };
 });
 
@@ -52,4 +45,19 @@ it('also drops the path the start was asked for, when it is not the book path (#
   mockDrop.mockReset();
   dropStartedBook('c1', 1, 'Other/Queued', 'Other/Queued');
   expect(mockDrop).toHaveBeenCalledWith('c1', [{ library_id: 1, path: 'Other/Queued' }]);
+});
+
+it('drops a part of the loaded book only for an unresolved entry on that connection and library', () => {
+  usePlayer.setState({ nowPlaying: loaded } as never);
+  const part = loaded.path + '/Part';
+  dropStartedBook('c1', 1, part, part);
+  dropStartedBook('c1', 2, undefined, part);
+  dropStartedBook('c2', 1, undefined, part);
+  dropStartedBook('c1', 1, undefined, loaded.path + ' elsewhere');
+  expect(mockDrop).not.toHaveBeenCalled();
+  dropStartedBook('c1', 1, undefined, part);
+  expect(mockDrop).toHaveBeenCalledWith('c1', [
+    { library_id: 1, path: loaded.path },
+    { library_id: 1, path: part },
+  ]);
 });

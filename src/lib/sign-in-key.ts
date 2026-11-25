@@ -16,9 +16,8 @@ function readKeys(): Promise<Record<string, string>> {
 }
 
 /**
- * This install's own random key for a password sign-in at `serverUrl` (`device_id` on
- * `POST /auth/login`), so signing in again from it is not announced to the admin as a new
- * device (fe#159). One per server address, as the admin console's is one per origin: the
+ * This install's own random key for sign-in at `serverUrl` (`device_id` on login and exchange). A
+ * password sign-in can recognize the device, and an invite can replay a lost exchange. One per server address, as the admin console's is one per origin: the
  * server keeps it as a secret (hashed), so no server is ever sent the key another one knows
  * this install by. Never progress sync's device id either: that one goes with every save
  * and comes back in progress answers.

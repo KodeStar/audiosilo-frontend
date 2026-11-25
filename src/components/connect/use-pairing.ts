@@ -3,17 +3,24 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform } from 'react-native';
 
-import { ApiError, isProxyRefusal, isRefusedForGood, isSignedOutError } from '@/api/client';
+import {
+  ApiError,
+  LegacyExchangeUnansweredError,
+  isProxyRefusal,
+  isRefusedForGood,
+  isSignedOutError,
+} from '@/api/client';
 import { connectClientFor } from '@/api/connect-client';
 import { resolveClient } from '@/api/connection-clients';
 import { probeServerId } from '@/api/server-id-probe';
 import { connectForNewProfile } from '@/components/profiles/connect-intent';
 import { getDeviceName } from '@/lib/device';
 import type { PairingScan } from '@/lib/pairing';
+import { getSignInKey } from '@/lib/sign-in-key';
 import { useLatest } from '@/lib/use-latest';
 import { sessionHydrateFailed, useSession } from '@/stores/session';
 
-import { pairingFallback, selfSignedMayBeWhy, signedInAs, withFallback } from './connect-model';
+import { pairingFallback, selfSignedMayBeWhy, signedInAs } from './connect-model';
 import { endConnect, finishConnect } from './finish-connect';
 import { refusalWaitOver, sharedRefusalText, type WaitOver } from './sign-in-error';
 import { useRefusalError } from './use-refusal-error';
@@ -54,6 +61,8 @@ export function pairFailure(
 ): PairFailure {
   const refused = (message: string): PairFailure => ({ outcome: 'refused', message });
   const temporary = (message: string): PairFailure => ({ outcome: 'temporary', message });
+  if (e instanceof LegacyExchangeUnansweredError)
+    return refused(t('connect.signIn.errors.inviteMayBeUsedByThisDevice'));
   if (exchanged) return refused(t('connect.server.pairingSpent'));
   if (!(e instanceof ApiError)) {
     return temporary(
@@ -97,6 +106,13 @@ export type LinkPairing = {
   pair: (scan: PairingScan, reconnectId?: string) => Promise<PairOutcome>;
 };
 
+/** Keep a retry on the address and device key of the exchange whose answer may be lost. */
+type LinkExchange = {
+  scan: PairingScan;
+  address: string;
+  legacyError?: LegacyExchangeUnansweredError;
+};
+
 /**
  * Whether the server still takes the stored token of `connectionId` (`GET /me` through the
  * connection's own client, which flags a refused one for reconnect). `needsReconnect` is
@@ -120,8 +136,8 @@ async function stillSignedIn(connectionId: string): Promise<boolean> {
 
 /**
  * Pairing by link (a pairing QR, an invite link, a pasted link, a deep link): exchange
- * the link's token on the link's server for a session, with the server's own name (read
- * alongside, so the connection isn't named after its host), then `finishConnect` (which
+ * the link's token on the link's server for a session, after reading the server's own name and
+ * whether it marks every 401, then `finishConnect` (which
  * merges the link's addresses with the answer's). When the link's https base can't be
  * reached (a self-signed certificate the device can't trust), the exchange goes once to
  * the link's plain-http home address on the same host and port, only when home answers as
@@ -140,6 +156,8 @@ export function useLinkPairing(startPairing = false): LinkPairing {
   const [pairing, setPairing] = useState(startPairing);
   const [error, setError] = useRefusalError();
   const live = useRef(true);
+  const lastExchange = useRef<LinkExchange | null>(null);
+  const pairingRequests = useRef(new Map<string, Promise<PairOutcome>>());
   useEffect(() => {
     live.current = true;
     return () => {
@@ -149,89 +167,123 @@ export function useLinkPairing(startPairing = false): LinkPairing {
 
   // Stable (`useLatest`): the deep link's effect lists it, and a language switch must not
   // run the exchange again.
-  const pair = useLatest(async (scan: PairingScan, reconnectId?: string): Promise<PairOutcome> => {
-    setError(null);
-    setPairing(true);
-    // A link naming a book, for a user this device is already signed in as on its server
-    // (the console's "Listen in player": `signedInAs`) with a token the server still takes
-    // (`stillSignedIn`): the book opens with no exchange, and the unused token expires by
-    // itself (no second session, no "new device" notice). Not for "Add someone": the
-    // exchange's `finishConnect` switches to that person.
-    if (scan.book && scan.userId && scan.serverId && !connectForNewProfile()) {
-      // The connections first, when they never loaded (as `finishConnect` reads them).
-      if (sessionHydrateFailed()) await useSession.getState().hydrate();
-      const signedIn = signedInAs(useSession.getState().connections, scan.serverId, scan.userId);
-      if (signedIn && (await stillSignedIn(signedIn.id))) {
+  const pairOnce = useLatest(
+    async (scan: PairingScan, reconnectId?: string): Promise<PairOutcome> => {
+      setError(null);
+      setPairing(true);
+      // A link naming a book, for a user this device is already signed in as on its server
+      // (the console's "Listen in player": `signedInAs`) with a token the server still takes
+      // (`stillSignedIn`): the book opens with no exchange, and the unused token expires by
+      // itself (no second session, no "new device" notice). Not for "Add someone": the
+      // exchange's `finishConnect` switches to that person.
+      if (scan.book && scan.userId && scan.serverId && !connectForNewProfile()) {
+        // The connections first, when they never loaded (as `finishConnect` reads them).
+        if (sessionHydrateFailed()) await useSession.getState().hydrate();
+        const signedIn = signedInAs(useSession.getState().connections, scan.serverId, scan.userId);
+        if (signedIn && (await stillSignedIn(signedIn.id))) {
+          if (!live.current) return 'temporary';
+          endConnect(signedIn.id, scan.book);
+          return 'paired';
+        }
         if (!live.current) return 'temporary';
-        endConnect(signedIn.id, scan.book);
-        return 'paired';
       }
-      if (!live.current) return 'temporary';
-    }
-    // The token's exchange at `base`, with the server's name read alongside, and the proxy
-    // headers set it went out with (fe#167: the connection keeps the set that got it in).
-    const exchangeAt = async (base: string) => {
-      const { client, proxy } = connectClientFor(base);
-      const [session, info] = await Promise.all([
-        client.exchange(scan.token, getDeviceName()),
-        client.serverInfo().catch(() => null),
-      ]);
-      return { session, info, carried: proxy };
-    };
-    // The exchange is done: a failure after it is this device's (storing the connection),
-    // never a server that couldn't be reached.
-    let exchanged = false;
-    try {
-      // The link's https base could not connect (a server on its own certificate): its
-      // plain-http home address on the same host and port, once, when home answers as the
-      // link's server (`pairingFallback`). Native only: the web player keeps its own
-      // origin, and an https page can't call http. A session from any other server there
-      // is not kept (reported as the base not answering).
-      const {
-        answer: { session, info, carried },
-        base: answeredAt,
-      } = await withFallback(
-        scan.base,
-        async (base) => {
-          const answer = await exchangeAt(base);
-          if (base !== scan.base && answer.session.server_id !== scan.serverId) {
-            throw new Error('another server answered at the home address');
+      // Read the mark at the address about to receive the token. Pick a verified home
+      // fallback during discovery: once a POST goes out, switching addresses could spend
+      // another use with the sign-in key for that other address.
+      const readServer = async (base: string) => {
+        let marks: boolean | undefined;
+        const { client, proxy } = connectClientFor(base, undefined, () => marks);
+        try {
+          const info = await client.serverInfo();
+          marks = info.capabilities?.unauthorized_mark;
+          return { client, proxy, info, error: null };
+        } catch (error) {
+          return { client, proxy, info: null, error };
+        }
+      };
+      const last = lastExchange.current;
+      let attempt = last?.scan.token === scan.token && last.scan.base === scan.base ? last : null;
+      let exchanged = false;
+      try {
+        if (attempt?.legacyError) throw attempt.legacyError;
+        let answeredAt = attempt?.address ?? scan.base;
+        let target = await readServer(answeredAt);
+        if (
+          !attempt &&
+          live.current &&
+          target.error &&
+          !(target.error instanceof ApiError) &&
+          Platform.OS !== 'web'
+        ) {
+          let askedHome = false;
+          const home = await pairingFallback(scan, target.error, (base) => {
+            askedHome = true;
+            return probeServerId(base);
+          });
+          // Neither address answered as the link's server. Leave the choice open for Retry.
+          if (askedHome && !home) throw target.error;
+          if (home && live.current) {
+            answeredAt = home;
+            target = await readServer(home);
           }
-          return answer;
-        },
-        async (e) => {
-          if (!live.current || Platform.OS === 'web') return null;
-          const home = await pairingFallback(scan, e, probeServerId);
-          // Left while home was asked: the token goes nowhere more.
-          return live.current ? home : null;
-        },
-      );
-      exchanged = true;
-      if (!live.current) return 'temporary';
-      await finishConnect({
-        serverUrl: scan.base,
-        session,
-        linkAddresses: scan.addresses,
-        name: info?.name,
-        ...(answeredAt !== scan.base ? { answeredAt } : {}),
-        ...(reconnectId ? { reconnectId } : {}),
-        book: scan.book,
-        carried,
+        }
+        const { client, proxy: carried, info } = target;
+        const homeServer = (attempt?.scan ?? scan).serverId;
+        if (answeredAt !== scan.base && (!homeServer || info?.server_id !== homeServer)) {
+          throw new Error('home did not confirm the server in the pairing link');
+        }
+        const deviceId = await getSignInKey(answeredAt);
+        if (!live.current) return 'temporary';
+        attempt ??= { scan, address: answeredAt };
+        lastExchange.current = attempt;
+        const session = await client.exchange(scan.token, getDeviceName(), deviceId);
+        if (answeredAt !== scan.base && session.server_id !== homeServer) {
+          throw new Error('another server answered at home');
+        }
+        exchanged = true;
+        if (!live.current) return 'temporary';
+        await finishConnect({
+          serverUrl: scan.base,
+          session,
+          linkAddresses: scan.addresses,
+          name: info?.name,
+          ...(answeredAt !== scan.base ? { answeredAt } : {}),
+          ...(reconnectId ? { reconnectId } : {}),
+          book: scan.book,
+          carried,
+        });
+        return 'paired';
+      } catch (e) {
+        if (attempt && e instanceof LegacyExchangeUnansweredError) attempt.legacyError = e;
+        if (!live.current) return 'temporary';
+        const failure = pairFailure(
+          e,
+          exchanged,
+          selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web'),
+          t,
+        );
+        setError(failure.message, failure.waitOver);
+        setPairing(false);
+        return failure.outcome;
+      }
+    },
+  );
+
+  // A repeated link effect or a double press joins the exchange already spending this
+  // token. Both callers learn its outcome, and only one stores the resulting session.
+  const pair = useCallback(
+    (scan: PairingScan, reconnectId?: string) => {
+      const key = JSON.stringify([scan.base, scan.token, reconnectId]);
+      const pending = pairingRequests.current.get(key);
+      if (pending) return pending;
+      const request = pairOnce(scan, reconnectId).finally(() => {
+        pairingRequests.current.delete(key);
       });
-      return 'paired';
-    } catch (e) {
-      if (!live.current) return 'temporary';
-      const failure = pairFailure(
-        e,
-        exchanged,
-        selfSignedMayBeWhy(scan.base, e, Platform.OS === 'web'),
-        t,
-      );
-      setError(failure.message, failure.waitOver);
-      setPairing(false);
-      return failure.outcome;
-    }
-  });
+      pairingRequests.current.set(key, request);
+      return request;
+    },
+    [pairOnce],
+  );
 
   const fail = useLatest((message: string, waitOver?: WaitOver) => {
     setError(message, waitOver);

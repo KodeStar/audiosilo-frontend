@@ -21,8 +21,16 @@ export function holdInvite(invite: InviteScan): void {
 /** Start an invite's sign-in (a scanned QR or a pasted link): hold its code, make its
  * server the pending one, then `go` to the sign-in step. */
 export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
+  // The sign-in route can still be loading when Connect is pressed again. One held
+  // invite opens one step, which takes it on mount.
+  if (peekInviteCode(invite.base) === invite.code) return;
   holdInvite(invite);
-  void useSession.getState().setPendingServerUrl(invite.base).then(go);
+  void useSession
+    .getState()
+    .setPendingServerUrl(invite.base)
+    .then(() => {
+      if (held === invite) go();
+    });
 }
 
 /**

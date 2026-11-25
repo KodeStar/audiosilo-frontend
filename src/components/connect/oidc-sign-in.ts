@@ -24,7 +24,7 @@ import {
  * flow's on its own origin, and the connect screen trades it for a session
  * (`finishOidcSignIn`, naming the flow, so two tabs back at once each finish their own). A cookie
  * is the whole hand-over, so only the player the server serves signing in to its own
- * server (`onlyOwnServer(servedOrigin(), [server])`) can offer it: never the app, the
+ * server (`onlyOwnServer(productionWebOrigin(), [server])`) can offer it: never the app, the
  * Metro dev server, or a player hosted on another origin. The return is a page load, so
  * nothing the flow held in memory comes back with it: what the flow was for (a grown-up's
  * pass through kids mode, "Add someone", a signed-out visit's book) goes through this tab's

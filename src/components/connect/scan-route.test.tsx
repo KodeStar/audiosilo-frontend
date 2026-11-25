@@ -28,10 +28,10 @@ jest.mock('expo-camera', () => ({
 /* eslint-disable import/first */
 import ScanScreen from '@/app/connect/scan';
 import {
+  dropConnectHandoffs,
   openScanner,
   takeInviteCode,
   takeReconnect,
-  takeScanFor,
   takeScanReconnect,
 } from '@/components/connect/invite-handoff';
 /* eslint-enable import/first */
@@ -42,7 +42,7 @@ beforeEach(() => {
   mockReplace.mockReset();
   mockOnScan = null;
   mockParams = {};
-  takeScanFor();
+  dropConnectHandoffs();
   useSession.setState({ pendingServerUrl: null, connections: [] });
 });
 

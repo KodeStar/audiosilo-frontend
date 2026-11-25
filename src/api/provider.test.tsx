@@ -27,12 +27,12 @@ import {
 
 // The provider's reconnect handler, as the reachability layer would run it (registered
 // while the provider is imported, so no initializer here that would reset it after).
-let mockReconnect: ((cid: string) => void) | undefined;
+let mockReconnect: ((cid: string, answeredQuery?: readonly unknown[]) => void) | undefined;
 const mockNoteAnswer = jest.fn();
 jest.mock('./reachability', () => ({
   ...jest.requireActual('./reachability'),
   noteAnswer: (cid: string) => mockNoteAnswer(cid),
-  onReconnect: (cb: (cid: string) => void) => {
+  onReconnect: (cb: NonNullable<typeof mockReconnect>) => {
     mockReconnect = cb;
     return () => {};
   },
@@ -874,7 +874,7 @@ describe('queries and reachability', () => {
   // fe#147: the reconnect reads the server's queries again, but not the `/server` whose
   // answer brought it back, which would only ask the same thing twice.
   it('reads a server brought back by its /server again, all but that /server', async () => {
-    const stopBridge = reachability.onReconnect((cid) => mockReconnect?.(cid));
+    const stopBridge = reachability.onReconnect((cid, key) => mockReconnect?.(cid, key));
     const server = jest.fn().mockResolvedValue({});
     const libraries = jest.fn().mockResolvedValue([]);
     const observe = (queryKey: readonly unknown[], queryFn: () => Promise<unknown>) =>
