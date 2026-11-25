@@ -137,7 +137,13 @@ test('withWebStartChunks: wraps the serializer, keeps its markers, passes others
   const serialize = config.serializer.customSerializer;
   assert.ok('__originalSerializer' in serialize);
   const web = await serialize('e', [], { transformOptions: { platform: 'web', dev: false } }, {});
-  assert.ok(web.artifacts.every((a) => a.source.startsWith(COMPILE_HINT)));
+  const worker = web.artifacts.at(-1);
+  assert.equal(worker.filename, 'sw.js');
+  assert.deepEqual(worker.metadata, { isAsync: true, modulePaths: [] });
+  for (const artifact of web.artifacts.slice(0, -1)) {
+    assert.ok(artifact.source.startsWith(COMPILE_HINT));
+    assert.ok(worker.source.includes(artifact.filename));
+  }
   const native = await serialize(
     'e',
     [],
@@ -145,4 +151,27 @@ test('withWebStartChunks: wraps the serializer, keeps its markers, passes others
     {},
   );
   assert.equal(native, 'native code');
+});
+
+test('the worker lists the emitted files, puts each lazy catalog under its code, and skips external CSS and maps', () => {
+  const { buildWorker } = require('./web-precache.cjs');
+  const fr = {
+    ...js('_expo/static/js/web/fr-a.js', 'fr', { isAsync: true }),
+    originFilename: 'src/i18n/locales/fr.json',
+  };
+  const route = js('_expo/static/js/web/book-a.js', 'book', { isAsync: true });
+  const css = { type: 'css', filename: '_expo/static/css/a.css', metadata: {} };
+  const font = { type: 'ttf', name: 'Figtree.abc', httpServerLocation: '/web/assets/fonts' };
+  const extras = [
+    { type: 'map', filename: 'a.js.map' },
+    { type: 'css-external', filename: 'https://cdn.example/style.css' },
+  ];
+  const source = (artifacts) => buildWorker(artifacts, [font, { type: 'png' }]).source;
+  const build = (worker) => JSON.parse(worker.match(/^const BUILD = (.*);$/m)[1]);
+  const list = build(source([fr, route, css, ...extras]));
+  assert.deepEqual(list.start, [css.filename]);
+  assert.deepEqual(list.routes, [route.filename]);
+  assert.deepEqual(list.catalogs, { fr: fr.filename });
+  assert.deepEqual(list.fonts, ['assets/fonts/Figtree.abc.ttf']);
+  assert.notEqual(list.id, build(source([fr, css])).id);
 });

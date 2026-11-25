@@ -39,8 +39,9 @@ const caps = (browse: boolean) => ({
   auth: { methods: [] },
 });
 
-async function mount() {
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+async function mount(
+  qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } }),
+) {
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
@@ -65,10 +66,17 @@ beforeEach(() => {
 
 it('counts the books across the libraries from their authors lists', async () => {
   mockClient.serverInfo.mockResolvedValue(caps(true));
-  const result = await mount();
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const result = await mount(qc);
   await waitFor(() => expect(result.current.line).not.toBeNull());
   expect(result.current.line).toEqual({ kind: 'booksIn', books: 6, names: ['Fiction', 'Kids'] });
   expect(result.current.place).toBeNull();
+  for (const key of [
+    ['authors', 'c1', 1],
+    ['books', 'recent', 'c1', 24],
+  ]) {
+    expect(qc.getQueryCache().find({ queryKey: key })?.meta?.startup).toBe(true);
+  }
 });
 
 it('names the libraries without a count on a server without browse_people', async () => {

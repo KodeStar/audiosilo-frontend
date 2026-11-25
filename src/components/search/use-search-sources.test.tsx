@@ -96,12 +96,12 @@ import { matchCharacters } from './search-model';
 import { useCharacterSources, usePeopleSources } from './use-search-sources';
 /* eslint-enable import/first */
 
-function mount<T>(useHook: () => T) {
+async function mount<T>(useHook: () => T) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   );
-  return renderHook(useHook, { wrapper });
+  return { ...(await renderHook(useHook, { wrapper })), qc };
 }
 
 beforeEach(() => jest.clearAllMocks());
@@ -110,13 +110,17 @@ notifyQueriesSynchronously();
 
 describe('usePeopleSources', () => {
   it('lists every library of the servers with browse_people, and never asks one without', async () => {
-    const { result } = await mount(() => usePeopleSources(true));
+    const { result, qc } = await mount(() => usePeopleSources(true));
     await waitFor(() => expect(result.current.series).toHaveLength(1));
     expect(result.current.supported).toBe(true);
     expect(result.current.authors[0]).toEqual({
       source: { connectionId: 'a', connectionName: 'Home Library', libraryId: 1 },
       items: [{ name: 'Jim Butcher', books: 7, duration: 1 }],
     });
+    for (const head of ['authors', 'narrators', 'seriesList']) {
+      const entry = qc.getQueryCache().find({ queryKey: [head, 'a', 1], exact: false });
+      expect(entry?.meta?.startup).toBe(true);
+    }
     expect(mockB.authors).not.toHaveBeenCalled();
     expect(mockB.seriesList).not.toHaveBeenCalled();
     // A book counts in every series it is in where the server can say so.
