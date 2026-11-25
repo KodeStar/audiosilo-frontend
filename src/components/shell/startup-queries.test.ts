@@ -158,6 +158,25 @@ describe('startupQueries', () => {
     expect(mock.queue).not.toHaveBeenCalled();
   });
 
+  it('never throws in the gate on a kept answer of an unexpected shape', async () => {
+    const { api, mock } = makeApi('a');
+    mockVisible = [api.connection];
+    const client = newClient();
+    client.setQueryData(qk.server('a'), null);
+    client.setQueryData(qk.libraries('a'), { libraries: [] });
+    for (const page of ['home', 'library'] as const) {
+      resetStartupQueries();
+      expect(() =>
+        startStartupQueries(client, () =>
+          startupQueries(page, [api], { connectionId: 'a', libraryId: 1 }, 'a', 'a'),
+        ),
+      ).not.toThrow();
+      await finished();
+    }
+    expect(mock.listBooks).not.toHaveBeenCalled();
+    expect(mock.household).not.toHaveBeenCalled();
+  });
+
   it('any other page: only what the shell reads', () => {
     expect(keys(startupQueries('other', [api('a')], null, 'a', 'a'))).toEqual([
       qk.server('a'),

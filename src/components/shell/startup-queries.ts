@@ -51,7 +51,9 @@ export function startPage(pathname: string, mode?: string | null): StartPage {
 }
 
 /** A dependent read joins the shell's in-flight read. It can start while the gate is
- * waiting, provided the connection is still visible and the answer allows it. */
+ * waiting, provided the connection is still visible and the answer allows it. `allows`
+ * runs in the gate's render on whatever the cache holds (a restored answer included), so
+ * it never assumes the answer's shape. */
 function afterAnswer<T>(
   read: StartupRead,
   dependency: StartupRead,
@@ -109,7 +111,7 @@ export function startupQueries(
           afterAnswer<ServerInfo>(
             read,
             startupRead(serverInfoQuery(cid, client)),
-            (info) => info.capabilities?.[flag] === true,
+            (info) => info?.capabilities?.[flag] === true,
             current,
           ),
         );
@@ -119,7 +121,9 @@ export function startupQueries(
           afterAnswer<Library[]>(
             read,
             startupRead(librariesQuery(cid, client)),
-            (libs) => libs.some((lib) => lib.id === selected && !isPodcastLibrary(lib)),
+            (libs) =>
+              Array.isArray(libs) &&
+              libs.some((lib) => lib?.id === selected && !isPodcastLibrary(lib)),
             current,
           ),
         );
