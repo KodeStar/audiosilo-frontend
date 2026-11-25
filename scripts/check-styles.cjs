@@ -83,6 +83,7 @@ function untwinnedPxText() {
     'src/components/connect/cover-cascade.tsx',
   ]);
   const px = /(^|[\s"'`{])((?:[a-z0-9-]+:)*)(text|leading)-\[([0-9.]+)px\](?![\w\]-])/g;
+  const display = /(?:^|[\s"'`{])((?:[a-z0-9-]+:)*(?:text|leading)-display-\d+)(?![\w-])/g;
   const found = [];
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -94,6 +95,7 @@ function untwinnedPxText() {
         fs.readFileSync(p, 'utf8')
           .split('\n')
           .forEach((line, i) => {
+            for (const [, cls] of line.matchAll(display)) displayClasses.add(cls);
             for (const [, , variants, kind, n] of line.matchAll(px)) {
               if (variants.split(':').includes('web')) continue;
               // The twin is N/16 rem exactly (any other value would change the size at the
@@ -110,6 +112,8 @@ function untwinnedPxText() {
   walk(path.join(root, 'src'));
   return found;
 }
+/** Every `text-display-N` / `leading-display-N` in the source, with its variants. */
+const displayClasses = new Set();
 const untwinned = untwinnedPxText();
 
 const failures = [];
@@ -205,14 +209,15 @@ const check = (ok, message) => ok || failures.push(message);
     `px text without its web: rem twin (fe#267):\n  ${untwinned.join('\n  ')}`,
   );
 
-  // A display size uses native pixels and the web unit supplied by Text. Both
-  // size and leading must survive the actual Metro transform, including md:.
-  for (const [cls, cssProp, nativeProp, size] of [
-    ['text-display-38', 'font-size', 'fontSize', 38],
-    ['leading-display-42', 'line-height', 'lineHeight', 42],
-    ['md:text-display-24', 'font-size', 'fontSize', 24],
-  ]) {
-    const start = webCss.lastIndexOf(`.${cls.replace(':', '\\:')} {`);
+  // A display size uses native pixels and the web unit supplied by Text. Every one the
+  // source uses, size and leading, must survive the actual Metro transform, including md:.
+  check(displayClasses.size > 0, 'no text-display-N class found in src: update this guard');
+  for (const cls of displayClasses) {
+    const [, kind, n] = /(text|leading)-display-(\d+)$/.exec(cls);
+    const [cssProp, nativeProp] =
+      kind === 'text' ? ['font-size', 'fontSize'] : ['line-height', 'lineHeight'];
+    const size = Number(n);
+    const start = webCss.lastIndexOf(`.${cls.replace(/:/g, '\\:')} {`);
     const rule = webCss.slice(start, webCss.indexOf('}', start));
     check(
       start >= 0 && rule.includes(`${cssProp}: calc(${size} * var(--display-px))`),
