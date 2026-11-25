@@ -4,6 +4,7 @@ import {
   infiniteQueryOptions,
   type InfiniteData,
   MutationObserver,
+  onlineManager,
   type Query,
   type QueryClient,
   type QueryKey,
@@ -82,7 +83,7 @@ import {
   requestsDone,
 } from '@/lib/podcast-requests';
 import { isKeptOffline, refreshKeptMeta } from '@/downloads/kept-offline';
-import { onFinishDelivered } from '@/playback/finish-delivery';
+import { onFinishDelivered, tellFinishChangedElsewhere } from '@/playback/finish-delivery';
 import { finishedSave, recordFinishEvent } from '@/playback/finish-route';
 import {
   bookPlace,
@@ -2305,8 +2306,12 @@ export function useEditProgress(connectionId?: string) {
     (api, v: { libraryId: number; path: string; edit: ProgressEdit }) =>
       api.editProgress(v.libraryId, v.path, v.edit),
     ({ qc, cid }, progress, { edit }) => {
+      // A finish it moved is announced with the edits queued behind it (`announceFinishEdits`).
+      if (edit.finished !== undefined || edit.finished_at !== undefined) {
+        noteFinishEdit(cid, progress);
+      }
       invalidateProgressDependents(qc, cid, progress.library_id, progress.path, {
-        finish: edit.finished !== undefined || edit.finished_at !== undefined,
+        finish: false,
         place: edit.finished !== undefined || edit.position !== undefined,
       });
       const same = (p: Progress) =>
@@ -2326,7 +2331,42 @@ export function useEditProgress(connectionId?: string) {
         ),
       ]);
     },
+    ({ qc, cid }) => announceFinishEdits(qc, cid),
   );
+}
+
+/** The books whose finish a progress edit moved, per connection, by library and path, not
+ * announced yet (`announceFinishEdits`). */
+const finishEdits = new Map<string, Map<string, { libraryId: number; path: string }>>();
+
+function noteFinishEdit(cid: string, progress: Progress) {
+  const books = finishEdits.get(cid) ?? new Map();
+  const book = { libraryId: progress.library_id, path: progress.path };
+  books.set(`${book.libraryId}\n${book.path}`, book);
+  finishEdits.set(cid, books);
+}
+
+/**
+ * Announce the finishes the progress edits of `cid` moved (`noteFinishEdit`) once no other
+ * edit of the connection is still to run: the stats and the goal read again once for them
+ * all, and each book told to the other tabs, which read their caches again
+ * (`tellFinishChangedElsewhere`), as a Sync v2 delivery does. A legacy server's finishes
+ * queued offline are edits the reconnect replays one at a time (one scope per connection):
+ * announced per edit, each refreshed the stats and goal over the last, and no other tab heard
+ * of any. Offline, what landed is announced now: the edits still waiting run once the
+ * network is back. Called as each edit settles, landed or not.
+ */
+function announceFinishEdits(qc: QueryClient, cid: string) {
+  const books = finishEdits.get(cid);
+  if (!books) return;
+  // The edit settling counts itself: it is still pending until this returns.
+  const { mutationKey } = mutationScope('progress_edit', cid);
+  const queued = qc.getMutationCache().findAll({ mutationKey, exact: true, status: 'pending' });
+  if (queued.length > 1 && onlineManager.isOnline()) return;
+  finishEdits.delete(cid);
+  refreshProgressQuery(qc, qk.myStatsAll(cid));
+  refreshProgressQuery(qc, qk.listeningGoal(cid));
+  for (const book of books.values()) tellFinishChangedElsewhere({ connectionId: cid, ...book });
 }
 
 /** What the stats hooks take besides the connection: `ready` (false: don't fetch, for a

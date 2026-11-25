@@ -133,6 +133,13 @@ jest.mock('@/playback/finish-route', () => ({
   recordFinishEvent: (...a: unknown[]) => mockRecordFinish(...a),
 }));
 
+// The other tabs hear of a finish a progress edit moved (`tellFinishChangedElsewhere`).
+const mockTellElsewhere = jest.fn();
+jest.mock('@/playback/finish-delivery', () => ({
+  ...jest.requireActual('@/playback/finish-delivery'),
+  tellFinishChangedElsewhere: (...a: unknown[]) => mockTellElsewhere(...a),
+}));
+
 /* eslint-disable import/first */
 import {
   CapabilityError,
@@ -1289,6 +1296,43 @@ describe('Phase 1b mutation cache updates', () => {
     // The server cuts the spoilers=hide envelope at the saved progress; the full one isn't.
     expect(qc.getQueryState(hiddenMeta)?.isInvalidated).toBe(true);
     expect(qc.getQueryState(fullMeta)?.isInvalidated).toBe(false);
+  });
+
+  // A legacy server's finishes queued offline are edits replayed one at a time on reconnect:
+  // each refreshed the stats and goal (a wave per book) and no other tab heard of any.
+  it('a replay of finishing edits refreshes the stats and goal once and tells the other tabs', async () => {
+    const { result, qc } = await mountMutation(
+      { progress_edit: true },
+      'progress_edit',
+      useEditProgress,
+    );
+    mockTellElsewhere.mockClear();
+    const refreshes = jest.spyOn(qc, 'invalidateQueries');
+    const paths = ['A/Book', 'B/Book'];
+    onlineManager.setOnline(false);
+    try {
+      let replay: Promise<unknown> = Promise.resolve();
+      await act(async () => {
+        replay = Promise.all(
+          paths.map((path) =>
+            result.current.m.mutateAsync({ libraryId: 2, path, edit: { finished: true } }),
+          ),
+        );
+      });
+      expect(mockClients.c1.editProgress).not.toHaveBeenCalled();
+      await act(async () => onlineManager.setOnline(true));
+      await act(() => replay);
+    } finally {
+      onlineManager.setOnline(true);
+    }
+    expect(mockClients.c1.editProgress).toHaveBeenCalledTimes(2);
+    const of = (key: readonly unknown[]) =>
+      refreshes.mock.calls.filter(([f]) => JSON.stringify(f?.queryKey) === JSON.stringify(key));
+    expect(of(qk.myStatsAll('c1'))).toHaveLength(1);
+    expect(of(qk.listeningGoal('c1'))).toHaveLength(1);
+    expect(mockTellElsewhere.mock.calls).toEqual(
+      paths.map((path) => [{ connectionId: 'c1', libraryId: 2, path }]),
+    );
   });
 
   it("a progress edit keeps the listed row's cover_version (the echo carries none)", async () => {
