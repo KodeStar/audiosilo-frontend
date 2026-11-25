@@ -4735,8 +4735,16 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // of pausing there. So does one with no server to stream from: no client (its token
       // gone this launch) or one marked unreachable (a LAN server from the car's mobile
       // data). Online it streams on.
+      // Only a short download's queue and a resume's place read it: other starts never wait.
       let online = isDeviceOnline();
-      if (local && api && online === undefined && isReachable(connectionId)) {
+      if (
+        local &&
+        api &&
+        online === undefined &&
+        (dl?.manifest.endsBefore ||
+          (startBookPosition === undefined && startTrack === undefined)) &&
+        isReachable(connectionId)
+      ) {
         online = await waitForDeviceOnline();
         if (lastPlayRequest !== request || !current() || replaced()) return;
       }
