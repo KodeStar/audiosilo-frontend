@@ -331,9 +331,13 @@
     font-size: calc(--value(integer) * var(--display-px, 0.0625rem));
   }
 }
+/* Like `leading-[Npx]`, it also sets --tw-leading, so a named size later in the
+ * cascade (a breakpoint's `md:text-lg`) keeps this leading instead of its own. */
 @utility leading-display-* {
+  --tw-leading: calc(--value(integer) * 1px);
   line-height: calc(--value(integer) * 1px);
   @variant web {
+    --tw-leading: calc(--value(integer) * var(--display-px, 0.0625rem));
     line-height: calc(--value(integer) * var(--display-px, 0.0625rem));
   }
 }

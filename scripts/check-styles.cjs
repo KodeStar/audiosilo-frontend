@@ -228,6 +228,12 @@ const check = (ok, message) => ok || failures.push(message);
       start >= 0 && rule.includes(`${cssProp}: calc(${size} * var(--display-px, `),
       `web: ${cls} does not follow the capped display unit`,
     );
+    // Like `leading-[Npx]`, a display leading sets --tw-leading, so a named size after it
+    // (a breakpoint's `md:text-lg`) keeps it instead of the size's own line height.
+    check(
+      kind === 'text' || rule.includes(`--tw-leading: calc(${size} * var(--display-px, `),
+      `web: ${cls} does not set --tw-leading, so a later named size replaces its line height`,
+    );
     if (variants.split(':').includes('web')) {
       check(stylesheet[cls] === undefined, `ios: ${cls} has a native rule`);
     } else {
