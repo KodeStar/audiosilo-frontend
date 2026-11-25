@@ -2078,6 +2078,29 @@ describe('Mark as finished outside the player (finish-route)', () => {
     expect(left).toBe(true);
   });
 
+  // An Undo of a finish whose leave skipped its save went to the book page's progress, read
+  // before that listening, and could move the server place backwards.
+  it('a save skipped as it leaves still names the place the store held, never behind its record', async () => {
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    let release = holdSaves();
+    mockReadMirror.mockResolvedValue({ ack_version: 41 });
+    await expect(leaveFinishedBook(ref)).resolves.toBe(9);
+    release();
+
+    await start();
+    pushSnapshot(snap('playing', 0, 5));
+    await settle();
+    pushSnapshot(snap('playing', 0, 9));
+    release = holdSaves();
+    // Another tab saved a further place this tab was behind: that one stands.
+    mockReadMirror.mockResolvedValue(row({ position: 30, device_id: 'phone' }));
+    await expect(leaveFinishedBook(ref)).resolves.toBe(30);
+    release();
+  });
+
   // FE-1: the same race as `stop()`. The unload's reset came before the load landed in the
   // engine, which then stayed loaded with the book just marked finished.
   it('marked finished while its files load: the engine is reset once the load lands', async () => {

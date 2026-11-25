@@ -261,7 +261,9 @@ export function useBookActions(
     const settled = pendingBookAction(t('library.bookActions.markingFinished'), book.title);
     // The loaded book stops first, its place saved before the finish (fe#258). That place is
     // the one Undo goes back to: the page's progress was read before that listening, and with
-    // the book unloaded no later save moves an Undo there.
+    // the book unloaded no later save moves an Undo there. A save skipped (another tab played
+    // since) still names the place the store held, never the page's. The page's progress only
+    // for a book that was not loaded.
     const { left, recorded } = await leaveFinishedBook(ref)
       .then(async (left) => ({ left, recorded: await recordFinished() }))
       .finally(settled);

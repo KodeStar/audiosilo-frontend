@@ -2049,12 +2049,19 @@ let finishedStart: PlayRequest | null = null;
  * Nothing for another book.
  */
 function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
-  const { nowPlaying: np, rate } = usePlayer.getState();
+  const { nowPlaying: np, rate, snapshot } = usePlayer.getState();
   leftForFinish = null;
   const starting = startsInFlight > 0 ? lastPlayRequestFor(ref) : null;
   if (starting) finishedStart = starting;
   if (!np || !sameBook(np, ref)) return Promise.resolve(undefined);
   const request = lastPlayRequestFor(np);
+  // The place shown as the book is left, read before anything below changes it: where an
+  // Undo goes back to when the save is skipped (`placeLeftUnsaved`). A move to another tab's
+  // place still out shows the place it moves to.
+  const late = movingToTabPlace(np) ? lateTabSeek : null;
+  const shown = late
+    ? late.place.pos
+    : (pendingSeekEnd(np) ?? endAt(np, snapshot.trackIndex, snapshot.position))?.pos;
   clearPlaybackIntent();
   stopSaveLoop();
   closeListeningSpan();
@@ -2063,10 +2070,28 @@ function leaveFinishedBook(ref: ContentRef): Promise<number | undefined> {
   const saved = persist({ leaving: true }).catch(() => undefined);
   usePlayer.setState({ nowPlaying: null, snapshot: { ...INITIAL_SNAPSHOT, rate } });
   void service?.reset();
-  return saved.then((position) => {
+  return saved.then(async (position) => {
     leftForFinish = request;
-    return position;
+    return position ?? placeLeftUnsaved(np, shown);
   });
+}
+
+/**
+ * Where a Mark as finished left the book `np` when its place was not saved (another tab played
+ * since, a move to that tab's place still out, a held save): the place the finish replaces,
+ * the one its Undo goes back to. Never the book page's progress, read before that listening,
+ * nor behind the place this device holds for the book (the mirror the tabs share, unfinished:
+ * the other tab's latest save, which the server has too): the further of it and the place
+ * shown as the book was left (`shown`). Undefined when neither is known.
+ */
+async function placeLeftUnsaved(
+  np: NowPlaying,
+  shown: number | undefined,
+): Promise<number | undefined> {
+  const held = await readMirror(np.connectionId, np.libraryId, np.path).catch(() => null);
+  const kept = held && !held.finished && Number.isFinite(held.position) ? held.position : undefined;
+  const places = [shown, kept].filter((p): p is number => p !== undefined && Number.isFinite(p));
+  return places.length > 0 ? Math.max(...places) : undefined;
 }
 
 /** A start called off as its book was marked finished (`finishedStart`), before it loaded
