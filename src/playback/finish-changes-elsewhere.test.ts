@@ -57,3 +57,12 @@ it('drops what was gathered when stopped', () => {
   jest.advanceTimersByTime(50);
   expect(mockRefresh).not.toHaveBeenCalled();
 });
+
+it('reads a book told twice in one gathering once', () => {
+  const stop = startFinishChangesElsewhere();
+  mockListener?.({ connectionId: 'c1', libraryId: 1, path: 'A' });
+  mockListener?.({ connectionId: 'c1', libraryId: 1, path: 'A' });
+  jest.advanceTimersByTime(50);
+  expect(mockRefresh).toHaveBeenCalledWith('qc', 'c1', [{ libraryId: 1, path: 'A' }]);
+  stop();
+});

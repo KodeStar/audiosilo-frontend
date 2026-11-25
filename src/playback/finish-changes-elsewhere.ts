@@ -12,17 +12,20 @@ const GATHER_MS = 50;
  * the tab that changed the book sends the message, one per book: the books that arrive
  * together refresh their connection's list, stats and goal once. */
 export function startFinishChangesElsewhere(): () => void {
-  const pending = new Map<string, Pick<BookRef, 'libraryId' | 'path'>[]>();
+  // Per connection, its books by library and path: one told twice is read again once.
+  const pending = new Map<string, Map<string, Pick<BookRef, 'libraryId' | 'path'>>>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const flush = () => {
     timer = undefined;
-    for (const [cid, books] of pending) refreshDeliveredFinishes(queryClient, cid, books);
+    for (const [cid, books] of pending) {
+      refreshDeliveredFinishes(queryClient, cid, [...books.values()]);
+    }
     pending.clear();
   };
   const stop = onFinishChangedElsewhere((ref) => {
     const cid = resolveConnectionId(ref.connectionId);
-    const books = pending.get(cid) ?? [];
-    books.push({ libraryId: ref.libraryId, path: ref.path });
+    const books = pending.get(cid) ?? new Map();
+    books.set(`${ref.libraryId}\n${ref.path}`, { libraryId: ref.libraryId, path: ref.path });
     pending.set(cid, books);
     timer ??= setTimeout(flush, GATHER_MS);
   });
