@@ -477,6 +477,14 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     answerBound: store.GAVE_WAY_ANSWER_MS,
     /** The tab is looked at again (`other-tab-notice.ts` calls this on the foreground). */
     lookAt: () => store.showOtherTabsPlace(),
+    /** Another tab saved the shared place while this one is in view (`other-tab-notice.ts`). */
+    followSave: () => store.showOtherTabsPlace({ save: true }),
+    /** The loaded book streams as a transcode (web: `direct_playable === false`). */
+    transcoded: () => {
+      const np = store.usePlayer.getState().nowPlaying!;
+      const tracks = np.queue.tracks.map((t) => ({ ...t, transcoded: true }));
+      store.usePlayer.setState({ nowPlaying: { ...np, queue: { ...np.queue, tracks } } });
+    },
     /** Watch for jumps as the root does; returns the stop (the chip's timer with it). */
     watchJumps: () => {
       const stop = jumpUndo.startJumpUndo();
@@ -2375,6 +2383,24 @@ describe.each([
         [30, 'jump'],
         [120, 'resume'],
       ]);
+    });
+
+    // Its seek requests a new transcode: save by save, a paused tab in view started one every
+    // few seconds, and at the token's cap the server gave it the playing tab's stream.
+    it('a transcoded file in view moves only when looked at again, not save by save', async () => {
+      await playedPast(a, b);
+      a.transcoded();
+      b.engine.at(90);
+      await b.save();
+
+      a.followSave();
+      await sleep(20);
+      expect(a.engine.svc.seekTo).not.toHaveBeenCalled();
+      expect(a.engine.svc.skipToTrack).not.toHaveBeenCalled();
+
+      a.lookAt();
+      await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'A to show the place');
+      expect(a.engine.svc.seekTo).toHaveBeenLastCalledWith(90);
     });
 
     it('a Retry reloads where the other tab left the book', async () => {

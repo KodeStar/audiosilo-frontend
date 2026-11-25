@@ -3752,13 +3752,17 @@ function dropListening() {
 
 let showingPlace: { np: NowPlaying; done: Promise<unknown>; again: boolean } | null = null;
 
-/** A visible, paused tab follows saves to the shared mirror. During a slow move, read
- * again once it lands. The next play also looks again. A finished book stays where it is. */
-export function showOtherTabsPlace(): void {
+/** A visible, paused tab follows saves to the shared mirror (`save`). During a slow move, read
+ * again once it lands. The next play also looks again. A finished book stays where it is.
+ * Not save by save in a transcoded file: its seek requests a new transcode (`service.web.ts`),
+ * and at the token's cap the server gives that request the oldest stream of the same file,
+ * the playing tab's (`tokenHoldToTake`). It moves on its return or its next play. */
+export function showOtherTabsPlace({ save = false }: { save?: boolean } = {}): void {
   const { snapshot, nowPlaying: np } = usePlayer.getState();
   if (!service || !np || !otherTabPlayed) return;
   if (!sameConnection(otherTabPlayed.connectionId, np.connectionId)) return;
   if (wantsPlayback || (snapshot.state !== 'paused' && snapshot.state !== 'ready')) return;
+  if (save && np.queue.tracks[snapshot.trackIndex]?.transcoded) return;
   if (showingPlace?.np === np) {
     showingPlace.again = true;
     return;

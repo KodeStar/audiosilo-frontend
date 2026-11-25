@@ -28,9 +28,9 @@ export function startOtherTabNotice(): () => void {
       }
     });
   });
-  const stopShowing = onForeground(showOtherTabsPlace);
+  const stopShowing = onForeground(() => showOtherTabsPlace());
   const stopWatching = onStoredChange(PROGRESS_MIRROR_KEY, () => {
-    if (!isAway()) showOtherTabsPlace();
+    if (!isAway()) showOtherTabsPlace({ save: true });
   });
   return () => {
     cancel();
