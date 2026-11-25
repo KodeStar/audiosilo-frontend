@@ -1,9 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
 
+import type { WaitingListen } from '@/playback/listening-outbox';
 import type { Chapter, History } from '@/api/types';
 import { formatWallClock } from '@/lib/format';
 
 jest.mock('@/api/provider', () => ({ useCid: () => 'c1' }));
+let mockWaiting: WaitingListen[] = [];
+jest.mock('@/playback/use-listening-sync', () => ({ useWaitingListens: () => mockWaiting }));
 const mockJump = jest.fn();
 // The book's chapters as its own read has them (`useChapterNamer`), named by the pure
 // namer's parts (that module's hooks reach the player store, so it is rebuilt here).
@@ -64,9 +67,25 @@ beforeEach(() => {
   jest.clearAllMocks();
   mockHistory = { data: [row()] };
   mockChapters = undefined;
+  mockWaiting = [];
 });
 
 describe('HistorySection', () => {
+  it('shows a waiting listen once when a matching server row arrives, scoped to this book', async () => {
+    const event = { ...row(), id: 'ev', kind: 'listen' as const, start: 'resume' as const };
+    mockWaiting = [
+      { connectionId: 'c1', event },
+      { connectionId: 'other', event: { ...event, to_pos: 950 } },
+    ];
+    mockHistory = { data: [] };
+    const view = await render(<HistorySection libraryId={1} path={event.path} />);
+    expect(screen.getAllByText(/Waiting to sync/)).toHaveLength(1);
+    mockHistory = { data: [row({ to_pos: event.to_pos + 1 })] };
+    await view.rerender(<HistorySection libraryId={1} path={event.path} />);
+    expect(screen.queryByText(/Waiting to sync/)).toBeNull();
+    expect(screen.getAllByText('Jump')).toHaveLength(1);
+  });
+
   it('shows the day and time, where it went with the chapter it ended in, and its minutes', async () => {
     mockChapters = [chapter(0, '01_the_hobbit_ch1.mp3', 0), chapter(1, '', 100)];
     await render(<HistorySection libraryId={1} path="Tolkien/The Hobbit" />);

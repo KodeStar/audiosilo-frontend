@@ -5,7 +5,7 @@ import type { Book } from '@/api/types';
 import { downloadedEntryOf } from '@/downloads/store';
 import { contentKeyOf } from '@/lib/content-key';
 import type { BookPlace } from '@/lib/paths';
-import { isDeviceOnline } from '@/lib/device-online';
+import { isDeviceOnline, waitForDeviceOnline } from '@/lib/device-online';
 import { type BookSource, bookSourceOf, fetchBookSource } from '@/playback/book-source';
 import { bookPlayPressed, newerTabPlay } from '@/playback/playing-claim';
 import { readPlaceEarly } from '@/playback/progress-sync';
@@ -38,13 +38,6 @@ export type StartOptions = BookPlace & {
  * same wait (`readPlaceEarly`), so a frozen server holds the start this long, once. */
 export const FRESH_SOURCE_WAIT_MS = 3_000;
 
-/** The client a downloaded book's start asks, when there is one to ask: its connection's,
- * with the device online and the server not marked unreachable. Null for a streamed book. */
-function downloadedClient(target: PlayTarget) {
-  const client = downloadedEntryOf(target) ? resolveClient(target.connectionId) : null;
-  return client && isDeviceOnline() && isReachable(target.connectionId) ? client : null;
-}
-
 /**
  * Where a book starts from. A downloaded one still asks its server first, as a streamed one
  * does: a download saved from a list row can hold no chapters (and the list shape of its
@@ -54,11 +47,11 @@ function downloadedClient(target: PlayTarget) {
  * downloaded book still starts offline. With nothing to ask (the device has no network, or
  * its server is marked unreachable) it starts from that copy at once: Play offline showed a
  * spinner for the whole wait. Else `bookSourceOf` (a streamed book through the query cache,
- * or null when its connection is gone). `client` is `downloadedClient`'s.
+ * or null when its connection is gone).
  */
 async function startSourceOf(
   target: PlayTarget,
-  client: ReturnType<typeof downloadedClient>,
+  client: ReturnType<typeof resolveClient>,
 ): Promise<BookSource | null> {
   if (client) {
     try {
@@ -206,16 +199,34 @@ async function startNow(
   if (!mayActFor(target.connectionId)) return false;
   // A downloaded book from its saved place: its place is read beside its item and chapters
   // (`readPlaceEarly`), so a frozen server holds the start for one wait, not two.
-  const asked = downloadedClient(target);
-  const saved = asked ? downloadedEntryOf(target)?.manifest.book : undefined;
-  if (asked && saved && opts.position === undefined && opts.track === undefined && !opts.file) {
-    readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
+  const key = contentKeyOf(target);
+  const download = downloadedEntryOf(target);
+  const reachableClient = () =>
+    isReachable(target.connectionId) ? resolveClient(target.connectionId) : null;
+  let online = isDeviceOnline();
+  if (download && online === undefined && reachableClient()) {
+    online = await waitForDeviceOnline();
+    if (!mayActFor(target.connectionId) || !isLatestStart(key) || how.wanted?.() === false)
+      return false;
+  }
+  const asked = download && online ? reachableClient() : null;
+  // A network still unknown starts from the download, but `playBook` still asks the place
+  // then (only a known "no network" skips it): begun here, its wait runs beside the rest.
+  const placeClient = download && online !== false ? reachableClient() : null;
+  const saved = download?.manifest.book;
+  if (
+    placeClient &&
+    saved &&
+    opts.position === undefined &&
+    opts.track === undefined &&
+    !opts.file
+  ) {
+    readPlaceEarly(placeClient, target.connectionId, target.libraryId, saved.rel_path);
   }
   const source = await startSourceOf(target, asked);
   if (!source) return false;
   if (how.wanted && !how.wanted()) return false;
   if (!how.fetched && (await playsOnLoaded(target, source.book, opts, askedAt))) return true;
-  const key = contentKeyOf(target);
   if (how.fetched) {
     // The fetch's own start, only while it stands: a Cancel, or a start of something else,
     // since the episode was ready wins.

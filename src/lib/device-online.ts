@@ -36,30 +36,71 @@ function readOnlineAtBuild(): boolean {
  * setup, so the query library pauses and resumes its reads by what `useDeviceOnline` shows.
  */
 export function watchDeviceOnline(listener: (online: boolean) => void): () => void {
-  const stopWatching = subscribe(() => listener(online));
-  listener(online);
+  let last: boolean | undefined;
+  const update = () => {
+    const next = readOnline();
+    if (last === next) return;
+    last = next;
+    listener(next);
+  };
+  const stopWatching = subscribe(update);
+  update();
   return stopWatching;
 }
 
 /**
  * The same signal read once, outside React (a start of a download offline, `playBook`): what
  * the system said last in the app (the query wiring always watches it there), the browser's
- * `navigator.onLine` on the web (what a watch there follows). Unknown counts as online.
+ * `navigator.onLine` on the web. Undefined means the native network is still unknown.
  */
-export function isDeviceOnline(): boolean {
+export function isDeviceOnline(): boolean | undefined {
   if (Platform.OS !== 'web') return online;
   return typeof navigator === 'undefined' || navigator.onLine !== false;
 }
 
-let online = true;
+let online: boolean | undefined;
+let monitorOffline = false;
+/** How many HTTP answers have confirmed a network (`deviceNetworkAnswered`): a reading
+ * only gives way to one that came while it was running, never to an older one. */
+let answers = 0;
+let firstRead: Promise<void> | undefined;
+let finishFirstRead: (() => void) | undefined;
+// A cold car start also has to load the book within the head unit's deadline.
+const FIRST_READ_MS = 750;
+// expo-network's getNetworkPathAsync returns NONE when this native timeout expires.
+const IOS_PROBE_TIMEOUT_MS = 5000;
+
+/** A downloaded book can use its own files while the network is unknown. All starts
+ * share the same short wait, including a direct player start with no mounted screen. */
+export async function waitForDeviceOnline(): Promise<boolean | undefined> {
+  const known = isDeviceOnline();
+  if (known !== undefined) return known;
+  const off = subscribe(() => {});
+  try {
+    await firstRead;
+    return online;
+  } finally {
+    off();
+  }
+}
+
+/** An actual native response can correct the startup probe. A newer offline monitor
+ * event wins over an in-flight request finishing as the network goes away. */
+export function deviceNetworkAnswered(): void {
+  if (Platform.OS !== 'web' && !monitorOffline) {
+    answers++;
+    setOnline(true);
+    finishFirstRead?.();
+  }
+}
 const listeners = new Set<() => void>();
 let stop: (() => void) | undefined;
 
 function readOnline(): boolean {
-  return online;
+  return online !== false;
 }
 
-function setOnline(next: boolean): void {
+function setOnline(next: boolean | undefined): void {
   if (next === online) return;
   online = next;
   for (const l of listeners) l();
@@ -96,32 +137,57 @@ function listen(): () => void {
     };
   }
   let live = true;
-  // Offline only when the system says there is no network. A network it can't name (type
-  // `UNKNOWN`: Android reports `isConnected: false` for a transport it doesn't know, and
-  // for a state it failed to read) is unknown, so online: every query waits on this flag.
-  const apply = (s: Network.NetworkState | undefined) => {
-    if (live && s) setOnline(s.isConnected !== false || (s.type as string) === 'UNKNOWN');
+  let heard = false;
+  const started = performance.now();
+  // An answer while nothing watched (the app's screen gone, playback going on) left a "yes"
+  // no one checks since: this reading's probe still applies over it.
+  const answersAtStart = answers;
+  firstRead = new Promise<void>((resolve) => {
+    finishFirstRead = resolve;
+  });
+  const timer = setTimeout(() => {
+    finishFirstRead?.();
+  }, FIRST_READ_MS);
+  const apply = (s: Network.NetworkState | undefined, event: boolean) => {
+    if (!live) return;
+    // Expo's iOS one-shot read returns NONE when its 5 s timeout expires. Only
+    // an event can confirm a late negative. Requests may still reach a LAN server.
+    let next = s?.isConnected;
+    if (
+      next === false &&
+      ((s?.type as string) === 'UNKNOWN' ||
+        (!event && Platform.OS === 'ios' && performance.now() - started >= IOS_PROBE_TIMEOUT_MS))
+    )
+      next = undefined;
+    if (event) monitorOffline = next === false;
+    setOnline(next);
+    finishFirstRead?.();
   };
   let sub: { remove: () => void } | undefined;
-  // The first read can land after a change the listener already told (iOS answers it
-  // after up to 5 s, and "not connected" when that runs out): the change is the newer.
-  let heard = false;
   try {
-    Promise.resolve(Network.getNetworkStateAsync()).then(
-      (s) => {
-        if (!heard) apply(s);
-      },
-      () => undefined,
-    );
     sub = Network.addNetworkStateListener((s) => {
       heard = true;
-      apply(s);
+      apply(s, true);
     });
+    Promise.resolve(Network.getNetworkStateAsync()).then(
+      (s) => {
+        if (!heard && answers === answersAtStart) apply(s, false);
+      },
+      () => {
+        if (live) finishFirstRead?.();
+      },
+    );
   } catch {
-    // No network module (a test, a platform without one): stay "online".
+    finishFirstRead?.();
   }
   return () => {
     live = false;
-    if (typeof sub?.remove === 'function') sub.remove();
+    clearTimeout(timer);
+    finishFirstRead?.();
+    finishFirstRead = undefined;
+    firstRead = undefined;
+    monitorOffline = false;
+    online = undefined;
+    sub?.remove?.();
   };
 }

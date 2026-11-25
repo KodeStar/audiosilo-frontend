@@ -204,7 +204,10 @@ beforeEach(() => {
 afterEach(async () => {
   // Every send over before the file's modules go.
   mockBeforeSend = null;
-  for (const tab of [a, b]) await tab.flushOutbox('c1');
+  for (const tab of [a, b]) {
+    await tab.flushOutbox('c1');
+    tab.resetOutboxForTests();
+  }
 });
 
 describe("an Undo in one tab and another tab's send (withdrawFinish across tabs)", () => {
@@ -518,6 +521,36 @@ describe('a tab that sweeps the span another tab left sends it (fe#211)', () => 
     endedAt: new Date().toISOString(),
   });
 
+  it('previews an offline listen during the ownership grace period without closing it', async () => {
+    const kept = keptSpan();
+    // A crashed document left its record but holds no owner lock. This tab has
+    // another sessionStorage, so launch recovery leaves the recent span alone.
+    browser.data.set(OPEN_SPAN, JSON.stringify([{ ...kept, owner: 'gone', keptAt: Date.now() }]));
+    await b.recoverOpenSpan();
+    expect(await b.waitingListens()).toEqual([]);
+    // On a cold offline reload the browser knows before the server has been probed.
+    const flag = Object.getOwnPropertyDescriptor(navigator, 'onLine');
+    Object.defineProperty(navigator, 'onLine', { configurable: true, value: false });
+    try {
+      expect(await b.waitingListens()).toHaveLength(1);
+    } finally {
+      if (flag) Object.defineProperty(navigator, 'onLine', flag);
+      else Reflect.deleteProperty(navigator, 'onLine');
+    }
+    mockReachable = false;
+    const waiting = await b.waitingListens();
+    expect(waiting).toHaveLength(1);
+    expect(waiting[0]).toMatchObject({
+      connectionId: kept.connectionId,
+      event: { id: kept.id, to_pos: kept.to.pos },
+    });
+    expect(await b.outboxEvents()).toEqual([]);
+    await a.appendEvents(kept.connectionId, [a.spanToEvent(kept)]);
+    expect(await b.waitingListens()).toEqual(waiting);
+    expect(await a.storedOpenSpan()).toMatchObject({ id: kept.id });
+    browser.data.delete(OPEN_SPAN);
+  });
+
   it('a reloaded tab recovers its recent span once and leaves a live tab playing', async () => {
     const nav = globalThis.navigator;
     const original = Object.getOwnPropertyDescriptor(nav, 'locks');
@@ -531,6 +564,9 @@ describe('a tab that sweeps the span another tab left sends it (fe#211)', () => 
       const owner = a.session.getItem('audiosilo.openSpanOwner')!;
       expect(owner).toEqual(expect.any(String));
       expect(locks.names()).toContain(`audiosilo-open-span:${owner}`);
+      mockReachable = false;
+      expect(await b.waitingListens()).toEqual([]);
+      mockReachable = true;
       // A duplicated tab inherits the owner's sessionStorage while its original is playing.
       const copy = fakeBrowser().tab().localStorage;
       copy.setItem('audiosilo.openSpanOwner', owner);

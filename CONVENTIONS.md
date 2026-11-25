@@ -2172,8 +2172,10 @@ when it is the pick the server's row goes with it (`PlacedProgress.server`, read
 the version an explicit start acknowledges (`knownProgress`) come from that row. A sync
 answer's rows reach this cache the same way (`applyAnswer` stores `bookPlace` of each row),
 never the row alone.
-Home's progress list is read the same way (`useWithLocalPlaces` over `withLocalPlaces`,
-read again as the outbox changes), and its Now card reads a loaded book on the player's own
+The profile's progress lists and lookups share this overlay (`useAllProgressAll`,
+`useProgressLookup`, `useWithLocalPlaces`). List changes and bursts of outbox changes
+share one storage read. Home and Up next place a saved file on the cached chapters'
+timeline (`savedTimeline`). The Now card reads a loaded book on the player's own
 queue (its chapters and total; never its synthetic slices), so Home's percent is the
 player's after an offline run and after a server reorder. With
 no server answer it reads this device's records alone (the mirror and the offline queue)
@@ -2405,7 +2407,9 @@ media GETs only.
     the new one buffers), so `load` stops the 1 s progress loop itself; the new queue's
     `playing`, or its buffering on the way to playing, starts it again (`ProgressTicks`: the
     loop also runs while a stream buffers to play, the stall watchdog's heartbeat with the
-    screen off, fe#158). Not covered: two adjacent long
+    screen off, fe#158). A direct car or resumption replacement goes through
+    `AudiobookPlayer.replaceQueue`, which stops and prepares a previously prepared engine.
+    An identical car queue that the service marked for reuse plays on at its place. Not covered: two adjacent long
     files that both play whole (each over half the budget) still hold both tables where they
     meet, since Media3 prepares the next item before the current ends; only a queue of one
     file at a time would avoid it.
@@ -2869,11 +2873,11 @@ media GETs only.
   book plays, and a mounted screen stays mounted with the phone locked or the tab hidden: a
   full player left open redrew its seek bar, times and chapter list every second for nobody.
   So `usePlayer(selector)` and `useSleepTimer(selector)`, the HOOKS, read what is **shown**,
-  not the live state. In front the two are the same object. Off screen (`isOffScreen`:
-  `AppState` `background`, which on the web is the hidden tab; NOT iOS's `inactive`, where
-  the app is still seen behind the app switcher, Control Centre or a system alert) a change
-  that is only a **tick** is not shown: no listener, no selector, no render. Coming back
-  shows the live state at once.
+  separately from the live store. In front the two are the same object. Android uses the
+  React activity's start and stop events for redraws (`AudiosiloActivityVisibility`).
+  A permission dialog or split screen can leave the activity visible while paused.
+  iOS, web and older Android binaries use `AppState` background. Off screen, a change
+  that is only a **tick** waits. Coming back shows the live state at once.
   - A tick is one field moving and nothing else: the player's `snapshot` with the same
     `state`, `trackIndex` and `rate` (so the place and the file's length; a seek counts), the
     sleep timer's `remaining`. **Every other change is shown at once and whole**, the held
@@ -3290,11 +3294,11 @@ media GETs only.
     `span-cut.ts`)), the account's Listening sync
     card (`listening-sync-card.tsx`: waiting, last sync, the couldn't-sync list with Discard),
     the unsent-listens warning on sign-out, removing a server and removing a person, and the
-    book History's "Waiting to sync" rows (`usePendingListens`), and the Journal's Diary
-    (fe#208: `useWaitingListens`, every connection's listen events, as sessions of their own
-    marked "Waiting to sync", `waitingSessions` in `diary-model.ts`; only on the servers the
-    Diary lists, never joined into a server's session, and one the server's rows already
-    hold is left out, so a listen whose answer is on the way never shows twice).
+    waiting sessions in book History and the Journal's Diary (`useWaitingListens`).
+    Both apply `waitingSessions` from `listening-sessions.ts` to their scoped rows.
+    A matching server span replaces the waiting row. On web, the views can preview an
+    offline span during the ownership grace period. A held owner lock excludes a live
+    tab. Only recovery closes a stored span into the outbox.
 - **One tab plays at a time (web)** (`src/playback/playing-claim.ts`, fe#123; owner decision:
   the newest tab wins). A tab reaching `playing` for a requested play claims the connection
   before its span opens (`claimPlaying` in `store.ts`). A tab on the same connection that
@@ -5462,7 +5466,9 @@ are asked, at most 10,000 rows.
   waits a moment after the book changes, so the store's own download of the book you start always
   goes first; it never changes the playback store. Its reads can wait for the network (a held
   query), so it asks the network rule again right before each book starts (`startOne`): a plan
-  made on Wi-Fi never starts on the mobile data that came back.
+  made on Wi-Fi never starts on the mobile data that came back. After held reads, the
+  controller checks the loaded book and settings before publishing slots or downloading.
+  A book change schedules a plan for the new book.
 - **The session decline mark**: cancelling or removing a download marks it declined until the app
   restarts (`isDeclined`, memory only); automatic downloads skip it, a listener's download lifts it.
 - **One choke point**: `useDownloads.download(..., origin)` applies the automatic rules itself for
@@ -5840,7 +5846,16 @@ under their empty state).
   (`isInternetReachable` is not read: a phone on Wi-Fi with no internet still reaches a server
   on the LAN, and calling it offline hid Retry and the Library, fe#202; unknown counts as
   online, a network Android can't name (`type: UNKNOWN`) included, and the first read never
-  undoes a change the listener told before it landed). On every platform the same source drives TanStack's `onlineManager`
+  undoes a change the listener told before it landed). `isDeviceOnline()` returns
+  undefined while the native network is unknown. A downloaded book waits up to 750 ms
+  for the first reading, then uses its manifest if the reading is still unknown (its queue
+  too, as offline). Its resume still asks the server's place then, within
+  `DOWNLOADED_PLACE_WAIT_MS`: only a known "no network" skips that read, and the start
+  begins that read beside its own (`readPlaceEarly`). Other API
+  requests can proceed. An iOS one-shot negative at its five-second timeout leaves
+  the state unknown. An HTTP response during a reading can correct its probe (one heard
+  while nothing watched never hides the next reading's), and an offline monitor event
+  takes precedence over a request finishing in flight. On every platform the same source drives TanStack's `onlineManager`
   (`onlineManager.setEventListener(watchDeviceOnline)` in `provider.tsx`; on the web it replaced
   TanStack's own window listeners, which start online and hear only the events, so a cold launch
   with no network asked every read and failed it, fe#271), so queries pause

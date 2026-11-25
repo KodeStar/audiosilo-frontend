@@ -11,7 +11,12 @@ import { Input } from '@/components/ui/input';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
 import { useDeviceOnline } from '@/lib/device-online';
-import { groupSessions, type ListeningSpan, toSpan } from '@/lib/listening-sessions';
+import {
+  waitingSessions,
+  groupSessions,
+  type ListeningSpan,
+  toSpan,
+} from '@/lib/listening-sessions';
 import { useRouteParams } from '@/lib/route-params';
 import { useToday } from '@/lib/use-day-label';
 import { useWaitingListens } from '@/playback/use-listening-sync';
@@ -20,7 +25,7 @@ import { cn } from '@/lib/utils';
 
 import { AnnotationsTab } from './annotations-tab';
 import { DiaryDayCard, DiarySkeleton } from './diary';
-import { groupByDay, matchDrifts, waitingSessions } from './diary-model';
+import { groupByDay, matchDrifts } from './diary-model';
 import { ExportActions } from './export-actions';
 import { parseJournalTab } from './journal-model';
 import { mergeNewestFirst, overallStatus, unreadSources } from './merge-model';

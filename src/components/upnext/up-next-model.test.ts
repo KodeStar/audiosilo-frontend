@@ -172,7 +172,11 @@ describe('pickSuggestions', () => {
     });
     expect(out).toEqual([
       { kind: 'next', ref: { library_id: 1, path: 'Series/2' }, series: 'Saga' },
-      { kind: 'progress', ref: { library_id: 1, path: 'Other' }, percent: 30 },
+      {
+        kind: 'progress',
+        ref: { library_id: 1, path: 'Other' },
+        place: { position: 30, duration: 100 },
+      },
     ]);
   });
 
@@ -189,7 +193,13 @@ describe('pickSuggestions', () => {
         prog('Other', 30, 100),
       ],
     });
-    expect(out).toEqual([{ kind: 'progress', ref: { library_id: 1, path: 'Other' }, percent: 30 }]);
+    expect(out).toEqual([
+      {
+        kind: 'progress',
+        ref: { library_id: 1, path: 'Other' },
+        place: { position: 30, duration: 100 },
+      },
+    ]);
   });
 
   it("hands a book in progress its row's cover_version", () => {

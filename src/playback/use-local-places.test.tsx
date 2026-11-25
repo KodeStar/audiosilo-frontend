@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { renderHook, waitFor } from '@testing-library/react-native';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
 
+import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
 import type { Progress } from '@/api/types';
 
 jest.mock('@/api/reachability', () => ({
@@ -82,4 +83,30 @@ it('keeps the list as it came while nothing local is newer', async () => {
   const rows = [row(40, '2026-03-05T00:00:00Z')];
   const { result } = await renderHook(() => useWithLocalPlaces(rows));
   await waitFor(() => expect(result.current).toBe(rows));
+});
+
+it('shares one storage read per burst and keeps unchanged rows across notifications', async () => {
+  jest.useFakeTimers();
+  try {
+    const rows = [row(40, '2026-03-05T00:00:00Z')];
+    const rendered = jest.fn();
+    const mounted = () =>
+      renderHook(() => {
+        rendered();
+        return useWithLocalPlaces(rows);
+      });
+    await mounted();
+    await mounted();
+    await act(async () => jest.advanceTimersByTimeAsync(100));
+    expect(mockOutboxListeners.size).toBe(1);
+    const get = jest.mocked(AsyncStorage.getItem);
+    get.mockClear();
+    rendered.mockClear();
+    for (let i = 0; i < 5; i++) mockOutboxListeners.forEach((l) => l());
+    await act(async () => jest.advanceTimersByTimeAsync(100));
+    expect(get.mock.calls.filter(([key]) => key === PROGRESS_MIRROR_KEY)).toHaveLength(1);
+    expect(rendered).not.toHaveBeenCalled();
+  } finally {
+    jest.useRealTimers();
+  }
 });

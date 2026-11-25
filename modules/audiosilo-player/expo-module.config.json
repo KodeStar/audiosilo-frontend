@@ -4,6 +4,9 @@
     "modules": ["AudiosiloPlayerModule"]
   },
   "android": {
-    "modules": ["expo.modules.audiosiloplayer.AudiosiloPlayerModule"]
+    "modules": [
+      "expo.modules.audiosiloplayer.AudiosiloPlayerModule",
+      "expo.modules.audiosiloplayer.ActivityVisibilityModule"
+    ]
   }
 }

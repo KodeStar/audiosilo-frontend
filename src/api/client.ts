@@ -4,7 +4,7 @@ import { webOrigin } from '@/lib/base-url';
 import { createBatchLoader } from '@/lib/batch-loader';
 import { READALONG_ALIGN } from '@/lib/bridge-jobs';
 import { CLIENT_HEADER, clientIdentity, shouldIdentify } from '@/lib/client-id';
-import { isDeviceOnline } from '@/lib/device-online';
+import { deviceNetworkAnswered, isDeviceOnline } from '@/lib/device-online';
 import { cleanAddresses } from '@/lib/pairing';
 import { originOf, type ProxyHeaders, proxyHeaderRecord } from '@/lib/proxy-headers';
 import { APP_VERSION } from '@/lib/version';
@@ -973,7 +973,7 @@ export class ApiClient {
         // it can wait out the whole timeout first (iOS in airplane mode): a bookmark's
         // "couldn't add" came 20-30 s after the tap, a downloaded book's resume lookup held
         // its start. The web needs none of this (the browser fails a fetch at once offline).
-        if (Platform.OS !== 'web' && !isDeviceOnline())
+        if (Platform.OS !== 'web' && isDeviceOnline() === false)
           throw new Error('The device has no network');
         res = await fetch(url, {
           method,
@@ -990,6 +990,7 @@ export class ApiClient {
         if (timedOut || opts.signal?.aborted) throw e;
         throw new NetworkError(e);
       }
+      deviceNetworkAnswered();
       this.onAnswer?.(this.baseUrl);
       // A 401 to a request that carried proxy headers may be the proxy's (`unauthorizedOrigin`).
       if (!res.ok && this.sendsProxyHeadersTo(url)) proxiedAnswers.add(res);

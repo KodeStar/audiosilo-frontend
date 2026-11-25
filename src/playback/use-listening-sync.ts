@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 
 import { useReachability } from '@/api/reachability';
-import type { ListeningSpanEvent } from '@/api/types';
 
 import {
   type ConnectionSyncState,
   onOutboxChange,
-  outboxEvents,
+  type WaitingListen,
+  waitingListens,
   syncStateOf,
 } from './listening-outbox';
 import { pendingSaves } from './progress-sync';
@@ -33,15 +33,18 @@ export function useOutboxRead<T>(
   const [value, setValue] = useState<T>(initial);
   useEffect(() => {
     if (key === null) return;
-    let live = true;
-    const run = () =>
+    // Only the newest read lands; the cleanup's bump discards any still in flight.
+    let revision = 0;
+    const run = () => {
+      const current = ++revision;
       void read()
-        .then((v) => live && setValue((prev) => (same(prev, v) ? prev : v)))
+        .then((v) => revision === current && setValue((prev) => (same(prev, v) ? prev : v)))
         .catch(() => undefined);
+    };
     run();
     const stop = onOutboxChange(run);
     return () => {
-      live = false;
+      revision++;
       stop();
     };
     // `read` is rebuilt each render; `key` names what it reads.
@@ -87,42 +90,28 @@ const sameIds = (
   b: readonly { event: { id: string } }[],
 ) => a.length === b.length && a.every((x, i) => x.event.id === b[i].event.id);
 
-/** This device's listen events waiting to sync for one book (the history's "Waiting to
- * sync" rows), oldest first. */
-export function usePendingListens(
-  connectionId: string | undefined,
-  libraryId: number,
-  path: string,
-): ListeningSpanEvent[] {
-  return useOutboxRead(
-    connectionId ? `${connectionId}\u0000${libraryId}\u0000${path}` : null,
-    async () =>
-      (await outboxEvents(connectionId))
-        .map((e) => e.event)
-        .filter(
-          (e): e is ListeningSpanEvent =>
-            e.kind === 'listen' && e.library_id === libraryId && e.path === path,
-        ),
-    [],
-    (a, b) => a.length === b.length && a.every((x, i) => x.id === b[i].id),
-  );
-}
-
-/** A listen waiting to sync, with its connection. */
-export type WaitingListen = { connectionId: string; event: ListeningSpanEvent };
-
 const NO_WAITING: WaitingListen[] = [];
 
-/** Every connection's listen events waiting to sync (the Diary's waiting rows, fe#208),
- * oldest first, kept current as the outbox changes. */
+/** The history views follow the waiting events and any offline span awaiting recovery. */
 export function useWaitingListens(): WaitingListen[] {
+  const offline = useReachability((s) =>
+    Object.keys(s.online)
+      .filter((cid) => !s.online[cid])
+      .sort()
+      .join('\n'),
+  );
   return useOutboxRead(
-    'all',
-    async () =>
-      (await outboxEvents()).flatMap((e): WaitingListen[] =>
-        e.event?.kind === 'listen' ? [{ connectionId: e.connectionId, event: e.event }] : [],
-      ),
+    offline,
+    waitingListens,
     NO_WAITING,
-    sameIds,
+    (a, b) =>
+      a.length === b.length &&
+      a.every(
+        (w, i) =>
+          w.event.id === b[i].event.id &&
+          w.connectionId === b[i].connectionId &&
+          w.event.ended_at === b[i].event.ended_at &&
+          w.event.to_pos === b[i].event.to_pos,
+      ),
   );
 }

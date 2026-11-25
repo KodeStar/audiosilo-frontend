@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Platform, Pressable, View } from 'react-native';
 
-import { useKnownBook } from '@/api/hooks';
+import { useChapters, useKnownBook } from '@/api/hooks';
 import type { QueueEntry } from '@/api/types';
 import { OfflineState } from '@/components/layout/offline-state';
 import { serverRefusalState } from '@/components/layout/server-refusal-state';
@@ -21,6 +21,8 @@ import { formatDuration } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
 import { useOpen } from '@/lib/open';
 import { bookTitle } from '@/lib/paths';
+import { percentHeard } from '@/lib/progress-view';
+import { savedTimeline } from '@/playback/progress-sync';
 import { cn } from '@/lib/utils';
 import {
   type NowPlaying,
@@ -315,16 +317,8 @@ function SuggestionRow({
   return (
     <SuggestedBook
       cid={cid}
-      libraryId={s.ref.library_id}
-      path={s.ref.path}
-      coverVersion={s.kind === 'progress' ? s.coverVersion : undefined}
-      reason={
-        s.kind === 'next'
-          ? s.series
-            ? t('upnext.nextInSeries', { series: s.series })
-            : t(episode ? 'upnext.nextEpisode' : 'upnext.nextAfter')
-          : t('upnext.continueAt', { percent: s.percent })
-      }
+      suggestion={s}
+      episode={episode}
       onOpen={() => {
         onNavigate?.();
         openBook(cid, s.ref.library_id, s.ref.path);
@@ -336,26 +330,32 @@ function SuggestionRow({
 
 function SuggestedBook({
   cid,
-  libraryId,
-  path,
-  coverVersion,
-  reason,
+  suggestion: s,
+  episode,
   onOpen,
   onQueue,
 }: {
   cid: string;
-  libraryId: number;
-  path: string;
-  /** A progress row's own `cover_version`, ahead of its book's: the cover URL then stays
-   * the same as the book loads. */
-  coverVersion?: string;
-  reason: string;
+  suggestion: Exclude<Suggestion, { kind: 'ghost' }>;
+  episode: boolean;
   onOpen: () => void;
   onQueue: () => void;
 }) {
   const { t } = useTranslation();
   // Offline, a cached list's copy of the book (its `/item` can't answer).
+  const { library_id: libraryId, path } = s.ref;
   const book = useKnownBook(libraryId, path, cid);
+  const chapters = useChapters(libraryId, path, cid, { enabled: false }).data;
+  const coverVersion = s.kind === 'progress' ? s.coverVersion : undefined;
+  let reason: string;
+  if (s.kind === 'progress') {
+    const { position, total } = savedTimeline(s.place, chapters, book?.duration);
+    reason = t('upnext.continueAt', { percent: percentHeard(position, total, false) });
+  } else {
+    reason = s.series
+      ? t('upnext.nextInSeries', { series: s.series })
+      : t(episode ? 'upnext.nextEpisode' : 'upnext.nextAfter');
+  }
   const title = bookTitle(book?.title, path);
   const lines = linesFor(1, useLargeText());
   return (
