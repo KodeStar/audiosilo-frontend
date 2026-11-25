@@ -3,25 +3,37 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Platform, View } from 'react-native';
 
-import { type ApiClient, isRefusedForGood } from '@/api/client';
+import {
+  type ApiClient,
+  LegacyExchangeUnansweredError,
+  isIdlessExchange,
+  isRefusedForGood,
+} from '@/api/client';
 import { connectClient, connectClientFor } from '@/api/connect-client';
-import type { AuthSession, PairingPayload } from '@/api/types';
+import type { AuthSession, PairingPayload, ServerInfo } from '@/api/types';
 import { AddressesCard } from '@/components/layout/addresses-card';
 import { Button } from '@/components/ui/button';
 import { Text } from '@/components/ui/text';
 import { SegmentedControl } from '@/components/ui/toggle-group';
-import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
+import { onlyOwnServer, productionWebOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
 import { hostOf } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
 import { getSignInKey } from '@/lib/sign-in-key';
+import { useLatest } from '@/lib/use-latest';
 import { useSession } from '@/stores/session';
 
 import { ConnectFrame, ConnectInput, StepDots } from './connect-frame';
 import { addressesBody, BackToStart } from './connect-parts';
 import { finishConnect } from './finish-connect';
-import { openScanner } from './invite-handoff';
+import {
+  forgetUnansweredInvite,
+  keepUnansweredInvite,
+  openScanner,
+  type UnansweredInvite,
+  unansweredInvite,
+} from './invite-handoff';
 import { holdOidcIntent } from './oidc-intent';
 import { oidcButtonName } from './oidc-sign-in';
 import { refusalWaitOver, type SignInStage, signInErrorText } from './sign-in-error';
@@ -45,39 +57,31 @@ export function emptyField(
 }
 
 /**
- * Sign in with an invite code: redeem it, then exchange its pairing token. A redeem can spend
- * one of the invite's uses, so a token whose exchange got no answer (the network, a 5xx) is
- * handed to `keep`, and the next try of the same code exchanges `kept` instead of redeeming
- * again (fe#159: a second redeem spent another use, and refused a single-use invite as used).
- * A token the server refuses for good (`isRefusedForGood`: spent, or expired meanwhile) is
- * never kept, and a kept one refused so is dropped and the code redeemed.
+ * Redeem an invite code, then exchange its pairing token. Keep an unanswered exchange's
+ * token so the same device can recover its session on retry. A server that remembers this
+ * device spending the invite can say its retry is over. Never re-redeem a multi-use invite
+ * after losing an exchange's answer: it may have already issued a session.
  * `onStage` hears which request is on its way (`signInErrorText`'s words).
  */
 async function signInWithCode(
   client: Pick<ApiClient, 'redeemCode' | 'exchange'>,
   code: string,
-  kept: PairingPayload | null,
-  keep: (payload: PairingPayload) => void,
+  deviceId: string,
+  kept: UnansweredInvite | null,
+  keep: (payload: UnansweredInvite) => void,
   onStage: (stage: SignInStage) => void,
 ): Promise<{ payload: PairingPayload; session: AuthSession }> {
-  const exchange = async (payload: PairingPayload) => {
-    onStage('exchange');
-    try {
-      return { payload, session: await client.exchange(payload.pairing_token, getDeviceName()) };
-    } catch (e) {
-      if (!isRefusedForGood(e)) keep(payload);
-      throw e;
-    }
-  };
-  if (kept) {
-    try {
-      return await exchange(kept);
-    } catch (e) {
-      if (!isRefusedForGood(e)) throw e;
-    }
+  if (kept instanceof LegacyExchangeUnansweredError) throw kept;
+  const payload = kept ?? (await client.redeemCode(code));
+  onStage(kept ? 'retryExchange' : 'exchange');
+  try {
+    const session = await client.exchange(payload.pairing_token, getDeviceName(), deviceId);
+    return { payload, session };
+  } catch (e) {
+    if (e instanceof LegacyExchangeUnansweredError) keep(e);
+    else if (kept || !isRefusedForGood(e)) keep(payload);
+    throw e;
   }
-  onStage('redeem');
-  return exchange(await client.redeemCode(code));
 }
 
 /**
@@ -151,29 +155,23 @@ export function SignInStep({
   // the flow is for (a grown-up's pass through kids mode, "Add someone", `book`, the
   // connection a reconnect re-pairs with the address it signs in through) goes with the page
   // to the provider and back (`holdOidcIntent`, fe#310).
-  const canSso = onlyOwnServer(servedOrigin(), [server]);
-  // The button's name once the server said single sign-on is on (`oidcButtonName`).
-  const [ssoName, setSsoName] = useState<string | null>(null);
-  // Whether the server marks every 401 of its own (`unauthorized_mark`, WS-401-MARK), as its
-  // `/server` said: a sign-in's unmarked 401 is then something in front of it refusing, never
-  // a wrong password or code (`onSubmit`). Unknown until it answers, and for a server before
-  // the mark: the 401's body decides, as before.
-  const marks = useRef<boolean | undefined>(undefined);
+  const ownServer = onlyOwnServer(productionWebOrigin(), [server]);
+  const [discovery, setDiscovery] = useState<{ api: ApiClient; info: ServerInfo | null } | null>(
+    null,
+  );
   useEffect(() => {
-    marks.current = undefined;
     const ask = new AbortController();
-    api
+    void api
       .serverInfo(ask.signal)
+      .catch(() => null)
       .then((info) => {
-        if (ask.signal.aborted) return;
-        marks.current = info.capabilities?.unauthorized_mark;
-        if (canSso) setSsoName(oidcButtonName(info));
-      })
-      // A server that doesn't answer offers no single sign-on; the other ways stay.
-      .catch(() => {});
+        if (!ask.signal.aborted) setDiscovery({ api, info });
+      });
     return () => ask.abort();
-  }, [api, canSso]);
-  const sso = canSso ? ssoName : null;
+  }, [api]);
+  const serverRead = discovery?.api === api;
+  const info = serverRead ? discovery.info : null;
+  const sso = ownServer ? oidcButtonName(info) : null;
 
   const modes = MODE_VALUES.map((value) => ({
     value,
@@ -184,11 +182,8 @@ export function SignInStep({
   // must not redeem the code a second time while one is on its way, which could spend
   // another of the invite's uses.
   const submitting = useRef(false);
-  // The code redeemed last whose exchange got no answer, the server it was redeemed at, and
-  // its pairing token (`signInWithCode`).
-  const redeemed = useRef<{ server: string; code: string; payload: PairingPayload } | null>(null);
-  const onSubmit = async () => {
-    if (submitting.current) return;
+  const onSubmit = useLatest(async () => {
+    if (!serverRead || submitting.current) return;
     setError(null);
     const empty = emptyField(mode, { code, username, password });
     setMissing(empty);
@@ -199,36 +194,51 @@ export function SignInStep({
     let stage: SignInStage = mode === 'code' ? 'redeem' : 'login';
     // The proxy set read as the sign-in is sent, not as the step opened (fe#295): one changed
     // or removed on the Account page meanwhile is the one that counts.
-    const { client, proxy: carried } = connectClientFor(server, undefined, () => marks.current);
+    const { client, proxy: carried } = connectClientFor(
+      server,
+      undefined,
+      () => info?.capabilities?.unauthorized_mark,
+    );
     try {
+      const deviceId = await getSignInKey(server);
       if (mode === 'code') {
-        const typed = code.trim();
-        const last = redeemed.current;
-        const kept = last?.server === server && last.code === typed ? last.payload : null;
-        redeemed.current = null;
+        // An exchange of this invite whose answer was lost, here or in an earlier step
+        // (`keepUnansweredInvite`). Another code tried meanwhile leaves it, so going back to
+        // this one never redeems it again.
+        const kept = unansweredInvite(server, code);
         const { payload, session } = await signInWithCode(
           client,
-          typed,
+          code.trim(),
+          deviceId,
           kept,
-          (p) => (redeemed.current = { server, code: typed, payload: p }),
+          (p) => keepUnansweredInvite(server, code, p),
           (next) => (stage = next),
         );
-        await finishConnect({
-          serverUrl: server,
-          session,
-          linkAddresses: payload.addresses,
-          name: payload.server_name || serverName,
-          reconnectId,
-          book,
-          carried,
-        });
+        if (kept) forgetUnansweredInvite(server, code);
+        try {
+          await finishConnect({
+            serverUrl: server,
+            session,
+            linkAddresses: payload.addresses,
+            name: payload.server_name || serverName,
+            reconnectId,
+            book,
+            carried,
+          });
+        } catch (e) {
+          // The invite is spent on a session this device could not keep: the next try
+          // exchanges the same token again, never redeeming the code a second time. An older
+          // server's exchange without the sign-in key can't be replayed (each one claims a
+          // use): the next try says so instead of sending it again.
+          keepUnansweredInvite(
+            server,
+            code,
+            isIdlessExchange(session) ? new LegacyExchangeUnansweredError() : payload,
+          );
+          throw e;
+        }
       } else {
-        const session = await client.login(
-          username.trim(),
-          password,
-          getDeviceName(),
-          await getSignInKey(server),
-        );
+        const session = await client.login(username.trim(), password, getDeviceName(), deviceId);
         await finishConnect({
           serverUrl: server,
           session,
@@ -241,21 +251,21 @@ export function SignInStep({
     } catch (e) {
       setError(signInErrorText(e, stage, t), refusalWaitOver(e, t));
       setLoading(false);
-    } finally {
       submitting.current = false;
     }
-  };
+  });
 
-  // The invite link's code signs in at once, one time only.
+  // The link signs in once the step knows whether this server marks its 401s. Leave an
+  // edited field or a switch to password to the listener's own submit.
+  const inviteUntouched = !!initialCode && mode === 'code' && code === initialCode;
   const autoSubmitted = useRef(false);
   useEffect(() => {
-    if (!initialCode || autoSubmitted.current) return;
+    if (!serverRead || !initialCode || autoSubmitted.current) return;
     autoSubmitted.current = true;
-    void onSubmit();
-    // Once, on open: `onSubmit` reads the state the code was filled into.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (inviteUntouched) void onSubmit();
+  }, [serverRead, initialCode, inviteUntouched, onSubmit]);
 
+  const awaitingInvite = inviteUntouched && !serverRead;
   const name = serverName || reconnecting?.name;
   const host = hostOf(server);
   const known = reconnecting?.addresses;
@@ -339,7 +349,13 @@ export function SignInStep({
         </Text>
       ) : null}
 
-      <Button size="lg" title={t('connect.signIn.submit')} loading={loading} onPress={onSubmit} />
+      <Button
+        size="lg"
+        title={t('connect.signIn.submit')}
+        loading={loading || awaitingInvite}
+        disabled={!serverRead}
+        onPress={onSubmit}
+      />
       {sso !== null ? (
         <Button
           size="lg"
@@ -366,7 +382,7 @@ export function SignInStep({
           onPress={() => openScanner(reconnectId, book)}
           // Not while a sign-in is on its way (an invite's code signs in as the step opens):
           // a code scanned then would start a second one under it.
-          disabled={loading}
+          disabled={loading || awaitingInvite}
           className="self-center"
           testID="sign-in-scan"
         />
@@ -374,8 +390,9 @@ export function SignInStep({
       {/* The served player's "Back" goes back: to its found card, or to the app the reconnect
           banner was tapped in (the first step there offers no way back into this reconnect). */}
       <BackToStart
+        ownServer={ownServer}
         onPress={() =>
-          servedOrigin() && router.canGoBack() ? router.back() : router.dismissTo('/connect')
+          ownServer && router.canGoBack() ? router.back() : router.dismissTo('/connect')
         }
       />
     </ConnectFrame>

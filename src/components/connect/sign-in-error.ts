@@ -1,10 +1,15 @@
 import type { TFunction } from 'i18next';
 
-import { ApiError, apiErrorKind, isProxyRefusal } from '@/api/client';
+import {
+  ApiError,
+  LegacyExchangeUnansweredError,
+  apiErrorKind,
+  isProxyRefusal,
+} from '@/api/client';
 
 /** Which request of the sign-in failed: the invite code's redeem, the pairing token's
  * exchange that follows it, or a username and password login. */
-export type SignInStage = 'redeem' | 'exchange' | 'login';
+export type SignInStage = 'redeem' | 'exchange' | 'retryExchange' | 'login';
 
 /**
  * The words for a refusal that reads the same wherever it lands (a sign-in, a pairing
@@ -27,6 +32,8 @@ export function sharedRefusalText(e: ApiError, t: TFunction): string | undefined
     case 'member_disabled':
       return t('connect.signIn.errors.disabled');
     // The server names a real invite that can't be used any more (redeem, server v2.5.0).
+    case 'invite_used_by_this_device':
+      return t('connect.signIn.errors.inviteUsedByThisDevice');
     case 'invite_used':
       return t('connect.signIn.errors.inviteUsed');
     case 'invite_expired':
@@ -76,12 +83,23 @@ export function refusalWaitOver(
  * server is the generic "Sign in failed".
  */
 export function signInErrorText(e: unknown, stage: SignInStage, t: TFunction): string {
+  if (e instanceof LegacyExchangeUnansweredError)
+    return t('connect.signIn.errors.inviteMayBeUsedByThisDevice');
   if (!(e instanceof ApiError)) return t('connect.signIn.failed');
+  if (
+    stage === 'retryExchange' &&
+    e.status === 401 &&
+    !isProxyRefusal(e) &&
+    (!e.code || e.code === 'invite_used')
+  ) {
+    return t('connect.signIn.errors.inviteMayBeUsedByThisDevice');
+  }
   const shared = sharedRefusalText(e, t);
   if (shared !== undefined) return shared;
   if (e.status === 401 || e.status === 400) {
     if (stage === 'redeem') return t('connect.signIn.errors.badCode');
-    if (stage === 'exchange') return t('connect.signIn.errors.usedInvite');
+    if (stage === 'exchange' || stage === 'retryExchange')
+      return t('connect.signIn.errors.usedInvite');
     return t('connect.signIn.errors.badPassword');
   }
   return t('connect.signIn.failed');

@@ -261,7 +261,7 @@ describe('EndCredits', () => {
     expect(screen.getByText('2 days')).toBeTruthy();
     expect(screen.getByText('1.25×')).toBeTruthy();
     expect(screen.getByText('Up next · from your queue')).toBeTruthy();
-    expect(screen.getByText('Project Hail Mary')).toBeTruthy();
+    expect(screen.getByText('Project Hail Mary').props.numberOfLines).toBe(2);
     expect(screen.getByText('16h 6m · Streams from Hearthside')).toBeTruthy();
     expect(mockHistory).toHaveBeenCalledWith(1, PATH, 500);
   });
@@ -299,6 +299,11 @@ describe('EndCredits', () => {
         expect(classes(tile)).toContain('w-full');
       }
       expect(screen.getByText('Time listened').props.numberOfLines).toBeUndefined();
+      expect(screen.getByText('Project Hail Mary').props.numberOfLines).toBeUndefined();
+      expect(screen.getByText('Up next · from your queue').props.numberOfLines).toBeUndefined();
+      expect(
+        screen.getByText('16h 6m · Streams from Hearthside').props.numberOfLines,
+      ).toBeUndefined();
     } finally {
       await setFontScale(1);
     }

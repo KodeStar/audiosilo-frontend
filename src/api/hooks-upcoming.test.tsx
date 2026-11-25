@@ -28,7 +28,7 @@ jest.mock('@/api/provider', () => ({
 }));
 
 /* eslint-disable import/first */
-import { useUpcomingAll, useUpcomingAvailable } from '@/api/hooks';
+import { useUpcomingAll, useUpcomingEligibility } from '@/api/hooks';
 import { useSession } from '@/stores/session';
 /* eslint-enable import/first */
 
@@ -177,7 +177,7 @@ describe('useUpcomingAll', () => {
         { id: 'old', caps: {} },
         { id: 'kid', caps: { upcoming: true }, kid: true },
       ],
-      () => ({ all: useUpcomingAll(), available: useUpcomingAvailable() }),
+      () => ({ all: useUpcomingAll(), available: useUpcomingEligibility().available }),
     );
     await waitFor(() => expect(result.current.all.available).toBe(false));
     expect(result.current.available).toBe(false);
@@ -187,7 +187,10 @@ describe('useUpcomingAll', () => {
   });
 
   it("is not known while a server's flags are loading", async () => {
-    const { result } = await mount([{ id: 'a', caps: 'pending' }], useUpcomingAvailable);
+    const { result } = await mount(
+      [{ id: 'a', caps: 'pending' }],
+      () => useUpcomingEligibility().available,
+    );
     expect(result.current).toBeUndefined();
     expect(mockClients.a.upcoming).not.toHaveBeenCalled();
   });
@@ -200,7 +203,7 @@ describe('useUpcomingAll', () => {
         { id: 'down', caps: 'fail' },
         { id: 'kid', caps: { upcoming: true }, kid: true },
       ],
-      () => ({ all: useUpcomingAll(), available: useUpcomingAvailable() }),
+      () => ({ all: useUpcomingAll(), available: useUpcomingEligibility().available }),
     );
     await waitFor(() => expect(result.current.all.available).toBe(false));
     expect(result.current.available).toBe(false);

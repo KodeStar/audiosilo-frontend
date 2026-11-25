@@ -14,6 +14,7 @@ import { useIsDownloaded } from '@/downloads/store';
 import { useContextMenuRequest } from '@/lib/context-menu';
 import { useOpen } from '@/lib/open';
 import { listenedWords, savedProgressView } from '@/lib/progress-view';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { useProfileConnections } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
@@ -37,17 +38,18 @@ function Flag({ children, className }: { children: ReactNode; className?: string
   );
 }
 
-/** A tile's words under its cover: the title (two lines), then one caption line. Shared
+/** A tile's words under its cover: two title lines and one caption line at default text size. Shared
  * with the tiles that stand beside a `CoverTile` (a ghost in Next in your series), so a
  * row's titles line up. */
 export function TileCaption({ title, caption }: { title: string; caption?: string }) {
+  const large = useLargeText();
   return (
     <View className="gap-0.5">
-      <Text variant="label" numberOfLines={2}>
+      <Text variant="label" numberOfLines={linesFor(2, large)}>
         {title}
       </Text>
       {caption ? (
-        <Text variant="caption" numberOfLines={1}>
+        <Text variant="caption" numberOfLines={linesFor(1, large)}>
           {caption}
         </Text>
       ) : null}
@@ -88,7 +90,7 @@ export type CoverTileProps = {
   libraryId: number;
   path: string;
   title: string;
-  /** The one line under the title (author by default at the call site, or "72% · 3h
+  /** The caption under the title (author by default at the call site, or "72% · 3h
    * left", "Added 2 days ago"). */
   caption?: string;
   /** The caption already says how far in the book is ("40% · 1h left", "Finished"), so the
@@ -117,7 +119,7 @@ export type CoverTileProps = {
  * A book as a cover tile (STYLEGUIDE section 8 tiles, used by `ShelfRow` and
  * `CoverGrid`): the cover (`BookCover`), a progress bar along its bottom while in
  * progress (the listener's saved progress, read by the tile), flags in its corner (a friend's server, downloaded on this device - read from
- * the downloads registry -, finished), then the title (two lines) and one caption line.
+ * the downloads registry -, finished), then the title and caption.
  * The whole tile is one button whose name carries the title, caption and state. On the
  * web desktop the cover can be dragged onto Up next (`useBookDragSource`). A long-press
  * (and on the web a right-click, the Menu key or Shift+F10; for a screen reader the

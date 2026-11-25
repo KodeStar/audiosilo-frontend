@@ -3,7 +3,7 @@ import { Fragment, type ReactNode, useLayoutEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
-import { useCapabilitiesAllRead, useUpcomingAvailable } from '@/api/hooks';
+import { useUpcomingEligibility } from '@/api/hooks';
 import { AccountSection } from '@/components/account/account-section';
 import { HouseholdPage } from '@/components/household/household-page';
 import { JournalScreen } from '@/components/journal/journal-screen';
@@ -19,7 +19,7 @@ import { useLayout } from '@/lib/layout';
 import { type CoreYouSection, firstParam } from '@/lib/paths';
 import { useRouteParams } from '@/lib/route-params';
 import { usePageTitle } from '@/lib/use-page-title';
-import { WithActiveModules } from '@/modules/active-modules';
+import { activeModules, PLAYER_MODULES } from '@/modules/registry';
 import type { PlayerModule, YouModuleSection } from '@/modules/registry';
 
 import {
@@ -91,24 +91,19 @@ const UPCOMING: YouModuleSection = {
  * link to either still renders here). The section is the route's `section` param (`parseYouSection`:
  * absent or unknown is Stats), switched in place with `setParams`; the Journal keeps its
  * own `tab` param beside it. Upcoming (`section=upcoming`, Track U2, only while a server
- * offers it: `useUpcomingAvailable`) and then an active module's sections (`youSections`,
+ * offers it: `useUpcomingEligibility`) and then an active module's sections (`youSections`,
  * `src/modules/registry.ts`, none yet) follow the hub's own (`youExtraSections`); `modules`
  * is the list to choose from (the registry; tests pass a fake).
  */
-export function YouHub({ modules }: { modules?: readonly PlayerModule[] } = {}) {
-  return (
-    <WithActiveModules modules={modules}>{(active) => <Hub active={active} />}</WithActiveModules>
-  );
-}
-
-function Hub({ active }: { active: readonly PlayerModule[] }) {
+export function YouHub({ modules = PLAYER_MODULES }: { modules?: readonly PlayerModule[] } = {}) {
   const { t } = useTranslation();
   const navigation = useNavigation();
   const layout = useLayout();
   const phone = layout === 'phone';
   const params = useRouteParams<{ section?: string }>();
   // Upcoming only once a server is known to offer it (not a kid there).
-  const upcoming = useUpcomingAvailable() === true;
+  const { caps, failed, available: upcoming } = useUpcomingEligibility();
+  const active = useMemo(() => activeModules(modules, caps), [modules, caps]);
   const moduleSections = useMemo(
     () => youExtraSections(upcoming ? UPCOMING : null, youModuleSections(active)),
     [active, upcoming],
@@ -117,14 +112,14 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
   // A link to a section the servers may yet offer (Upcoming, a module's) waits for their
   // flags, rather than showing Stats until they answer (fe#159): only while one is still
   // being read, so a section no server offers opens Stats.
-  const flagsPending = useFlagsPending();
+  const flagsPending = Object.entries(caps).some(([id, flags]) => !flags && !failed.includes(id));
   const asked = firstParam(params.section);
   const section = parseYouSection(params.section, moduleKeys);
   const waiting = flagsPending && asked !== '' && section !== asked;
   const shown = waiting ? asked : section;
   const ownSection = isCoreYouSection(section) && !waiting ? section : null;
   const moduleSection = ownSection ? undefined : moduleSections.get(section);
-  const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label(t) ?? '');
+  const title = ownSection ? t(youTitleKey(ownSection)) : (moduleSection?.label(t) ?? t('nav.you'));
 
   // The phone's large title (the tab stack's header) follows the section; the wide
   // sub-nav keeps the destination's own title, "You".
@@ -166,13 +161,6 @@ function Hub({ active }: { active: readonly PlayerModule[] }) {
       </Fragment>
     </View>
   );
-}
-
-/** Whether a server's flags (`GET /server`) are still being read: one neither known nor
- * failed. */
-function useFlagsPending(): boolean {
-  const { caps, failed } = useCapabilitiesAllRead();
-  return Object.entries(caps).some(([cid, c]) => c === undefined && !failed.includes(cid));
 }
 
 /** A module's section behind a component of its own, so a hook its `render` reaches stays

@@ -58,7 +58,7 @@ export function OptionTile({
       {caption ? (
         <Text
           variant="caption"
-          className={cn(selected && 'text-primary-foreground/80')}
+          className={cn(selected && 'text-primary-muted-foreground')}
           style={tabularNums}
           numberOfLines={lines}
         >

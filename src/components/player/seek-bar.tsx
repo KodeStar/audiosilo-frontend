@@ -289,7 +289,7 @@ export function SeekBar({
               {formatClock(tipSeconds)}
             </Text>
             <Text
-              className="font-sans text-[11px] web:text-[0.6875rem] text-primary-foreground/70"
+              className="font-sans text-[11px] web:text-[0.6875rem] text-primary-muted-foreground"
               style={tabularNums}
               numberOfLines={1}
             >
@@ -380,12 +380,16 @@ export function PlayerSeekBar({
   hoverTip,
   timesHidden = false,
   bars,
+  scale: controlsScale,
 }: {
   bookmarks?: readonly number[];
   onTip?: (showing: boolean) => void;
   hoverTip?: boolean;
   timesHidden?: boolean;
   bars?: number;
+  /** The transport's control scale (`controlScale`), so the band grows with it; the text
+   * scale when not given. */
+  scale?: number;
 }) {
   const { t } = useTranslation();
   const bookKey = usePlayer(selectBookKey);
@@ -402,7 +406,8 @@ export function PlayerSeekBar({
     onSeek,
     bookmarks: inSegment,
   } = usePlayingSegment(bookmarks, { hold: scrub !== null });
-  const scale = useFontScale();
+  const fontScale = useFontScale();
+  const scale = controlsScale ?? fontScale;
   if (!bookKey) return null;
 
   return (

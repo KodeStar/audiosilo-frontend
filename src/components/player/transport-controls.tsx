@@ -45,24 +45,14 @@ const SIZES: Record<TransportSize, TransportDims> = {
   sm: { play: 44, button: 40, playIcon: 18, chapterIcon: 16, skipFont: 13, gap: 6 },
 };
 
-/** The transport's width at a size: four buttons and the play button, a gap between each
- * (for a column that lays out around it, like the dock's middle one). */
-export function transportWidth(size: TransportSize): number {
-  return widthOf(SIZES[size]);
-}
-
-function widthOf(d: TransportDims): number {
-  return 4 * d.button + d.play + 4 * d.gap;
-}
-
-/** The most the full player's controls grow with the text (fe#267, owner decision 3). */
+/** The most the player's controls grow with the text (fe#267, owner decision 3). */
 export const CONTROL_MAX_SCALE = 1.5;
 /** The least they shrink to fit a narrow column (a 320 wide phone at the largest display
  * size): a 48 button is still past the 44 target at this. */
 const CONTROL_MIN_SCALE = 0.9;
 
 /**
- * The full player's control scale: the text scale (never under 1), capped at
+ * The transport's control scale: the text scale (never under 1), capped at
  * `CONTROL_MAX_SCALE` and at what fits `room` (the column's width; 0 = not measured yet,
  * no fit). A column narrower than the transport at 1 shrinks it to fit, down to
  * `CONTROL_MIN_SCALE`, rather than run it past the edges.
@@ -95,8 +85,9 @@ export function transportDims(size: TransportSize, scale = 1): TransportDims {
 }
 
 /** The transport's width at a control scale (for a test, or a layout around it). */
-export function scaledTransportWidth(size: TransportSize, scale: number): number {
-  return widthOf(transportDims(size, scale));
+export function scaledTransportWidth(size: TransportSize, scale = 1): number {
+  const d = transportDims(size, scale);
+  return 4 * d.button + d.play + 4 * d.gap;
 }
 
 /** Duration of the play/pause morph. */
@@ -178,7 +169,7 @@ export function PlayButton({
 }: {
   size?: TransportSize;
   plain?: boolean;
-  /** The control scale (`controlScale`), the full player's transport only. */
+  /** The control scale (`controlScale`), for the transport row. */
   scale?: number;
 }) {
   const { t } = useTranslation();
@@ -238,9 +229,7 @@ export function PlayButton({
  * position at press time (`stepSegment`: chapters, else files); back/forward are the
  * listener's skip lengths. Renders nothing with no book loaded.
  *
- * The full player's sizes grow with the text size (`controlScale`, capped, and fitted to
- * `room`, the column's width); the dock's `sm` keeps its size (its bar lays out around
- * `transportWidth('sm')`).
+ * Every size grows with the text size and fits the width of its column.
  */
 export function TransportControls({
   size = 'md',
@@ -248,7 +237,8 @@ export function TransportControls({
   className,
 }: {
   size?: TransportSize;
-  /** The width the transport may take (the full player's column), to fit it. */
+  /** The width the transport may take (the full player's column, the dock's middle
+   * column), to fit it. */
   room?: number;
   className?: string;
 }) {
@@ -261,7 +251,7 @@ export function TransportControls({
   const skipBackward = useSettings((s) => s.skipBackward);
   if (!loaded) return null;
 
-  const scale = size === 'sm' ? 1 : controlScale(size, fontScale, room);
+  const scale = controlScale(size, fontScale, room);
   const d = transportDims(size, scale);
   const hitSlop = slopForPx(d.button);
   const round = pillClass('ghost');

@@ -7,6 +7,7 @@ import { Card } from '@/components/ui/card';
 import { Notice } from '@/components/ui/notice';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDuration } from '@/lib/format';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -41,6 +42,8 @@ export function BookDetailsTab({
   roomy,
 }: BookDetailsTabProps) {
   const { t } = useTranslation();
+  const large = useLargeText();
+  const columns = roomy && !large;
   const [expanded, setExpanded] = useState(false);
   const { shown, hidden } = visibleFiles(files, expanded);
   const notice = {
@@ -72,7 +75,7 @@ export function BookDetailsTab({
       <Notice testID={`book-playback-${mode}`} {...notice[mode]} />
 
       <Card className="overflow-hidden p-0" accessibilityRole="list">
-        {roomy ? (
+        {columns ? (
           <View
             className="flex-row gap-3 border-b border-border px-4 py-2.5"
             importantForAccessibility="no-hide-descendants"
@@ -102,13 +105,17 @@ export function BookDetailsTab({
             className={cn(
               'px-4 py-2.5',
               i > 0 && 'border-t border-border',
-              roomy ? 'flex-row items-center gap-3' : 'gap-0.5',
+              columns ? 'flex-row items-center gap-3' : 'gap-0.5',
             )}
           >
-            <Text variant="mono" className={roomy ? 'flex-[3]' : undefined} numberOfLines={2}>
+            <Text
+              variant="mono"
+              className={columns ? 'flex-[3]' : undefined}
+              numberOfLines={linesFor(2, large)}
+            >
               {f.name}
             </Text>
-            {roomy ? (
+            {columns ? (
               <>
                 <Text className="flex-1 text-sm">{f.codec}</Text>
                 <Text className="flex-1 text-sm" style={tabularNums}>

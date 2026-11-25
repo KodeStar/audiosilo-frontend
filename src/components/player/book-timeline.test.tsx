@@ -52,6 +52,7 @@ jest.mock('@/playback/store', () => {
 });
 
 /* eslint-disable import/first */
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 import { usePlayer } from '@/playback/store';
 
 import { BookTimeline, PlayerBookTimeline } from './book-timeline';
@@ -95,6 +96,27 @@ describe('BookTimeline', () => {
     expect(screen.getAllByTestId('timeline-segment-past')).toHaveLength(2);
     expect(screen.getAllByTestId('timeline-segment-current')).toHaveLength(1);
     expect(screen.getAllByTestId('timeline-segment-ahead')).toHaveLength(1);
+  });
+
+  it('tints the current chapter pink and draws the chapters ahead on the track colour', async () => {
+    await render(<BookTimeline starts={STARTS} total={4000} position={2000} {...H} />);
+    const bar = (id: string) =>
+      (screen.getAllByTestId(id)[0].children[0] as { props: { className?: string } }).props
+        .className;
+    expect(bar('timeline-segment-past')).toContain('bg-foreground/35');
+    expect(bar('timeline-segment-current')).toContain('bg-brand/25');
+    expect(bar('timeline-segment-ahead')).toContain('bg-track');
+  });
+
+  it('outlines the unplayed chapter tracks under the heard portion in high contrast', async () => {
+    await render(
+      <ThemeColorsProvider highContrast>
+        <BookTimeline starts={STARTS} total={4000} position={2400} {...H} />
+      </ThemeColorsProvider>,
+    );
+    const outlines = screen.getAllByTestId('track-outline');
+    expect(outlines).toHaveLength(2);
+    expect(outlines[0].parent?.children[1]).toHaveStyle({ width: '50%' });
   });
 
   it('names the first tied marker, or the row of the known playing file', async () => {

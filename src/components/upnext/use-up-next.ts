@@ -168,21 +168,6 @@ export function useUpNextData(cid: string | undefined) {
   };
 }
 
-/** The loaded book's path when it is the folder book holding `entry`'s path (a part of it,
- * as the server resolves one), else the entry's own path. Only for an entry the server sent
- * with no `book`: one that is a book of its own inside the loaded book's folder (a book
- * nested in another's) is never taken for a part of it. */
-function loadedHolding(cid: string, entry: QueueEntry): string {
-  const np = usePlayer.getState().nowPlaying;
-  const holds =
-    !entry.book &&
-    !!np &&
-    sameConnection(np.connectionId, cid) &&
-    np.libraryId === entry.library_id &&
-    entry.path.startsWith(`${np.path}/`);
-  return holds ? np.path : entry.path;
-}
-
 /**
  * "Play now" for a queued book, through the one play path (`usePlayBook`): a phone
  * closes the sheet and opens the full player; a tablet or desktop starts it under the
@@ -205,7 +190,7 @@ export function usePlayNow(cid: string | undefined) {
       await play({ connectionId: cid, libraryId: entry.library_id, path: entry.path });
       // Already loaded (it played on): it leaves here. A start drops it itself once it
       // started (`startBookInPlace`, the player route), and one that failed keeps it.
-      dropStartedBook(cid, entry.library_id, loadedHolding(cid, entry), entry.path);
+      dropStartedBook(cid, entry.library_id, entry.book?.rel_path, entry.path);
     } catch (err) {
       playFailedToast(err, t('upnext.playFailed', { title }));
     }

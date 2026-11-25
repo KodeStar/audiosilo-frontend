@@ -14,6 +14,7 @@ import type {
   User,
 } from '@/api/types';
 import type { LayoutClass } from '@/lib/layout';
+import { setFontScale } from '@/testing/font-scale';
 import { mountWithPortal } from '@/testing/render-overlay';
 
 // The book page over stand-ins for its data (the hooks), the player (the shared store
@@ -924,10 +925,27 @@ describe('book page details tab', () => {
   it('lists the files with an about-kbps bitrate and the path the progress keys on', async () => {
     mockParams = { ...mockParams, tab: 'details' };
     await mountAt('desktop', 1376);
-    expect(screen.getByText('book.m4b')).toBeTruthy();
+    expect(screen.getByText('book.m4b').props.numberOfLines).toBe(2);
     expect(screen.getByText('about 80 kbps')).toBeTruthy();
     expect(screen.getByText('Path on Hearthside')).toBeTruthy();
     expect(screen.getByText('Author/Book')).toBeTruthy();
+  });
+
+  it('gives the filename its own uncapped row at large text sizes even on a wide page', async () => {
+    const name = 'Volume one - The collected short stories - Side A.m4b';
+    mockParams = { ...mockParams, tab: 'details' };
+    mockChapters = {
+      ...CHAPTERS,
+      files: [{ ...CHAPTERS.files[0], rel_path: `Author/Book/${name}` }],
+    };
+    try {
+      await setFontScale(3.1);
+      await mountAt('desktop', 1376);
+      expect(screen.getByText(name).props.numberOfLines).toBeUndefined();
+      expect(screen.getByText(/ · about 80 kbps · /)).toBeTruthy();
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   it('says converted for this browser on web when the server transcodes it', async () => {

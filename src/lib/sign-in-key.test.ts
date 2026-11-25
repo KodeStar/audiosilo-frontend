@@ -35,3 +35,28 @@ it('never sends one server the key another knows this install by', async () => {
   expect(await getSignInKey(HOME)).toBe(home);
   expect(await getSignInKey('https://other.example.com')).toBe(other);
 });
+
+// Another tab adds a key after this one read the list: this one's next key keeps it.
+it('keeps a key another tab stored after this one read the list', async () => {
+  const home = await getSignInKey(HOME);
+  const { setItem } = jest.requireMock('@/lib/storage') as {
+    setItem: (k: string, v: unknown) => Promise<void>;
+  };
+  await setItem('audiosilo.signInKeys', {
+    [HOME]: home,
+    'https://tab.example.com': 'b'.repeat(32),
+  });
+  await getSignInKey('https://other.example.com');
+  expect(await getSignInKey('https://tab.example.com')).toBe('b'.repeat(32));
+  expect(await getItem('audiosilo.signInKeys')).toMatchObject({
+    [HOME]: home,
+    'https://tab.example.com': 'b'.repeat(32),
+  });
+});
+
+it('gives two sign-ins at one new address the same key', async () => {
+  const NEW = 'https://new.example.com';
+  const [a, b] = await Promise.all([getSignInKey(NEW), getSignInKey(NEW)]);
+  expect(a).toBe(b);
+  expect(await getItem('audiosilo.signInKeys')).toMatchObject({ [NEW]: a });
+});

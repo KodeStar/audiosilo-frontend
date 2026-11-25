@@ -3,6 +3,7 @@ import { View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { BookCover } from '@/components/library/book-cover';
+import { ACCESSORY_TEXT_MAX_SCALE } from '@/components/shell/accessory-support';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/ui/icon';
@@ -282,11 +283,17 @@ function AccessoryFetch({ pending, regular }: { pending: PendingEpisodeFetch; re
           className="rounded-full"
         />
         <View className="min-w-0 flex-1">
-          <Text variant="label" className={MINI_TITLE_CLASS} numberOfLines={1}>
+          <Text
+            variant="label"
+            className={MINI_TITLE_CLASS}
+            numberOfLines={1}
+            maxFontSizeMultiplier={ACCESSORY_TEXT_MAX_SCALE}
+          >
             {pending.title}
           </Text>
           {regular ? (
             <Text
+              maxFontSizeMultiplier={ACCESSORY_TEXT_MAX_SCALE}
               variant="caption"
               numberOfLines={1}
               style={tabularNums}
@@ -301,10 +308,13 @@ function AccessoryFetch({ pending, regular }: { pending: PendingEpisodeFetch; re
         <Button
           variant="ghost"
           size="sm"
-          title={t('podcasts.fetch.tryAgain')}
           onPress={retryEpisodeFetch}
           testID="accessory-fetch-retry"
-        />
+        >
+          <Text maxFontSizeMultiplier={ACCESSORY_TEXT_MAX_SCALE}>
+            {t('podcasts.fetch.tryAgain')}
+          </Text>
+        </Button>
       ) : null}
       <Button
         variant="ghost"

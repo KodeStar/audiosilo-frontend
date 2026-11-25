@@ -217,6 +217,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--background` | `#f5f7fa` | `#0a0f1e` | Canvas. Never cream or beige. |
 | `--foreground` | `#121c36` | `#e7ebf4` | Body text, ink waveform bars, timeline past chapters |
 | `--primary` | `#15203d` | `#eef1f8` | Play button, primary buttons, toasts, tooltips, Undo chip |
+| `--primary-muted-foreground` | `#bdc1cb` | `#434752` | Secondary text on an ink button, chip, toast or tooltip. High contrast raises it to at least 7:1. |
 | `--brand` | `#db2777` | `#ec4f95` | Progress fills, playhead, current chapter, the ribbon on the book you're on, switches on, focus ring |
 | `--brand-ink` | `#a3195a` | `#f78bbb` | Pink *text* (links, "Just met", Listening badge) |
 | `--brand-soft` | `#fce7f1` | `#3a1530` | Active pill (sleep timer running), Up next drop target |
@@ -229,7 +230,7 @@ Web dark-mode rule: define dark under `@media (prefers-color-scheme: dark) { :ro
 | `--success-foreground` | `#ffffff` | `#0a0f1e` | The check on a solid success fill (the finished flag on covers and spines; white on the dark green was 2.1:1) |
 | `--subtle-foreground` | `#636e87` | `#818ba2` | The quietest text (counts, "of goal", sync state, placeholders): AA, a step under `--muted-foreground` |
 | `--border-strong` / `--input` | `#848ea3` | `#5c6886` | Outline buttons, chips, the switch off, check boxes; field outlines. 3:1 on the page and cards (WCAG 1.4.11); plain `--border` is a decorative divider |
-| `--track` | `#d9dee7` | `#263150` | The slider and progress track. The brand fill on it carries the value, so it holds 3:1 (3.40 light, 3.74 dark) and the track stays light on the page (1.26 / 1.49). In high contrast `ProgressBar` and the slider draw a 1px `--input` outline on it (`TrackOutline`, under the fill), so its full length shows at 4.5:1; `ProgressRing` tracks and hairlines under about 4px (the mini player's chapter line) are not outlined |
+| `--track` | `#d9dee7` | `#263150` | The slider and progress track. The brand fill on it carries the value, so it holds 3:1 (3.40 light, 3.74 dark) and the track stays light on the page (1.26 / 1.49). In high contrast progress bars, segmented tracks, the storage chart and the slider draw a 1px `--input` outline on it (`TrackOutline`, under the fill), so its full length shows at 4.5:1; `ProgressRing` tracks and hairlines under about 4px (the mini player's chapter line) are not outlined |
 | `--info` | `#2c56c9` | `#7d9bf2` | "On Maya's Shelf" (a friend's server), "Also on ..." |
 | `--seq-0..5` | pink ramp | pink ramp | Listening calendar heatmap only |
 | `--chart-1..5` | fixed order | fixed order | Storage per server, any categorical chart. A sixth series folds into "Other". Where the view already has its pink thing (the Downloads page), start at `chart-2` and use `chart-1` last. |
@@ -403,17 +404,21 @@ date at your pace), Resume / Who's who (count) / Story so far, and a household h
 Phone: cover and title side by side, buttons full width.
 
 ### Docked player bar (desktop/tablet) *custom*
-84 tall translucent bar with a 3 px whole-book progress line along its top edge. Left: cover, chapter title,
+At default text size, an 84 tall translucent bar with a 3 px whole-book progress line along its top edge. Left: cover, chapter title,
 book · author, sync state. Centre: previous chapter, skip back, play, skip forward, next chapter; chapter
 scrubber with bookmark ticks and time left in the book at your speed, centred on the bar (the left and right
 columns are equal; a bar narrower than 732 has no room for that, so there the right column is as wide as its
 actions and the transport sits off the centre). Right: speed, sleep (shows its countdown and turns
 `--brand-soft` while running), bookmark, output, Up next, expand. After a jump the Undo chip floats just above
 the bar, centred on the bar (over the transport wherever the columns are equal); the bar never re-lays out for
-it. Click the book to open the full player.
+it. The transport grows with the text size, up to 1.5x. On a narrow dock where larger text leaves the book
+too little room (or under large text no equal columns), it moves below the book and actions. From 800 wide
+the chapter scrubber's track never drops below 100; where larger text leaves it less between the book and
+the actions, the transport and scrubber take their own row below them.
+Click the book to open the full player.
 
 ### Mini player (phone) *custom*
-56 tall. iOS: a Liquid Glass pill in the native tab bar's **bottom accessory slot**, round cover. Android/web: a
+56 tall. iOS: a Liquid Glass pill in the native tab bar's **bottom accessory slot**, round cover. Both lines grow up to 1.3x inside the system-sized pill. Android/web: a
 card above the navigation bar. Chapter title, book · time left (sleep countdown if running), skip back, play,
 and a 2.5 px chapter progress line.
 
@@ -431,8 +436,8 @@ bottom sheet.
 ### Seek bar (waveform) and chapter timeline *custom on primitives*
 Seek bar: 96 bars (56 phone) of a deterministic speech-like envelope; played bars ink, hovered bars 55% ink,
 4 px pink playhead with a halo; bookmark glyphs above bars. Keyboard: arrows skip back/forward; `aria-valuetext`
-reads "41:12 of 1:17:48". Timeline: one segment per chapter placed by time (2 px gaps cut from each segment's end), past ink 34%, current
-pink 26% with the played part solid pink, playhead; bookmark pins (ink) and note pins (`--community`) on stems
+reads "41:12 of 1:17:48". Timeline: one segment per chapter placed by time (2 px gaps cut from each segment's end), past ink 35%, current
+pink 25% with the played part solid pink, chapters ahead in the track colour, playhead; bookmark pins (ink) and note pins (`--community`) on stems
 above; hover tooltip names the chapter; click seeks (with Undo).
 
 ### Undo jump chip *custom*

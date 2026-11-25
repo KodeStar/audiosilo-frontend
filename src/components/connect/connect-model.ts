@@ -227,32 +227,8 @@ export function httpFallback(typed: string): string | null {
 }
 
 /**
- * Ask `attempt` at `primary`; when that fails without a server answering (not an
- * `ApiError`) and `fallback(error)` names another address, ask there once. Resolves the
- * answer and the address that gave it. A failure at the fallback that isn't its server's
- * own answer reports the primary's error, which says what the listener asked for.
- */
-export async function withFallback<T>(
-  primary: string,
-  attempt: (base: string) => Promise<T>,
-  fallback: (error: unknown) => string | null | Promise<string | null>,
-): Promise<{ answer: T; base: string }> {
-  try {
-    return { answer: await attempt(primary), base: primary };
-  } catch (e) {
-    const alt = e instanceof ApiError ? null : await fallback(e);
-    if (!alt) throw e;
-    try {
-      return { answer: await attempt(alt), base: alt };
-    } catch (e2) {
-      throw e2 instanceof ApiError ? e2 : e;
-    }
-  }
-}
-
-/**
- * Where to exchange a pairing link's token when its base could not connect (`withFallback`
- * keeps a server's own answer from getting here): its `home` address, or null to give up.
+ * Where to exchange a pairing link's token when its base could not connect during
+ * discovery: its `home` address, or null to give up.
  * A server on its own (self-signed) certificate, which the device can't trust, also
  * answers plain http to home-network devices on the same port, and its links carry that
  * as `home=http://<host:port>` with its `sid=<server_id>`. The token would cross the

@@ -2,6 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { act, fireEvent, screen, waitFor, within } from '@testing-library/react-native';
 import { Linking, Platform } from 'react-native';
 
+import SignInRoute from '@/app/connect/sign-in';
 import { effectiveUrl, useAddressRoute } from '@/api/address-route';
 import type { User } from '@/api/types';
 import { endConnectFlow, kidsConnectAllowed } from '@/components/profiles/connect-intent';
@@ -15,7 +16,7 @@ import { seedProfile } from '@/testing/seed-profile';
 
 import { ConnectStart } from './connect-start';
 import { renderConnect as render } from './connect-testing';
-import { holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
+import { dropConnectHandoffs, holdScanReconnect, openScanner, takeScanFor } from './invite-handoff';
 import { dropOidcIntent, resumeOidcIntent, takeOidcResumed } from './oidc-intent';
 import { OIDC_DONE_MS } from './oidc-sign-in';
 
@@ -58,7 +59,7 @@ jest.mock('@/lib/base-url', () => {
   const actual = jest.requireActual('@/lib/base-url');
   return {
     ...actual,
-    servedOrigin: () => mockServed,
+    productionWebOrigin: () => mockServed,
     webOrigin: () => mockServed ?? actual.webOrigin(),
   };
 });
@@ -67,6 +68,7 @@ jest.mock('@/lib/base-url', () => {
 const mockApi = {
   serverInfo: jest.fn(),
   exchange: jest.fn(),
+  redeemCode: jest.fn(),
   demoSession: jest.fn(),
   me: jest.fn(),
   oidcFinish: jest.fn(),
@@ -116,6 +118,8 @@ const os = Platform.OS;
 beforeEach(async () => {
   await AsyncStorage.clear();
   jest.clearAllMocks();
+  // A held invite no step took would turn the next test's paste of it into a no-op.
+  dropConnectHandoffs();
   mockBases.length = 0;
   mockProxies.length = 0;
   mockParams = {};
@@ -153,7 +157,7 @@ describe('a pairing link', () => {
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device', expect.any(String));
     expect(conn()).toMatchObject({
       id: 'srv-1.1',
       serverId: 'srv-1',
@@ -228,13 +232,13 @@ describe('a pairing link', () => {
     const base = 'https://192.168.1.205:8080';
     const home = 'http://192.168.1.205:8080';
     mockParams = { token: 'tok', server: base, home, sid: 'srv-1' };
-    mockApi.exchange
+    mockApi.serverInfo
       .mockRejectedValueOnce(new TypeError('Network request failed'))
-      .mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
-    mockApi.serverInfo.mockResolvedValue(info());
+      .mockResolvedValue(info());
+    mockApi.exchange.mockResolvedValueOnce({ token: 'session', server_id: 'srv-1', user });
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    // The exchange at the base, home asked who it is (no token), the exchange at home.
+    // The base read, home asked who it is, the exchange only at home.
     expect(mockBases).toEqual([base, home, home]);
     // Stored with the https base, never the plain-http address; home is the first pick.
     expect(conn()).toMatchObject({ serverUrl: base, name: 'Hearthside', addresses: { home } });
@@ -327,7 +331,11 @@ describe('a pairing link', () => {
     mockApi.exchange.mockRejectedValueOnce(new ApiError(401, 'invalid or expired pairing token'));
     await fireEvent.press(again);
     await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledTimes(2));
-    expect(mockApi.exchange).toHaveBeenLastCalledWith('tok', expect.any(String));
+    expect(mockApi.exchange).toHaveBeenLastCalledWith(
+      'tok',
+      expect.any(String),
+      expect.any(String),
+    );
     // That answer was a refusal: now the token goes, and there is nothing to try again.
     await waitFor(() => expect(mockSetParams).toHaveBeenCalledWith({ token: undefined }));
     expect(screen.queryByTestId('pairing-try-again')).toBeNull();
@@ -743,23 +751,34 @@ describe('the web', () => {
     await fireEvent.press(screen.getByText('Connect'));
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
     expect(mockBases).toContain(AWAY);
-    expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device');
+    expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device', expect.any(String));
     expect(conn().addresses).toEqual({ home: HOME });
   });
 
-  it('signs in with a pasted invite link on the sign-in step (#98)', async () => {
-    await render(<ConnectStart />);
+  it('a double press while the invite sign-in route loads opens one step and exchanges once', async () => {
+    mockApi.serverInfo.mockResolvedValue(info());
+    mockApi.redeemCode.mockResolvedValue({ pairing_token: 'pt' });
+    mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
+    const start = await render(<ConnectStart />);
     await fireEvent.press(screen.getByText('I have a pairing link'));
     await fireEvent.changeText(
       screen.getByLabelText('Pairing link'),
       `${AWAY}/connect#code=ABCD-EFGH-JKMN-PQRS`,
     );
-    await fireEvent.press(screen.getByText('Connect'));
+    const connect = screen.getByText('Connect');
+    await fireEvent.press(connect);
+    await fireEvent.press(connect);
     await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/connect/sign-in'));
+    expect(mockPush).toHaveBeenCalledTimes(1);
     expect(useSession.getState().pendingServerUrl).toBe(AWAY);
     // The code never goes in the route (it would stay in the browser's history).
     expect(JSON.stringify(mockPush.mock.calls)).not.toContain('ABCD');
     expect(mockApi.exchange).not.toHaveBeenCalled();
+    await start.unmount();
+    await render(<SignInRoute />);
+    await waitFor(() => expect(mockReplace).toHaveBeenCalled());
+    expect(mockApi.redeemCode.mock.calls).toEqual([['ABCD-EFGH-JKMN-PQRS']]);
+    expect(mockApi.exchange).toHaveBeenCalledTimes(1);
   });
 
   it('says so when the pasted text is not a pairing link', async () => {
@@ -849,16 +868,89 @@ describe('the player the server serves', () => {
     expect(screen.queryByText(/Reconnect to/)).toBeNull();
   });
 
-  // CONNECT-11: a production build on a site of its own, beside the servers it reaches.
+  // CONNECT-11: /api can be routed to a static site even on the server's own player.
+  function documentPolicy(value: string | null) {
+    return jest.spyOn(globalThis, 'fetch').mockResolvedValue({
+      ok: true,
+      headers: { get: () => value },
+    } as unknown as Response);
+  }
+
   it.each([
     ['a 404', new ApiError(404, 'Not Found')],
+    ['a 403', new ApiError(403, 'Forbidden', undefined, undefined, true)],
+    ['a JSON 403', new ApiError(403, 'Access denied', undefined, undefined, false, true)],
     ['a page that is not JSON', new ApiError(200, 'OK')],
-  ])('starts with an empty field and no error when its origin is no server (%s)', async (_, e) => {
-    mockApi.serverInfo.mockRejectedValue(e);
+    ['unrelated JSON', undefined],
+  ])('offers another server when the player is hosted separately (%s)', async (_, error) => {
+    if (error) mockApi.serverInfo.mockRejectedValue(error);
+    else mockApi.serverInfo.mockResolvedValue({ status: 'ok' });
+    const head = documentPolicy(null);
+    try {
+      await remember({ serverId: 'srv-2', serverUrl: HOME, name: 'Elsewhere' });
+      await render(<ConnectStart />);
+      await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
+      expect(screen.getByLabelText('Server address').props.value).toBe('');
+      expect(screen.queryByText(/answered with an error/)).toBeNull();
+      expect(await screen.findByLabelText('Reconnect to Elsewhere')).toBeTruthy();
+      expect(useSession.getState().pendingServerUrl).toBeNull();
+      expect(head).toHaveBeenCalledWith(
+        '/',
+        expect.objectContaining({ method: 'HEAD', mode: 'same-origin', redirect: 'follow' }),
+      );
+    } finally {
+      head.mockRestore();
+    }
+  });
+
+  it.each([
+    ['misrouted /api', new ApiError(404, 'Not Found'), /AudioSilo API at \/api\/v1\/server/],
+    ['HTML at /api', new ApiError(200, 'OK'), /AudioSilo API at \/api\/v1\/server/],
+    ['a sign-in proxy', new ApiError(403, 'Forbidden', undefined, undefined, true), /proxy/i],
+  ])(
+    'keeps the origin and the reason on the server-hosted player (%s)',
+    async (_, error, reason) => {
+      mockApi.serverInfo.mockRejectedValue(error);
+      const head = documentPolicy("default-src 'self'; connect-src 'self'; base-uri 'none'");
+      try {
+        await render(<ConnectStart />);
+        expect(await screen.findByText('The server answered with an error')).toBeTruthy();
+        expect(within(screen.getByTestId('probe-notice')).getByText(reason)).toBeTruthy();
+        expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);
+        expect(useSession.getState().pendingServerUrl).toBeNull();
+      } finally {
+        head.mockRestore();
+      }
+    },
+  );
+
+  it('shows the refusal for an origin the flow already knows even when the proxy strips CSP', async () => {
+    useSession.setState({ pendingServerUrl: ORIGIN });
+    mockApi.serverInfo.mockRejectedValue(
+      new ApiError(403, 'Forbidden', undefined, undefined, true),
+    );
+    const head = documentPolicy(null);
+    try {
+      await render(<ConnectStart />);
+      expect(await screen.findByText('The server answered with an error')).toBeTruthy();
+      expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);
+      expect(head).not.toHaveBeenCalled();
+    } finally {
+      head.mockRestore();
+    }
+  });
+
+  it("keeps a dead cross-site link's own server in the field", async () => {
+    mockParams = { token: 'used', server: HOME };
+    mockApi.exchange.mockRejectedValue(new ApiError(410, 'token expired'));
+    mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
-    await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
-    expect(screen.getByLabelText('Server address').props.value).toBe('');
-    expect(screen.queryByText(/answered with an error/)).toBeNull();
+    expect(
+      await screen.findByText(/This pairing link has expired or was already used/),
+    ).toBeTruthy();
+    expect(screen.getByLabelText('Server address').props.value).toBe(HOME);
+    expect(mockSetParams).toHaveBeenCalledWith({ token: undefined });
+    expect(mockBases).not.toContain(ORIGIN);
   });
 
   it('still says what its own server answered when that is an error of its own', async () => {
@@ -867,6 +959,21 @@ describe('the player the server serves', () => {
     await waitFor(() => expect(screen.getByLabelText('Server address')).toBeTruthy());
     expect(screen.getByLabelText('Server address').props.value).toBe(ORIGIN);
     expect(screen.getByText(/Bad Gateway/)).toBeTruthy();
+  });
+
+  it("accepts another server's pasted link when the host probe failed", async () => {
+    mockApi.serverInfo.mockRejectedValueOnce(new ApiError(502, 'Bad Gateway'));
+    await render(<ConnectStart />);
+    expect(await screen.findByText(/Bad Gateway/)).toBeTruthy();
+    await fireEvent.press(screen.getByText('I have a pairing link'));
+    await fireEvent.changeText(
+      screen.getByLabelText('Pairing link'),
+      `${HOME}/connect#code=ABCD-1234`,
+    );
+    await fireEvent.press(screen.getByText('Connect'));
+    await waitFor(() => expect(mockPush).toHaveBeenCalledWith('/connect/sign-in'));
+    expect(useSession.getState().pendingServerUrl).toBe(HOME);
+    expect(screen.queryByText(/This link is for another server/)).toBeNull();
   });
 
   // fe#159: a Continue that finds its own server after its first ask failed is that
@@ -977,7 +1084,9 @@ describe('the player the server serves', () => {
     it("pairs a link for this page's own server as before", async () => {
       mockApi.exchange.mockResolvedValue({ token: 's', server_id: 'srv-1', user });
       await paste(`${ORIGIN}/web/connect?token=abc`);
-      await waitFor(() => expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device'));
+      await waitFor(() =>
+        expect(mockApi.exchange).toHaveBeenCalledWith('abc', 'Test device', expect.any(String)),
+      );
       expect(screen.queryByText(/This link is for another server/)).toBeNull();
     });
 
@@ -1036,7 +1145,7 @@ describe('the player the server serves', () => {
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device', expect.any(String));
     expect(screen.queryByText('Found Hearthside')).toBeNull();
   });
 
@@ -1073,7 +1182,7 @@ describe('the player the server serves', () => {
       mockParams = linkParams();
       await render(<ConnectStart />);
       await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
-      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device', expect.any(String));
       expect(mockReplace).not.toHaveBeenCalled();
       expect(conn()).toMatchObject({ id: 'srv-1.1', token: 's' });
     });
@@ -1125,7 +1234,7 @@ describe('the player the server serves', () => {
       mockParams = linkParams();
       await render(<ConnectStart />);
       await waitFor(() => expect(mockDismissTo).toHaveBeenCalledWith(bookAt('srv-1.1')));
-      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+      expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device', expect.any(String));
     });
 
     it('ignores a book it cannot name, and ends as any pairing link does', async () => {
@@ -2107,7 +2216,7 @@ describe("a single sign-on's return (?oidc=1)", () => {
     mockApi.serverInfo.mockResolvedValue(info());
     await render(<ConnectStart />);
     await waitFor(() => expect(mockReplace).toHaveBeenCalled());
-    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device');
+    expect(mockApi.exchange).toHaveBeenCalledWith('tok', 'Test device', expect.any(String));
     expect(mockApi.oidcFinish).not.toHaveBeenCalled();
   });
 });

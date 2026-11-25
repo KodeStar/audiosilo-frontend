@@ -23,10 +23,10 @@ import { heroSubtitle, titleScale } from './book-page-model';
 /** The title's display size per step (STYLEGUIDE section 4, Display XL: 52 desktop, 40
  * tablet, 30 phone; one step down for a long title). */
 const TITLE_CLASS: Record<TitleScale, string> = {
-  lg: 'text-[52px] web:text-[length:min(3.25rem,104px)] leading-[54px] web:leading-[length:min(3.375rem,108px)]',
-  md: 'text-[40px] web:text-[length:min(2.5rem,80px)] leading-[43px] web:leading-[length:min(2.6875rem,86px)]',
-  sm: 'text-[30px] web:text-[length:min(1.875rem,60px)] leading-[33px] web:leading-[length:min(2.0625rem,66px)]',
-  xs: 'text-[25px] web:text-[length:min(1.5625rem,50px)] leading-[29px] web:leading-[length:min(1.8125rem,58px)]',
+  lg: 'text-display-52 leading-display-54',
+  md: 'text-display-40 leading-display-43',
+  sm: 'text-display-30 leading-display-33',
+  xs: 'text-display-25 leading-display-29',
 };
 
 /** Where the listener is in a book in progress: the percent, "Chapter 23 of 81", the

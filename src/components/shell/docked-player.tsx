@@ -13,7 +13,11 @@ import { usePlaceSync } from '@/components/player/place-sync';
 import { usePlayerOnTop, usePlayerSheets } from '@/components/player/player-sheets';
 import { addBookmarkHere } from '@/components/player/player-shortcuts';
 import { SleepTimerButton } from '@/components/player/sleep-timer-button';
-import { TransportControls, transportWidth } from '@/components/player/transport-controls';
+import {
+  controlScale,
+  scaledTransportWidth,
+  TransportControls,
+} from '@/components/player/transport-controls';
 import { UNDO_CHIP_HEIGHT, UndoChip, useUndoVisible } from '@/components/player/undo-chip';
 import { usePlayingPins } from '@/components/player/use-playing-pins';
 import { SEGMENT_LABEL, usePlayingSegment } from '@/components/player/use-playing-segment';
@@ -26,6 +30,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
 import { formatClock, formatSpeed } from '@/lib/format';
 import { useLayout } from '@/lib/layout';
+import { isLargeText, useFontScale, useLargeText } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { selectIsPlaying, usePlayer } from '@/playback/store';
@@ -46,9 +51,8 @@ const DOCK_GAP = 16;
  * px ESTIMATES at the default text size, not measurements: where an equal side column
  * would be narrower than its set's estimate the actions column is content-sized instead
  * (`dockLayout`'s `centred`), so at the default size the actions never reach the
- * transport whatever the timer shows. Scaled text (a browser font size of 20 px or more,
- * iPad Dynamic Type XXXL and up) makes the pills wider than the estimates and can still
- * put them over the transport; measuring the actions column is the follow-up. */
+ * transport whatever the timer shows. At larger sizes we reserve room for the growing
+ * pills and give the transport its own row when the three columns would collide. */
 const SIDE_ALL = 390;
 const SIDE_TABLET = 220;
 /** The two ways a side column is sized (`dockLayout`'s `centred`): an equal share from
@@ -59,24 +63,39 @@ const SIDE_CONTENT = 'shrink-0 basis-auto';
  * wider (a long track on a wide window is a long way to drag). */
 const CENTRE_MIN = 300;
 const CENTRE_MAX = 560;
+/** The chapter scrubber's track is never narrower than this: a shorter one is too fine to
+ * drag. Beside it, its time labels (the elapsed time's 44 and "10h 15m left at 1.25x",
+ * about 132, with the two gaps: about 200 at the default text size, an ESTIMATE like
+ * `SIDE_ALL`) grow with the text. The two fill `CENTRE_MIN` at the default size. */
+const SCRUBBER_MIN = 100;
+const SCRUBBER_LABELS = 200;
+/** The book column's room beside the transport and a content-sized tablet set on the
+ * narrowest dock (640, the tablet layout's `TABLET_MIN_WIDTH`) at the default text size:
+ * larger text that leaves the book less than this gives the transport its own row
+ * (`dockLayout`'s `stacked`). */
+const BOOK_MIN = 640 - 2 * DOCK_PAD - 2 * DOCK_GAP - scaledTransportWidth('sm') - SIDE_TABLET;
 /** The space between the floating Undo chip and the bar, and the band it floats in. */
 const CHIP_GAP = 8;
 const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
+/** The row's padding above and below once larger text grows it past `DOCK_HEIGHT` (the
+ * room the default row leaves around the 68 of the transport over the scrubber), so the
+ * play button never sits on the window's bottom edge. */
+const GROWN_PAD_Y = 8;
 
 /**
  * What the dock shows at its MEASURED width (the bar spans the window under the page and
  * the desktop drawer; a tablet, a split view or a narrow browser window is less), and how
  * wide its middle column is: every action (speed, bookmark, output, cast) once both side
- * columns have room for them beside a scrubber row at its minimum width (from 1144, where
- * the middle column is `CENTRE_MIN`); below it the tablet set, whose hidden actions are
- * all in the full player; below 800 the chapter scrubber row goes too (the transport
- * alone is the middle column).
+ * columns have room for them beside a scrubber row at its minimum width (at the default
+ * text size, from 1144, where the middle column is `CENTRE_MIN`); below it the tablet
+ * set, whose hidden actions are all in the full player; below 800 the chapter scrubber
+ * row goes too (the transport alone is the middle column).
  *
  * Three columns (fe#244): the book and the actions are equal side columns and the
  * transport sits between them, so it is centred on the bar whatever the title, the
- * actions or the sleep countdown (`centred`). Only the width decides any of it: the Undo
- * chip floats above the bar (`DockedPlayer`), so a jump never moves or resizes the
- * scrubber under the pointer that made it.
+ * actions or the sleep countdown (`centred`). Only the width and the text scale decide
+ * any of it: the Undo chip floats above the bar (`DockedPlayer`), so a jump never moves
+ * or resizes the scrubber under the pointer that made it.
  *
  * `centred` is false on a bar too narrow for that, below 732 (the dock starts at 640):
  * without the scrubber row an equal side column is (width - 292) / 2, less than the
@@ -85,23 +104,53 @@ const CHIP_BAND = UNDO_CHIP_HEIGHT + CHIP_GAP;
  * takes the squeeze, and the transport sits wherever that leaves it (off the centre).
  * With the scrubber row the middle column's minimum has first call on the width, so at
  * 800 to 803 a side column is 218 or 219, which the tablet set (about 210) still fits:
- * centred.
+ * centred. Larger text needs more room for the actions and transport. Where large text
+ * leaves them no equal columns, or text above the default leaves the book less room than
+ * the narrowest dock gives it at the default size (`BOOK_MIN`), the transport sits below
+ * the book and actions (`stacked`). From 800, text above the default that leaves the
+ * scrubber row less than its minimum (`SCRUBBER_MIN` and its labels) between the side
+ * columns stacks too, the transport and scrubber on their own row `CENTRE_MAX` wide (wider
+ * where the text needs a wider scrubber row).
  */
-export function dockLayout(width: number): {
+export function dockLayout(
+  width: number,
+  fontScale = 1,
+): {
   allActions: boolean;
   scrubber: boolean;
   centre: number;
   centred: boolean;
+  stacked: boolean;
 } {
   const inner = width - 2 * DOCK_PAD - 2 * DOCK_GAP;
-  const allActions = inner - 2 * SIDE_ALL >= CENTRE_MIN;
-  const scrubber = width >= 800;
-  const side = allActions ? SIDE_ALL : SIDE_TABLET;
-  const centre = scrubber
-    ? Math.min(CENTRE_MAX, Math.max(CENTRE_MIN, inner - 2 * side))
-    : transportWidth('sm');
-  const centred = scrubber || inner - centre >= 2 * side;
-  return { allActions, scrubber, centre, centred };
+  const text = Math.max(1, fontScale);
+  const transport = scaledTransportWidth('sm', controlScale('sm', fontScale));
+  // The middle column with the scrubber row holds the transport and a usable scrubber.
+  const scrubberRow = SCRUBBER_MIN + SCRUBBER_LABELS * text;
+  const centreMin = Math.max(CENTRE_MIN, transport, scrubberRow);
+  const allActions = inner - 2 * SIDE_ALL * text >= centreMin;
+  const side = (allActions ? SIDE_ALL : SIDE_TABLET) * text;
+  if (width >= 800) {
+    // The default size keeps the scrubber beside the tablet set from 800, where the side
+    // columns are about 218 (`SIDE_TABLET` is a rounded-up estimate).
+    if (text === 1 || inner - 2 * SIDE_TABLET * text >= centreMin) {
+      const centre = Math.max(centreMin, Math.min(CENTRE_MAX, inner - 2 * side));
+      return { allActions, scrubber: true, centre, centred: true, stacked: false };
+    }
+    // Larger text leaves the scrubber row no room between the book and the actions: the
+    // transport and the scrubber take their own row rather than shrink or hide it.
+    // From 800 the row (768 or more) always holds `CENTRE_MAX`.
+    if (width - 2 * DOCK_PAD >= centreMin) {
+      const centre = Math.max(centreMin, CENTRE_MAX);
+      return { allActions, scrubber: true, centre, centred: false, stacked: true };
+    }
+  }
+  const centred = inner - transport >= 2 * side;
+  // Off the centre the book takes the squeeze; the transport and the actions grow with any
+  // text above the default, so below large text too the book may run out of room.
+  const book = inner - transport - side;
+  const stacked = !centred && (isLargeText(fontScale) || (text > 1 && book < BOOK_MIN));
+  return { allActions, scrubber: false, centre: transport, centred, stacked };
 }
 
 /** The chapter scrubber row: elapsed in the chapter, a thin scrubber with the chapter's
@@ -109,6 +158,7 @@ export function dockLayout(width: number): {
  * left in the whole book at the listener's speed. A leaf that moves in whole seconds
  * (the clock's resolution), so it re-renders about once a second, not per engine tick. */
 function ChapterScrubber({ bookmarks }: { bookmarks: readonly number[] }) {
+  const large = useLargeText();
   const { t } = useTranslation();
   const left = usePlayingTimeLeft();
   const [scrub, setScrub] = useState<number | null>(null);
@@ -120,7 +170,7 @@ function ChapterScrubber({ bookmarks }: { bookmarks: readonly number[] }) {
     bookmarks: inSegment,
   } = usePlayingSegment(bookmarks, { wholeSeconds: true, hold: scrub !== null });
   return (
-    <View className="-my-2.5 flex-row items-center gap-2.5">
+    <View className={cn(!large && '-my-2.5', 'flex-row items-center gap-2.5')}>
       <Text variant="caption" style={tabularNums} className="min-w-[44px] text-right">
         {formatClock(scrub ?? elapsed)}
       </Text>
@@ -233,6 +283,7 @@ export function DockedPlayer() {
   const themed = useThemeColors();
   const insets = useSafeAreaInsets();
   const desktop = useLayout() === 'desktop';
+  const fontScale = useFontScale();
   const nowPlaying = usePlayer((s) => s.nowPlaying);
   const { heading, isChapter } = useMiniHeading();
   const isPlaying = usePlayer(selectIsPlaying);
@@ -279,14 +330,109 @@ export function DockedPlayer() {
   // window's, which the bar spans. A guess by form factor (1280 on desktop) drew every
   // action over the scrubber, and mounted the Cast button, for one frame on a window of
   // 1024 to 1143.
-  const { allActions, scrubber, centre, centred } = dockLayout(
+  const { allActions, scrubber, centre, centred, stacked } = dockLayout(
     (size?.width ?? Dimensions.get('window').width) - insets.left - insets.right,
+    fontScale,
   );
   const { queue, title, author } = nowPlaying;
   // Under a chapter heading the book and its author; when the heading is already the
   // title (a chapterless book, an episode) only the author or show, never the title twice.
   const bookLine = [isChapter && title, author].filter(Boolean).join(' · ');
   const openPlayer = () => router.push('/player');
+
+  const book = (
+    <AnimatedPressable
+      testID="dock-book"
+      onPress={openPlayer}
+      accessibilityRole="button"
+      accessibilityLabel={t('shell.openPlayer', { title })}
+      className={cn(
+        // A side column: as wide as the actions' while they are equal (both flex
+        // from nothing), and what the actions leave on a bar too narrow for that.
+        SIDE_EQUAL,
+        'flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
+        Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
+      )}
+    >
+      <BookCover
+        connectionId={nowPlaying.connectionId}
+        libraryId={nowPlaying.libraryId}
+        path={nowPlaying.path}
+        width={desktop ? 56 : 48}
+        title={title}
+      />
+      <View className="min-w-0 flex-1">
+        <Text variant="label" numberOfLines={1}>
+          {heading}
+        </Text>
+        {bookLine ? (
+          <Text variant="caption" numberOfLines={1}>
+            {bookLine}
+          </Text>
+        ) : null}
+        <SyncState connectionId={nowPlaying.connectionId} playing={isPlaying} />
+      </View>
+    </AnimatedPressable>
+  );
+  const controls = (
+    <View testID="dock-centre" style={{ width: centre }} className="shrink-0 justify-center">
+      <TransportControls size="sm" room={centre} />
+      {scrubber ? <ChapterScrubber bookmarks={pins.bookmarks} /> : null}
+    </View>
+  );
+  const actions = (
+    <View
+      testID="dock-actions"
+      // The other side column, its actions against the bar's end: equal to the book's,
+      // or content-sized where an equal one would be too narrow (`centred`). Its side
+      // padding is the book's (`p-1.5`): a flex basis of 0 still counts padding, so
+      // unequal padding would make unequal columns and move the transport off the centre.
+      className={cn(
+        centred ? SIDE_EQUAL : SIDE_CONTENT,
+        'flex-row items-center justify-end gap-1 px-1.5',
+      )}
+    >
+      {allActions ? <SpeedPill /> : null}
+      <View testID="dock-sleep">
+        <SleepTimerButton onPress={() => usePlayerSheets.getState().openSheet('sleep')} />
+      </View>
+      {allActions ? (
+        <ControlPill
+          testID="dock-bookmark"
+          hitSlop={DOCK_SLOP}
+          className={DOCK_PILL}
+          label={t('player.shortcuts.bookmark')}
+          onPress={() => void addBookmarkHere(t)}
+        >
+          <Icon name="bookmark" size={16} color={themed.foreground} />
+        </ControlPill>
+      ) : null}
+      {allActions && canRoutePick ? (
+        <ControlPill
+          testID="dock-output"
+          hitSlop={DOCK_SLOP}
+          className={DOCK_PILL}
+          label={t('player.routePicker.label')}
+          onPress={() => void showRoutePicker()}
+        >
+          <Icon name="airplay" size={16} color={themed.foreground} />
+        </ControlPill>
+      ) : null}
+      {allActions ? (
+        <CastButton className={DOCK_PILL} hitSlop={DOCK_SLOP} compact testID="dock-cast" />
+      ) : null}
+      <UpNextButton variant="dock" />
+      <ControlPill
+        testID="dock-expand"
+        hitSlop={DOCK_SLOP}
+        className={DOCK_PILL}
+        label={t('shell.dock.expand')}
+        onPress={openPlayer}
+      >
+        <Icon name="chevron-up" size={16} color={themed.foreground} />
+      </ControlPill>
+    </View>
+  );
 
   return (
     <>
@@ -314,98 +460,29 @@ export function DockedPlayer() {
         </View>
         <View
           testID="dock-row"
-          style={{ height: DOCK_HEIGHT, paddingHorizontal: DOCK_PAD, gap: DOCK_GAP }}
-          className="flex-row items-center"
+          style={{
+            minHeight: DOCK_HEIGHT,
+            paddingHorizontal: DOCK_PAD,
+            paddingVertical: fontScale > 1 ? GROWN_PAD_Y : undefined,
+            gap: stacked ? 0 : DOCK_GAP,
+          }}
+          className={cn(!stacked && 'flex-row', 'items-center justify-center')}
         >
-          <AnimatedPressable
-            testID="dock-book"
-            onPress={openPlayer}
-            accessibilityRole="button"
-            accessibilityLabel={t('shell.openPlayer', { title })}
-            className={cn(
-              // A side column: as wide as the actions' while they are equal (both flex
-              // from nothing), and what the actions leave on a bar too narrow for that.
-              SIDE_EQUAL,
-              'flex-row items-center gap-3 rounded-menu p-1.5 active:bg-accent',
-              Platform.select({ web: `cursor-pointer hover:bg-accent ${FOCUS_RING_CLASS}` }),
-            )}
-          >
-            <BookCover
-              connectionId={nowPlaying.connectionId}
-              libraryId={nowPlaying.libraryId}
-              path={nowPlaying.path}
-              width={desktop ? 56 : 48}
-              title={title}
-            />
-            <View className="min-w-0 flex-1">
-              <Text variant="label" numberOfLines={1}>
-                {heading}
-              </Text>
-              {bookLine ? (
-                <Text variant="caption" numberOfLines={1}>
-                  {bookLine}
-                </Text>
-              ) : null}
-              <SyncState connectionId={nowPlaying.connectionId} playing={isPlaying} />
-            </View>
-          </AnimatedPressable>
-
-          <View testID="dock-centre" style={{ width: centre }} className="shrink-0 justify-center">
-            <TransportControls size="sm" />
-            {scrubber ? <ChapterScrubber bookmarks={pins.bookmarks} /> : null}
-          </View>
-
-          <View
-            testID="dock-actions"
-            // The other side column, its actions against the bar's end: equal to the book's,
-            // or content-sized where an equal one would be too narrow (`centred`). Its side
-            // padding is the book's (`p-1.5`): a flex basis of 0 still counts padding, so
-            // unequal padding would make unequal columns and move the transport off the centre.
-            className={cn(
-              centred ? SIDE_EQUAL : SIDE_CONTENT,
-              'flex-row items-center justify-end gap-1 px-1.5',
-            )}
-          >
-            {allActions ? <SpeedPill /> : null}
-            <View testID="dock-sleep">
-              <SleepTimerButton onPress={() => usePlayerSheets.getState().openSheet('sleep')} />
-            </View>
-            {allActions ? (
-              <ControlPill
-                testID="dock-bookmark"
-                hitSlop={DOCK_SLOP}
-                className={DOCK_PILL}
-                label={t('player.shortcuts.bookmark')}
-                onPress={() => void addBookmarkHere(t)}
-              >
-                <Icon name="bookmark" size={16} color={themed.foreground} />
-              </ControlPill>
-            ) : null}
-            {allActions && canRoutePick ? (
-              <ControlPill
-                testID="dock-output"
-                hitSlop={DOCK_SLOP}
-                className={DOCK_PILL}
-                label={t('player.routePicker.label')}
-                onPress={() => void showRoutePicker()}
-              >
-                <Icon name="airplay" size={16} color={themed.foreground} />
-              </ControlPill>
-            ) : null}
-            {allActions ? (
-              <CastButton className={DOCK_PILL} hitSlop={DOCK_SLOP} compact testID="dock-cast" />
-            ) : null}
-            <UpNextButton variant="dock" />
-            <ControlPill
-              testID="dock-expand"
-              hitSlop={DOCK_SLOP}
-              className={DOCK_PILL}
-              label={t('shell.dock.expand')}
-              onPress={openPlayer}
-            >
-              <Icon name="chevron-up" size={16} color={themed.foreground} />
-            </ControlPill>
-          </View>
+          {stacked ? (
+            <>
+              <View className="w-full flex-row items-center justify-between">
+                {book}
+                {actions}
+              </View>
+              {controls}
+            </>
+          ) : (
+            <>
+              {book}
+              {controls}
+              {actions}
+            </>
+          )}
         </View>
       </View>
     </>

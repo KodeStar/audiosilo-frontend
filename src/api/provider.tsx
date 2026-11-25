@@ -107,18 +107,8 @@ function noteQueryReached(key: readonly unknown[]) {
   }
   // The reconnect it brings (`onReconnect`, below) reads the connection's queries again, all
   // but this `/server` that has just answered (fe#147).
-  reconnectedBy = key;
-  try {
-    noteSuccess(cid);
-  } finally {
-    reconnectedBy = null;
-  }
+  noteSuccess(cid, key);
 }
-
-/** The `/server` query whose answer is bringing its connection back, while the reconnect
- * handlers run (they run at once, inside `noteSuccess`): read again it would only ask the
- * same server the same thing a second time. */
-let reconnectedBy: readonly unknown[] | null = null;
 
 /**
  * The default query retry: once, except a 401 (frontend#124) or content that isn't there
@@ -251,12 +241,12 @@ function isHeldReadalongMap(q: Query): boolean {
 // replay its queued progress saves (and its queued ebook reading places). invalidateQueries only refetches currently-observed
 // queries, so this is cheap; every query key leads with its connection id, so the
 // predicate scopes the refetch to the recovered server. A read-along map held is kept, and
-// so is the `/server` answer that brought the server back (`reconnectedBy`).
-onReconnect((connectionId) => {
+// so is the `/server` answer that brought the server back (`answeredQuery`).
+onReconnect((connectionId, answeredQuery) => {
   forgetUnobservedServerFailure(connectionId);
   void queryClient.invalidateQueries({
     predicate: (q) =>
-      q.queryKey.includes(connectionId) && !isHeldReadalongMap(q) && q.queryKey !== reconnectedBy,
+      q.queryKey.includes(connectionId) && !isHeldReadalongMap(q) && q.queryKey !== answeredQuery,
   });
   void flushConnection(connectionId);
   void flushReadingConnection(connectionId);

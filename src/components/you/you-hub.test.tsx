@@ -69,14 +69,18 @@ jest.mock('@/components/account/account-section', () => {
   };
 });
 
-// Whether a server offers Upcoming to the listener (Track U2): `useUpcomingAvailable` has
+// Whether a server offers Upcoming to the listener (Track U2): `useUpcomingEligibility` has
 // its own suite; the section's body is the Upcoming page's (its own suite too).
 let mockUpcomingAvailable: boolean | undefined;
 // Whether a server's flags are still being read (fe#159): one connection, `c`, not known yet.
 let mockFlagsPending = false;
 jest.mock('@/api/hooks', () => ({
-  useUpcomingAvailable: () => mockUpcomingAvailable,
-  useCapabilitiesAllRead: () => ({ caps: { c: mockFlagsPending ? undefined : {} }, failed: [] }),
+  anyCapability: jest.requireActual('@/api/hooks').anyCapability,
+  useUpcomingEligibility: () => ({
+    available: mockUpcomingAvailable,
+    caps: { c: mockFlagsPending ? undefined : mockModulesOn },
+    failed: [],
+  }),
 }));
 jest.mock('@/components/upcoming/upcoming-screen', () => {
   const { Text } = jest.requireActual('react-native');
@@ -90,15 +94,6 @@ jest.mock('@/components/upcoming/upcoming-screen', () => {
 // Which modules are on (Bridge Phase 2a): `useActiveModules` has its own suite; here a
 // module's flag is on when `mockModulesOn` says so.
 let mockModulesOn: Record<string, boolean> = {};
-const mockUseActiveModules = jest.fn();
-jest.mock('@/modules/registry', () => ({
-  ...jest.requireActual('@/modules/registry'),
-  useActiveModules: (list: readonly { id: string }[]) => {
-    mockUseActiveModules();
-    return list.filter((m) => mockModulesOn[m.id]);
-  },
-}));
-
 /* eslint-disable import/first */
 import { Text } from 'react-native';
 
@@ -264,13 +259,12 @@ describe("YouHub with a module's section (Bridge Phase 2a)", () => {
   };
   const segments = () => screen.getAllByRole('radio').map((r) => r.props.accessibilityLabel);
 
-  it('renders as before with the empty registry, asking nothing', async () => {
+  it('shows only the core sections with an empty registry', async () => {
     await mount({ section: 'contribute' });
     expect(segments()).toEqual(SIX);
     expect(screen.getByTestId('you-hub-stats')).toBeTruthy();
     await render(<YouHub modules={[]} />);
     expect(segments()).toEqual(SIX);
-    expect(mockUseActiveModules).not.toHaveBeenCalled();
   });
 
   it('follows Account on a phone while the module is on, a column the hub scrolls', async () => {
@@ -353,6 +347,7 @@ describe('YouHub Upcoming (Track U2)', () => {
     mockFlagsPending = true;
     await mount({ section: 'upcoming' });
     expect(screen.getByTestId('you-hub-waiting')).toBeTruthy();
+    expect(mockSetOptions).toHaveBeenLastCalledWith({ title: 'You' });
     expect(screen.queryByTestId('you-hub-stats')).toBeNull();
     expect(screen.queryByText('stats-section')).toBeNull();
     mockUpcomingAvailable = true;

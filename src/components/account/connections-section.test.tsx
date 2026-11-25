@@ -23,7 +23,7 @@ jest.mock('@/downloads/store', () => ({
 let mockServed: string | null = null;
 jest.mock('@/lib/base-url', () => ({
   ...jest.requireActual('@/lib/base-url'),
-  servedOrigin: () => mockServed,
+  productionWebOrigin: () => mockServed,
 }));
 
 /* eslint-disable import/first */

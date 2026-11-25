@@ -34,22 +34,49 @@ export function webOrigin(): string | null {
   return null;
 }
 
-/**
- * The server this web build was served by, or `null`. A production web build is the player the
- * server serves at `/web`, so its origin IS the server, and the server's CSP (`connect-src
- * 'self'`) lets it reach no other: there is no address to ask for and no second server to add.
- * `null` on native and under the Metro dev server, which is not the server.
- */
-export function servedOrigin(): string | null {
+/** The production player's own origin. It can host the server or just the static web export. */
+export function productionWebOrigin(): string | null {
   return IS_DEV ? null : webOrigin();
 }
 
 /**
- * Whether the served player (`origin`, from `servedOrigin()`) is signed in only to its own
+ * Whether the served player (`origin`, from `productionWebOrigin()`) is signed in only to its own
  * server, so it has no other server to add. A production web build hosted on an origin of its
  * own, beside servers whose CORS let it in (the test bed's static web host), is signed in
  * elsewhere and still adds servers.
  */
 export function onlyOwnServer(origin: string | null, serverUrls: readonly string[]): boolean {
-  return origin !== null && serverUrls.every((url) => sameOrigin(url, { origin }));
+  return (
+    origin !== null &&
+    serverUrls.length > 0 &&
+    serverUrls.every((url) => sameOrigin(url, { origin }))
+  );
+}
+
+/** A static player can ask for a server elsewhere. If /api answers like a static host,
+ * check the player document independently: the server serves it under connect-src 'self',
+ * even when a proxy routes /api to the wrong place. A same-origin redirect (a static host's
+ * pretty URLs) is followed to the document; an unreadable document is inconclusive. */
+export async function playerAllowsOtherServers(signal?: AbortSignal): Promise<boolean> {
+  const ask = new AbortController();
+  const cancel = () => ask.abort();
+  const timeout = setTimeout(cancel, 2500);
+  if (signal?.aborted) cancel();
+  else signal?.addEventListener('abort', cancel);
+  try {
+    const res = await fetch(`${BASE_URL}/`, {
+      method: 'HEAD',
+      mode: 'same-origin',
+      redirect: 'follow',
+      signal: ask.signal,
+    });
+    if (!res.ok) return false;
+    const policy = res.headers.get('Content-Security-Policy') ?? '';
+    return !/(?:^|[;,])\s*connect-src\s+'self'\s*(?:[;,]|$)/i.test(policy);
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timeout);
+    signal?.removeEventListener('abort', cancel);
+  }
 }

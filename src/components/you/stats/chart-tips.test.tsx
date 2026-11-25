@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from '@testing-library/react-native';
+import { Platform } from 'react-native';
 
 import type { ListeningDay } from '@/api/types';
 import { addDays } from '@/components/home/listening';
+import * as textScale from '@/lib/text-scale';
+import { setFontScale } from '@/testing/font-scale';
 
 import { ListeningCalendar } from './listening-calendar';
 import { ListeningClock } from './listening-clock';
@@ -27,6 +30,42 @@ describe('ListeningCalendar tooltip across reloads', () => {
   // 750 wide: 11 pt cells (the minimum) with a 3 gap.
   const pitch = 11 + 3;
   const SUNDAY = '2026-10-11';
+
+  it('grows the weekday column and keeps its rows aligned with the grid at large text sizes', async () => {
+    await render(<ListeningCalendar days={daysTo(SUNDAY, 400)} today={SUNDAY} width={320} />);
+    expect(screen.getByText('Mon')).toHaveStyle({ height: 11, lineHeight: 11 });
+    try {
+      await setFontScale(3.1);
+      const monday = screen.getByText('Mon');
+      const cell = 50;
+      expect(monday).toHaveStyle({ height: cell });
+      // Native multiplies a line height by the font scale: the font's own line instead.
+      expect(monday.props.style.lineHeight).toBeUndefined();
+      expect(monday.parent).toHaveStyle({ width: 93, paddingTop: 56 });
+      expect(screen.getByTestId('calendar-pointer')).toHaveStyle({
+        top: 56,
+        height: 7 * (cell + 3) - 3,
+      });
+      await tap('calendar-pointer', 51 * (cell + 3) + 2, 3 * (cell + 3) + 2);
+      expect(screen.getByText(/Thu 1 Oct|Oct 1/)).toBeTruthy();
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
+  it("centres the web's weekday labels on their rows at large text sizes", async () => {
+    // The web's px line height does not grow with the browser font: the square's height.
+    const prevOS = Platform.OS;
+    const scale = jest.spyOn(textScale, 'useFontScale').mockReturnValue(3.1);
+    try {
+      Platform.OS = 'web';
+      await render(<ListeningCalendar days={daysTo(SUNDAY, 400)} today={SUNDAY} width={320} />);
+      expect(screen.getByText('Mon')).toHaveStyle({ height: 50, lineHeight: 50 });
+    } finally {
+      Platform.OS = prevOS;
+      scale.mockRestore();
+    }
+  });
 
   it('closes the tip when the reloaded grid moves its day (a week rolling over)', async () => {
     const before = daysTo(SUNDAY, 400);

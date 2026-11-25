@@ -603,8 +603,19 @@ link alike) ends on that book instead (`endConnect`, the one ending `finishConne
 when the device is already signed in as `uid` on `sid` (`signedInAs`) and the server still takes
 that stored token (`stillSignedIn`: `GET /me` through the connection's own client, never the
 link's base; `needsReconnect` is never stored, so a fresh tab can't tell otherwise), never for
-"Add someone"; an invalid `book` is ignored. A
-pairing link whose https base can't connect (a server on its own self-signed certificate) exchanges
+"Add someone"; an invalid `book` is ignored.
+
+Invite-code and QR sign-in read the chosen address's `/server` capabilities before submitting.
+A device can recover a lost invite exchange once within 60 seconds. It sends the same
+`pairing_token` and its per-address sign-in key as `device_id`. The server rotates the
+bearer on the original session. A marked `invite_used_by_this_device` names the spent
+retry. A strict older server can take a first exchange without the key (its 400, or a
+proxy's page in its place). If that answer is lost, or its session can't be kept
+(`isIdlessExchange`), the player never sends it again and directs the listener to sign in
+or get a new invite. The sign-in step keeps every invite whose exchange went unanswered
+(`keepUnansweredInvite`, by server and code) until the connect flow is left.
+
+A pairing link whose https discovery can't connect (a server on its own self-signed certificate) exchanges
 once at the link's `home` instead (native only): only when that is plain http on the base's own
 host and port, never after an `ApiError` or a timeout, and only when the link names the server
 (`sid=<server_id>`, `PairingScan.serverId`; an older server's link has none, so no fallback) and
@@ -633,7 +644,7 @@ while a kids-mode pass waits; dropped as the screen leaves for another sign-in),
 that answers once the screen has gone is signed out again, never kept. Nothing in memory
 survives the page load, so what the flow is for (a grown-up's pass through kids mode, "Add someone", a signed-out visit's book) goes through the tab's `sessionStorage`
 (`oidc-intent.ts`, fe#310): the step writes it as it leaves (`holdOidcIntent`), and the connect
-layout takes it once as it opens (`takeOidcIntent`, only on the return: `oidcReturnOnLoad` reads
+layout takes it once as it opens (`peekOidcIntent`, only on the return: `oidcReturnOnLoad` reads
 the address itself, `/connect?oidc=1` and no other route of the flow) and puts "Add someone" and
 the book back once the profiles are read (`resumeConnectIntent`). The grown-up's pass is never
 put back by the address alone (typed within the stamp's 10 minutes of a trip abandoned at the
@@ -678,7 +689,7 @@ re-pair through one of a connection's own addresses keeps its paired `serverUrl`
 banner signs in through `effectiveUrl` and hands the sign-in step the connection it re-pairs in
 memory, by that address (`holdReconnect` / `takeReconnect`, taken once as the step opens: read as
 the screen renders and taken once it is on screen, `useHandoff`, as every hand-off of the flow is,
-the layout's `takeOidcIntent` too, since a first render can be thrown away and run again; never a
+the layout's `peekOidcIntent` too, since a first render can be thrown away and run again; never a
 `/connect/sign-in` param, fe#298: a link opens that route and must not name the connection a
 sign-in replaces), so a reset server reached through its away address still retires its dead
 identity. Whether that hand-off still re-pairs is decided once the server answered, by who
@@ -706,11 +717,12 @@ bounce when it opens and when it is back on top, never while the flow is over it
 `pendingServerUrl` once. The connect screens are full screens: `ConnectFrame` shrinks its column by
 the keyboard overlap and `ConnectInput` scrolls the focused field into view (use both for any new
 field there; Android edge to edge doesn't resize the window). The cascade panel is generated art:
-never put fake titles on it. **The served player** (`servedOrigin()`, `src/lib/base-url.ts`: a
-production web build, whose origin IS the server and whose CSP, `connect-src 'self'`, reaches no
-other) asks for no address: `/connect` asks its own origin who it is and shows the found card
+never put fake titles on it. **The served player** (its server sends `connect-src 'self'`, so it reaches only its own origin) asks for no address: `/connect` asks its own origin who it is and shows the found card
 (Sign in, Try the demo) with no field or remembered servers, falling back to the field filled with
-the origin only when that fails; "Add a server" (profile menu, Account) is hidden while every
+the origin when that fails. If the API path returns a 403, a 404 or no server identity,
+the browser checks the player document's policy separately: a static host leaves the field free
+for another server, while the served player shows the error at its own address.
+"Add a server" (profile menu, Account) is hidden while every
 connection is that origin (`onlyOwnServer`: a production build on a static host of its own, beside
 servers whose CORS let it in, still adds them) and the sign-in step's "Another server" reads "Back"
 and goes back (to the card, or to the app the reconnect banner was tapped in). Metro dev
@@ -1078,8 +1090,10 @@ while it is on AND its Bridge requirement is met (`contributions` is the first,
 - **Slots** take an optional `modules` prop (default the registry; tests pass a fake) and
   read flags through `WithActiveModules` (`active-modules.tsx`), which asks nothing with an
   empty list, so a slot renders exactly as before: Home's `ModuleRails` (after Next in your
-  series; each rail over only the connections whose server has its module on), the You hub (`youSections` after Account on a phone, after Journal in the wide
-  sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
+  series; each rail over only the connections whose server has its module on), the You hub
+  (which reads its flags from `useUpcomingEligibility`, the same `/server` reads Upcoming
+  waits on, through `activeModules`; `youSections` after Account on a phone, after Journal in
+  the wide sub-nav; `parseYouSection(raw, moduleKeys)` opens an active module's key, a key of the
   hub's own is ignored, an off module's link opens Stats, once every server's flags answered (until then the hub
   shows a spinner, so a module's link is not lost to Stats while they load); a module section is a column the
   hub scrolls; a section's `label` is a function of `t`, so it follows the language) and
@@ -2066,7 +2080,7 @@ rules are `src/lib/upcoming.ts`: `upcomingEligibility` (who may be asked, and `a
 true / false / undefined while a server's flags load; a non-kid server whose `/server` read
 failed, from `useCapabilitiesAllRead` (`useCapabilitiesAll` plus `failed` ids and `retry`, the
 same shared reads), is `unreadable`, settled and not loading, so a cold link never waits on it
-forever; `useUpcomingAvailable` reads only `available`; a failed read asked again stays
+forever; the You hub reads module flags and Upcoming eligibility from this same result; a failed read asked again stays
 `failed` while it is, `failedRead`, since a fetch with no data clears the query's error and
 only its `errorUpdateCount` still says it failed, so a Retry stays on screen, busy, rather
 than the section vanishing or a skeleton taking its place),
@@ -5019,16 +5033,23 @@ tokens, type and components; its section 17 maps them onto these files.
   - **Controls scale, capped**: the player's transport and scrubber follow the scale up to
     `CONTROL_MAX_SCALE` (1.5) and shrink back to fit the room (`controlScale(size, scale,
     room)`, `transport-controls.tsx`), so the player fits a 320-wide phone at the largest
-    size; the dock's `sm` transport is not scaled. A px-sized label inside a fixed control
+    size. The full player measures its controls column. The dock reserves the scaled width of its
+    transport and moves it, with the scrubber, to its own row below the book and actions whenever
+    text above the default size leaves the row too little room (`dockLayout`, `SCRUBBER_MIN` plus
+    `SCRUBBER_LABELS`), never shrinking or hiding the scrubber instead. A px-sized label inside a fixed control
     (the skip number) sets `allowFontScaling={false}` and sizes itself with `scaleCapped`
     so the scale is not applied twice; its box takes a min width, never a fixed one.
   - **Text that stops growing**: `display` and `display-xl` titles stop at 2x
     (`DISPLAY_MAX_FONT_SCALE`, `text.tsx`; at iOS's AX5 one word broke mid-word; the web
-    ignores `maxFontSizeMultiplier`, so there the variants cap in CSS,
-    `web:text-[length:min(1.875rem,60px)]`, and a caller sizing a display title twins its
-    size and leading the same capped way), and the
-    Android tab bar's labels at 1.3x (`tab-label-size.ts`: the Material bar's labels are sp
-    with no limit). Elsewhere prefer a row that stacks or a min width over capping: a value
+    ignores `maxFontSizeMultiplier`, so Text supplies a capped CSS unit there).
+    Named title sizes keep their usual classes; their rem leading (14 on native) caps on the
+    web with a `web:` display leading (`text-2xl leading-7 web:leading-display-28`). For a
+    display title drawn in design px,
+    use `text-display-38 leading-display-42`: the utilities take native px and resolve
+    against the capped unit on the web, including at a breakpoint. The
+    Android tab labels grow up to 1.3x; under large text they shrink to fit the widest
+    translated name measured in the system typeface, down to 10 sp (`TAB_LABEL_MIN_SP`),
+    and below it never draw smaller than the system size (a long name ends in "..."). In the iOS tab accessory, a 1.3x cap leaves room for both lines. Elsewhere prefer a row that stacks or a min width over capping: a value
     in a fixed width ("15 / s") is a bug.
   - **px text on the web**: every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in
     rem, N/16, with the same variants (`text-[13px] web:text-[0.8125rem]`, `lg:text-[17px]
@@ -5208,7 +5229,7 @@ SF Symbols / Material names, tab roots) are one table, `src/components/shell/des
   Journal and Household (v2.5.1; Settings is the gear, Account the profile menu). Its sections are `StatsSection`,
   `YearSection`, `JournalScreen`, `SettingsContent`, `HouseholdPage` and `AccountSection` (the
   `SECTIONS` map): Stats, Year, Household and Account are plain columns the hub puts in a
-  `TabPageScroll` (below); the Journal and Settings scroll themselves. Upcoming (Track U2; `UpcomingContent`, `embedded` under the phone's title) and then an active module's sections follow the hub's own (`youExtraSections`; Slots, under Player modules): Upcoming only while `useUpcomingAvailable()` is true (a server offers it, not to a kid), else a link to it opens Stats. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
+  `TabPageScroll` (below); the Journal and Settings scroll themselves. Upcoming (Track U2; `UpcomingContent`, `embedded` under the phone's title) and then an active module's sections follow the hub's own (`youExtraSections`; Slots, under Player modules): Upcoming only while `useUpcomingEligibility().available` is true (a server offers it, not to a kid), else a link to it opens Stats. The tab bar says "Me" with a person (`labelKey`, `icon`), the top bar
   "You" with a chart (`wideLabelKey`, `wideIcon`).
 - **Settings is a page of the array group** (`/settings?section=`, `settingsHref`), pushed on the
   current tab by the top bar's gear, the profile menu and the palette through `openSettings(section)`
@@ -5671,7 +5692,7 @@ chrome; a tab root fills the rest with `SubNavSections` (its segmented sections)
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
 `useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
 sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
-and `DockedPlayer` (84) whenever a book is loaded (nothing while the full player is on top, as for
+and `DockedPlayer` (84 minimum) whenever a book is loaded (nothing while the full player is on top, as for
 the mini player and the accessory: `usePlayerOnTop`): the 3 px whole-book line, book + sync state
 (`usePlaceSync`, shared with the full player's status line: sign in again > saved on this device
 (offline, or saves queued) > synced / synced just now), `TransportControls size="sm"` over a chapter
@@ -5679,13 +5700,15 @@ scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPin
 speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while running), bookmark
 (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. The player controls share one chrome
 (`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
-(`dockLayout`: all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
+(`dockLayout`: at default text size, all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
 in the full player). Each side column is sized for its actions with the sleep pill at its widest (a
 running "10:05:00" or "Keep going"): `SIDE_ALL` and `SIDE_TABLET` are px estimates at the default text
-size, not measurements, so the actions keep clear of the transport at that size only. Scaled text (a
-browser font size of 20 px or more, iPad Dynamic Type XXXL and up) widens the pills past the estimates
-and can still put them over the transport; measuring the actions column is the follow-up. Three columns
-(fe#244): the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
+size. The dock scales these estimates with text and reserves the transport's scaled width. When large
+text leaves too little space for equal sides, the transport sits below the book and actions and the
+row grows in height. From 800 the scrubber row never squeezes or hides its track: `SCRUBBER_MIN` (100)
+plus its labels (`SCRUBBER_LABELS`, about 200 at the default size, scaled with text, so the two fill
+`CENTRE_MIN` and the default layout is unchanged); where larger text leaves less between the side
+columns, the transport and scrubber take their own row, `CENTRE_MAX` wide (wider where the text needs it). At default text size (fe#244), the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
 sides) and the middle column's width comes from `dockLayout` (`centre`), so the transport is centred on
 the bar whatever the title, actions or sleep countdown. The one exception is `dockLayout`'s `centred:
 false`, a bar of 640 to 731: with no scrubber row an equal side column, (width - 292) / 2, is narrower

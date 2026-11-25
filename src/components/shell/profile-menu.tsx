@@ -16,7 +16,7 @@ import { Portrait } from '@/components/series/portrait';
 import { openProfiles, useChooseProfile } from '@/components/profiles/use-choose-profile';
 import { Icon } from '@/components/ui/icon';
 import { Text } from '@/components/ui/text';
-import { onlyOwnServer, servedOrigin } from '@/lib/base-url';
+import { onlyOwnServer, productionWebOrigin } from '@/lib/base-url';
 import { useDeviceOnline } from '@/lib/device-online';
 import { openHousehold, openJournal, openSettings } from '@/lib/open';
 import { accountHref } from '@/lib/paths';
@@ -137,7 +137,7 @@ export function ProfileMenu({ showName }: { showName: boolean }) {
           ))}
           {/* The served web player reaches only its own server. */}
           {onlyOwnServer(
-            servedOrigin(),
+            productionWebOrigin(),
             connections.map((c) => c.serverUrl),
           ) ? null : (
             <DropdownMenuItem icon="plus" onPress={() => router.push('/connect?add=1')}>

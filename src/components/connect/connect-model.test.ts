@@ -21,7 +21,6 @@ import {
   selfSignedMayBeWhy,
   signedInAs,
   unusedProxySet,
-  withFallback,
 } from './connect-model';
 
 const HOME = 'http://192.168.1.20:8080';
@@ -308,50 +307,6 @@ describe('pairingFallback', () => {
 
   it('not after a timeout: a host that never answered would only time out again', async () => {
     await expect(fallback(link(SAME_HOST), new TimeoutError(15000))).resolves.toBeNull();
-  });
-});
-
-describe('withFallback', () => {
-  const ask = (answers: Record<string, unknown>) => {
-    const asked: string[] = [];
-    const attempt = async (base: string) => {
-      asked.push(base);
-      const a = answers[base];
-      if (a instanceof Error) throw a;
-      return a;
-    };
-    return { asked, attempt };
-  };
-  const down = new TypeError('Network request failed');
-
-  it('answers from the primary when it answers, without asking the fallback', async () => {
-    const { asked, attempt } = ask({ a: 1 });
-    await expect(withFallback('a', attempt, () => 'b')).resolves.toEqual({ answer: 1, base: 'a' });
-    expect(asked).toEqual(['a']);
-  });
-
-  it('asks the fallback once when the primary could not connect', async () => {
-    const { asked, attempt } = ask({ a: down, b: 2 });
-    await expect(withFallback('a', attempt, () => 'b')).resolves.toEqual({ answer: 2, base: 'b' });
-    expect(asked).toEqual(['a', 'b']);
-  });
-
-  it("never falls back after a server's own answer", async () => {
-    const refused = new ApiError(401, 'expired');
-    const { asked, attempt } = ask({ a: refused, b: 2 });
-    await expect(withFallback('a', attempt, () => 'b')).rejects.toBe(refused);
-    expect(asked).toEqual(['a']);
-  });
-
-  it("reports the fallback's server answer, else the primary's error", async () => {
-    const boom = new ApiError(500, 'boom');
-    await expect(withFallback('a', ask({ a: down, b: boom }).attempt, () => 'b')).rejects.toBe(
-      boom,
-    );
-    await expect(
-      withFallback('a', ask({ a: down, b: new TypeError('also down') }).attempt, () => 'b'),
-    ).rejects.toBe(down);
-    await expect(withFallback('a', ask({ a: down }).attempt, () => null)).rejects.toBe(down);
   });
 });
 

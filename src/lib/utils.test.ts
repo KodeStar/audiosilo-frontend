@@ -60,4 +60,14 @@ describe('cn', () => {
       'text-sm text-brand-foreground',
     );
   });
+
+  it('lets a display size and a named size replace each other, keeping any leading', () => {
+    expect(cn('display-title text-3xl text-foreground', 'text-display-30 leading-display-36')).toBe(
+      'display-title text-foreground text-display-30 leading-display-36',
+    );
+    expect(cn('text-display-30', 'text-2xl')).toBe('text-2xl');
+    // A display size sets no line height, so an earlier leading stays.
+    expect(cn('leading-display-38 text-display-34')).toBe('leading-display-38 text-display-34');
+    expect(cn('text-display-22', 'md:text-display-24')).toBe('text-display-22 md:text-display-24');
+  });
 });

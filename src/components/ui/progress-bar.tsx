@@ -12,14 +12,14 @@ import { useThemeScheme } from '@/theme/use-theme-colors';
  * Not for a track under about 4px (the edges would be the whole track, and `input`
  * against the brand fill is no 3:1 pair).
  */
-export function TrackOutline() {
+export function TrackOutline({ rounded = 'rounded-full' }: { rounded?: string }) {
   const { highContrast } = useThemeScheme();
   if (!highContrast) return null;
   return (
     <View
       testID="track-outline"
       pointerEvents="none"
-      className="absolute inset-0 rounded-full border border-input"
+      className={cn('absolute inset-0 border border-input', rounded)}
     />
   );
 }

@@ -2,7 +2,7 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
 import { NativeTabs } from 'expo-router/native-tabs';
 import { type ReactNode, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Platform, useWindowDimensions, View } from 'react-native';
+import { Platform, View } from 'react-native';
 
 import { FloatingMiniPlayer } from '@/components/player/mini-player';
 
@@ -12,35 +12,20 @@ import { ShellPlayerOverlays } from '@/components/player/player-sheet-host';
 import { AuthGate } from '@/components/shell/auth-gate';
 import { useBehindModalProps } from '@/components/ui/modal-layer';
 import { TABS } from '@/components/shell/destinations';
-import { tabLabelFontSize } from '@/components/shell/tab-label-size';
+import { useAndroidTabLabels } from '@/components/shell/android-tab-labels';
 import { ShellFrame } from '@/components/shell/shell-frame';
 import { useIsTopShell } from '@/components/shell/top-shell';
 import { useShellEffects } from '@/components/shell/use-shell-effects';
 import { useLayout } from '@/lib/layout';
-import { useFontScale, useLargeText } from '@/lib/text-scale';
+import { useLargeText } from '@/lib/text-scale';
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { usePlayer } from '@/playback/store';
 import { useTheme } from '@/theme/theme-provider';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
-/** The Android tab bar's `labelStyle` (`tab-label-size.ts`): it follows the text scale, a
- * tab's slot (a fifth of the window, in dp) and the longest tab name in this language
- * ("Téléchargements" in French); `undefined` elsewhere, so iOS doesn't redraw the shell on
- * every text-size step or resize (it needs only `useLargeText`'s threshold). Chosen once
- * per platform, so the hook order never changes. */
-const useTabLabelStyle: () => { fontSize: number } | undefined =
-  Platform.OS === 'android'
-    ? function useAndroidTabLabelStyle() {
-        const { t } = useTranslation();
-        const scale = useFontScale();
-        const slot = useWindowDimensions().width / TABS.length;
-        const longest = useMemo(() => Math.max(...TABS.map((d) => t(d.labelKey).length)), [t]);
-        return useMemo(
-          () => ({ fontSize: tabLabelFontSize(scale, slot, longest) }),
-          [scale, slot, longest],
-        );
-      }
-    : () => undefined;
+// iOS uses the system's tab labels and only subscribes to the large text threshold.
+const useTabLabels =
+  Platform.OS === 'android' ? useAndroidTabLabels : () => ({ labelStyle: undefined, probe: null });
 
 /**
  * The native (iOS/Android) shell: ONE navigator, NativeTabs, at every width - only the
@@ -67,7 +52,7 @@ function NativeShell() {
   // Material's answer is the chosen tab's label only (the others keep theirs for TalkBack),
   // and the label grows only as far as the longest name fits its slot (`tab-label-size.ts`).
   const large = useLargeText();
-  const labelStyle = useTabLabelStyle();
+  const { labelStyle, probe } = useTabLabels();
 
   // React Navigation's theme, from ours: the native tab and stack containers paint with
   // it (on iOS 26 a missing theme shows default-white artifacts in tab transitions).
@@ -90,6 +75,7 @@ function NativeShell() {
     <ThemeProvider value={navTheme}>
       {/* The player's overlays (its sheets, Up next's) render in place, over the whole shell. */}
       <View style={{ flex: 1 }}>
+        {probe}
         <BehindSheets>
           <ShellFrame
             // Absolutely positioned in the frame, which spans the window: its bottom offset is

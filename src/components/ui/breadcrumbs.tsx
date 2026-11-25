@@ -1,4 +1,7 @@
+import { useState } from 'react';
 import { Pressable, ScrollView } from 'react-native';
+
+import { linesFor, useLargeText } from '@/lib/text-scale';
 
 import { HORIZONTAL_SCROLLER } from './horizontal-scroller';
 import { Text } from './text';
@@ -46,12 +49,18 @@ export function bookCrumbs(
  * is pink. Ported from the old client's `.breadcrumbs`. */
 export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
   const last = crumbs.length - 1;
+  const large = useLargeText();
+  const [width, setWidth] = useState(0);
   return (
     <ScrollView
       horizontal
+      testID="breadcrumbs"
+      onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       style={HORIZONTAL_SCROLLER}
       showsHorizontalScrollIndicator={false}
-      contentContainerClassName="flex-row items-center"
+      // Under large text a crumb can wrap: the others stretch to its height, so the pills
+      // stay one contiguous strip.
+      contentContainerClassName={large ? 'flex-row items-stretch' : 'flex-row items-center'}
     >
       {crumbs.map((c, i) => (
         <Pressable
@@ -61,12 +70,13 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
           // A link to a folder; the active crumb is the place itself (C8: no role on native).
           accessibilityRole={c.onPress ? 'link' : 'text'}
           aria-current={c.active ? 'page' : undefined}
-          className={`bg-muted px-3 py-1.5 active:opacity-80 ${
+          style={large && width > 0 ? { maxWidth: width } : undefined}
+          className={`justify-center bg-muted px-3 py-1.5 active:opacity-80 ${
             i === 0 ? 'rounded-l-md' : ''
           } ${i === last ? 'rounded-r-md' : 'border-r border-border'}`}
         >
           <Text
-            numberOfLines={1}
+            numberOfLines={linesFor(1, large)}
             className={c.active ? 'font-sans-medium text-sm text-brand-ink' : 'text-sm'}
           >
             {c.label}

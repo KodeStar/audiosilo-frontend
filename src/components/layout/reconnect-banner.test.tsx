@@ -11,7 +11,10 @@ import { useSession } from '@/stores/session';
 import { ReconnectBanner, reconnectConnection } from './reconnect-banner';
 
 const mockPush = jest.fn();
-jest.mock('expo-router', () => ({ router: { push: (h: unknown) => mockPush(h) } }));
+const mockReplace = jest.fn();
+jest.mock('expo-router', () => ({
+  router: { push: (h: unknown) => mockPush(h), replace: (h: unknown) => mockReplace(h) },
+}));
 let mockNavState: unknown;
 jest.mock('@/lib/root-stack', () => ({
   ...jest.requireActual('@/lib/root-stack'),
@@ -34,6 +37,7 @@ beforeEach(async () => {
   resetProfilesForTests();
   await AsyncStorage.clear();
   mockPush.mockClear();
+  mockReplace.mockClear();
   mockNavState = undefined;
   useAddressRoute.setState({ picks: {} });
   useSession.setState({
@@ -118,6 +122,29 @@ it('a double tap pushes one sign-in step (one on its way, then one on screen)', 
   await fireEvent.press(screen.getByRole('button'));
   expect(mockPush).toHaveBeenCalledTimes(2);
   clock.mockRestore();
+});
+
+it('opens the last server tapped, including while its previous step is still landing', async () => {
+  const a = useSession.getState().connections[0];
+  const b = { ...a, id: 'b.1', serverUrl: 'https://b.test', name: 'Server B', addresses: {} };
+  const clock = laterClock();
+  mockNavState = { index: 0, routes: [{ name: '(app)' }] };
+  try {
+    await act(() => Promise.all([reconnectConnection(a), reconnectConnection(b)]));
+    expect(mockPush.mock.calls).toEqual([
+      [{ pathname: '/connect/sign-in', params: { serverName: b.name } }],
+    ]);
+    expect(useSession.getState().pendingServerUrl).toBe(b.serverUrl);
+    expect(takeReconnect(b.serverUrl)).toBe(b.id);
+    await act(() => reconnectConnection(a));
+    expect(mockReplace).toHaveBeenCalledWith({
+      pathname: '/connect/sign-in',
+      params: { serverName: a.name },
+    });
+    expect(takeReconnect(a.serverUrl)).toBe(a.id);
+  } finally {
+    clock.mockRestore();
+  }
 });
 
 it('a push that never reached the stack holds Reconnect back only for a moment', async () => {

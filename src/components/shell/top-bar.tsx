@@ -165,7 +165,11 @@ export function TopBar() {
       style={{ paddingTop: insets.top, paddingLeft: insets.left, paddingRight: insets.right }}
       className="border-b border-border bg-background"
     >
-      <View className="h-[64px] flex-row items-center gap-4 px-4 lg:gap-5 lg:px-6">
+      {/* 64 tall; larger text grows it with the name and server line, never cuts them. */}
+      <View
+        testID="top-bar-row"
+        className="min-h-[64px] flex-row items-center gap-4 px-4 lg:gap-5 lg:px-6"
+      >
         <AnimatedPressable
           onPress={() => press('(home)')}
           accessibilityRole="button"

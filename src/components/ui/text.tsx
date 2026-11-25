@@ -1,5 +1,11 @@
 import { createContext, type Ref, useContext } from 'react';
-import { Text as RNText, type TextInstance, type TextProps } from 'react-native';
+import {
+  Platform,
+  Text as RNText,
+  type TextInstance,
+  type TextProps,
+  type TextStyle,
+} from 'react-native';
 
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
@@ -29,11 +35,9 @@ export const FOCUS_RING_OFFSET_CLASS = `${FOCUS_RING_CLASS} focus-visible:ring-o
 const variants = {
   /** Bricolage 750, set bold (static weights): book and series heroes. The web's size stops
    * at 2x (`DISPLAY_MAX_FONT_SCALE`), which the browser has no `maxFontSizeMultiplier` for. */
-  'display-xl':
-    'font-display text-4xl web:text-[length:min(2.25rem,72px)] tracking-tighter text-foreground',
+  'display-xl': 'display-title font-display text-4xl tracking-tighter text-foreground',
   /** Bricolage 700: page greetings, onboarding titles. Capped at 2x on the web too. */
-  display:
-    'font-display text-3xl web:text-[length:min(1.875rem,60px)] tracking-tight text-foreground',
+  display: 'display-title font-display text-3xl tracking-tight text-foreground',
   /** Bricolage 680 (bold): section and page headings. */
   heading: 'font-display text-xl tracking-tight text-foreground',
   /** Bricolage 650 (semibold): card and sheet titles, book titles in lists. */
@@ -95,16 +99,14 @@ export function headingLevelFor(variant: TextVariant): HeadingLevel {
   return 3;
 }
 
-/**
- * How far a display title follows the system text size (fe#267). A page title is already the
- * largest text on screen; at iOS's AX5 (3.1x) one word ("Settings") no longer fits the
- * phone's width and breaks mid-word. Past 2x it stops growing, as iOS's own large titles
- * do; a caller's `maxFontSizeMultiplier` wins. The web ignores the prop: there the display
- * variants cap their size in CSS (`min(<rem>, <2x of it in px>)`, fe#305), and a caller that
- * sets its own size on a display title caps it the same way (a twinned size, so the cap is
- * not lost on the web: `web:text-[length:min(2.375rem,76px)]`).
- */
+/** Display titles follow the system size up to this multiplier. */
 export const DISPLAY_MAX_FONT_SCALE = 2;
+
+// One design pixel follows the browser font up to the native cap. The display
+// utilities in global.css multiply by it, including a caller's named size.
+const WEB_DISPLAY_STYLE = {
+  '--display-px': `min(0.0625rem, ${DISPLAY_MAX_FONT_SCALE}px)`,
+} as TextStyle;
 
 /** A page title's type role (`display-xl`, `display`). */
 function isDisplay(variant: TextVariant): boolean {
@@ -133,11 +135,18 @@ export function Text({ variant = 'body', className, style, level, ...props }: Ap
           'aria-level': level ?? headingLevelFor(variant),
         } as TextProps)
       : null;
+  const display = isDisplay(variant);
+  const base =
+    display && Platform.OS === 'web'
+      ? WEB_DISPLAY_STYLE
+      : TABULAR.has(variant)
+        ? tabularNums
+        : null;
   return (
     <RNText
       className={cn(variants[variant], contextClass, className)}
-      style={TABULAR.has(variant) ? [tabularNums, style] : style}
-      maxFontSizeMultiplier={isDisplay(variant) ? DISPLAY_MAX_FONT_SCALE : undefined}
+      style={base ? [base, style] : style}
+      maxFontSizeMultiplier={display ? DISPLAY_MAX_FONT_SCALE : undefined}
       {...heading}
       {...props}
     />

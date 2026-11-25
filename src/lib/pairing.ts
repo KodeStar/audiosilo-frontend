@@ -151,6 +151,17 @@ export type InviteScan = { base: string; code: string };
 /** An invite code as the server writes it (groups of letters and digits, hyphenated). */
 const INVITE_CODE = /^[0-9A-Za-z]+(?:-[0-9A-Za-z]+)*$/;
 
+/** One invite in every spelling the server's `auth.normalizeCode` accepts for it. */
+export function inviteKey(code: string): string {
+  return code
+    .trim()
+    .toUpperCase()
+    .replace(/[ -]/g, '')
+    .replace(/O/g, '0')
+    .replace(/[IL]/g, '1')
+    .replace(/U/g, 'V');
+}
+
 /**
  * The server and invite code of an invite link, the admin console's "Invite ready" QR and
  * copied link: `https://<base>/connect#code=XXXX-XXXX-XXXX-XXXX` (audiosilo-server

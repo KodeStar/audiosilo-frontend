@@ -34,7 +34,7 @@ jest.mock('@/lib/device-online', () => ({
 }));
 jest.mock('@/lib/base-url', () => ({
   ...jest.requireActual('@/lib/base-url'),
-  servedOrigin: () => mockServed,
+  productionWebOrigin: () => mockServed,
 }));
 
 /* eslint-disable import/first */

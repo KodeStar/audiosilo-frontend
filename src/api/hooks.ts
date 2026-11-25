@@ -3528,7 +3528,7 @@ export function useLibrariesAll() {
         libraries: groups.flatMap((g) => g.libraries),
         // `isLoading` is false for a paused list: its group is `paused` instead (fe#155).
         isLoading: results.some((r) => r.isLoading),
-        error: results.find((r) => r.error)?.error ?? null,
+        error: fanOutError(results),
         /** Ask again every server whose list failed. */
         retry: () => {
           for (const r of results) if (r.isError) void r.refetch();
@@ -3555,7 +3555,7 @@ export function useSearchAll(query: string) {
     combine: (results) => ({
       books: dedupBooks(tagBooks(results, apis), rank),
       isFetching: results.some((r) => r.isFetching),
-      error: results.find((r) => r.error)?.error ?? null,
+      error: fanOutError(results),
     }),
   });
 }
@@ -3613,11 +3613,13 @@ const UPCOMING_STALE_MS = 15 * 60_000;
 
 /** The connections Upcoming may ask and whether there is any (`upcomingEligibility`): a
  * server whose flags could not be read counts as `unreadable`, never as still loading. */
-function useUpcomingEligibility() {
+export function useUpcomingEligibility() {
   const apis = useApis();
   const { caps, failed, refusals, retry, reading } = useCapabilitiesAllRead();
   return {
     apis,
+    caps,
+    failed,
     retryFlags: retry,
     readingFlags: reading,
     refusals,
@@ -3627,14 +3629,6 @@ function useUpcomingEligibility() {
       failed,
     ),
   };
-}
-
-/** Whether Upcoming can show anything for the person listening: true once one of their
- * servers advertises `upcoming` for a user who is not a kid, false once none can (a server
- * whose flags could not be read counts as none), undefined while a server's flags are still
- * loading. Asks nothing beyond the shared `/server` reads. */
-export function useUpcomingAvailable(): boolean | undefined {
-  return useUpcomingEligibility().available;
 }
 
 /**
@@ -3901,7 +3895,7 @@ export function useFavouritesAll() {
       ),
       isLoading: results.some((r) => r.isLoading),
       offline: anyHeld(results),
-      error: results.find((r) => r.error)?.error ?? null,
+      error: fanOutError(results),
       unreadError: firstUnread(results),
     }),
   });

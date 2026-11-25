@@ -406,9 +406,7 @@ function EndCreditsBody({
             variant="display-xl"
             className={cn(
               'text-center',
-              phone
-                ? 'text-[34px] web:text-[length:min(2.125rem,68px)] leading-[38px] web:leading-[length:min(2.375rem,76px)]'
-                : 'text-[50px] web:text-[length:min(3.125rem,100px)] leading-[54px] web:leading-[length:min(3.375rem,108px)]',
+              phone ? 'text-display-34 leading-display-38' : 'text-display-50 leading-display-54',
             )}
             numberOfLines={3}
           >

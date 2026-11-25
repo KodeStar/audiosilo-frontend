@@ -24,6 +24,9 @@
 //    has no rule for it (native text scales with fontScale already), and that no source
 //    line has a px size without its twin (the art drawn to a fixed box is exempt: covers,
 //    the A-Z rail, the connect cascade).
+// 5. Display titles on the web (fe#305). Every `text-display-N` / `leading-display-N` the
+//    source uses is N on iOS (none for a `web:` one) and N times the capped unit Text
+//    supplies (`--display-px`) on the web; a named size on a display title uses the unit.
 //
 // It runs the same steps Uniwind's Metro transformer runs (`generateArtifacts`, then
 // `compileCSS`, read out of the installed transformer because Uniwind doesn't export
@@ -75,15 +78,19 @@ function withoutBlocks(css, prelude) {
   return out;
 }
 
-/** Source lines with a px text size or line height and no `web:` rem twin (guard 4). */
-function untwinnedPxText() {
+/** One pass over the source: the lines with a px text size or line height and no `web:`
+ * rem twin (guard 4), and every `text-display-N` / `leading-display-N` with its variants
+ * (guard 5). */
+function scanSource() {
   const exempt = new Set([
     'src/components/ui/cover.tsx',
     'src/components/library/books/az-rail.tsx',
     'src/components/connect/cover-cascade.tsx',
   ]);
   const px = /(^|[\s"'`{])((?:[a-z0-9-]+:)*)(text|leading)-\[([0-9.]+)px\](?![\w\]-])/g;
+  const display = /(?:^|[\s"'`{])((?:[a-z0-9-]+:)*(?:text|leading)-display-\d+)(?![\w-])/g;
   const found = [];
+  const displayClasses = new Set();
   const walk = (dir) => {
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
       const p = path.join(dir, e.name);
@@ -94,6 +101,7 @@ function untwinnedPxText() {
         fs.readFileSync(p, 'utf8')
           .split('\n')
           .forEach((line, i) => {
+            for (const [, cls] of line.matchAll(display)) displayClasses.add(cls);
             for (const [, , variants, kind, n] of line.matchAll(px)) {
               if (variants.split(':').includes('web')) continue;
               // The twin is N/16 rem exactly (any other value would change the size at the
@@ -108,9 +116,9 @@ function untwinnedPxText() {
     }
   };
   walk(path.join(root, 'src'));
-  return found;
+  return { untwinned: found, displayClasses };
 }
-const untwinned = untwinnedPxText();
+const { untwinned, displayClasses } = scanSource();
 
 const failures = [];
 const check = (ok, message) => ok || failures.push(message);
@@ -204,6 +212,47 @@ const check = (ok, message) => ok || failures.push(message);
     untwinned.length === 0,
     `px text without its web: rem twin (fe#267):\n  ${untwinned.join('\n  ')}`,
   );
+
+  // A display size uses native pixels and the web unit supplied by Text. Every one the
+  // source uses, size and leading, must survive the actual Metro transform, including md:.
+  // A `web:` one (beside a rem class for native) has no native rule at all.
+  check(displayClasses.size > 0, 'no text-display-N class found in src: update this guard');
+  for (const cls of displayClasses) {
+    const [, variants, kind, n] = /^((?:[a-z0-9-]+:)*)(text|leading)-display-(\d+)$/.exec(cls);
+    const [cssProp, nativeProp] =
+      kind === 'text' ? ['font-size', 'fontSize'] : ['line-height', 'lineHeight'];
+    const size = Number(n);
+    const start = webCss.lastIndexOf(`.${cls.replace(/:/g, '\\:')} {`);
+    const rule = webCss.slice(start, webCss.indexOf('}', start));
+    check(
+      start >= 0 && rule.includes(`${cssProp}: calc(${size} * var(--display-px, `),
+      `web: ${cls} does not follow the capped display unit`,
+    );
+    // Like `leading-[Npx]`, a display leading sets --tw-leading, so a named size after it
+    // (a breakpoint's `md:text-lg`) keeps it instead of the size's own line height.
+    check(
+      kind === 'text' || rule.includes(`--tw-leading: calc(${size} * var(--display-px, `),
+      `web: ${cls} does not set --tw-leading, so a later named size replaces its line height`,
+    );
+    if (variants.split(':').includes('web')) {
+      check(stylesheet[cls] === undefined, `ios: ${cls} has a native rule`);
+    } else {
+      check(entry(cls, nativeProp)?.(vars) === size, `ios: ${cls} is no longer ${size}`);
+    }
+  }
+
+  // The named title sizes share Tailwind's default metrics. Check the named
+  // steps in this build against the real theme so an upgrade cannot resize one.
+  for (const [name, [rem]] of Object.entries(require('tailwindcss/defaultTheme').fontSize)) {
+    if (pos(`text-${name}`) === -1) continue;
+    const step = `--display-step-${name}`;
+    check(
+      webCss.includes(`${step}: ${parseFloat(rem) * 16};`) &&
+        webCss.includes(`.text-${name}:where(.display-title)`) &&
+        webCss.includes(`font-size: calc(var(${step}) * var(--display-px))`),
+      `web: text-${name} does not retain the role's default size and cap`,
+    );
+  }
 
   if (failures.length) {
     console.error(`Style guards failed:\n- ${failures.join('\n- ')}`);

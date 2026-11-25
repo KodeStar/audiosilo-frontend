@@ -1,7 +1,7 @@
 // Which address the watch talks to, a port of targets/watch/Core/AddressPicker.swift (itself the
 // phone's `src/lib/server-address.ts` (`chooseAddress`, `pickAddress`, `mergeAddresses`),
 // `src/lib/url-host.ts` (`urlEndpoint`) and `src/components/connect/connect-model.ts`
-// (`withFallback`, `pairingFallback`)). CROSS-REPO section 7: a home address is used only after a
+// (`pairingFallback`)). CROSS-REPO section 7: a home address is used only after a
 // tokenless `GET <home>/api/v1/server` answered this account's `server_id`; NEVER does a token
 // (session or pairing) go to a home address before that. Self-signed (W4 decision 4): no
 // certificate override; the server's plain-HTTP home address is the way in at home, under
