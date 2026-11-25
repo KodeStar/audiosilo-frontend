@@ -103,6 +103,9 @@ import { useDownloads } from '@/downloads/store';
 import { resetProfilesForTests, useProfiles } from '@/stores/profiles';
 import { useSettings } from '@/stores/settings';
 
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
+
+import { StorageCard } from './storage-card';
 import { DownloadsScreen } from './downloads-screen';
 /* eslint-enable import/first */
 
@@ -192,6 +195,30 @@ async function mount() {
   await act(async () => {}); // the storage reading resolves
   return r;
 }
+
+it('outlines the storage track beneath its segments in high contrast', async () => {
+  await mountWithPortal(
+    <ThemeColorsProvider highContrast>
+      <StorageCard
+        scope="device"
+        estimate={null}
+        bar={{
+          used: 250,
+          scale: 1000,
+          segments: [{ kind: 'other-apps', bytes: 250 }],
+        }}
+      />
+    </ThemeColorsProvider>,
+  );
+  const track = screen.getByRole('image');
+  expect(track.props.className).toContain('bg-track');
+  expect(track.children[0]).toHaveProp('testID', 'track-outline');
+  expect(track.children[1]).toHaveStyle({ width: '25%' });
+  expect(track.children[1]).toHaveProp(
+    'className',
+    expect.stringContaining('border-r border-r-primary'),
+  );
+});
 
 describe('DownloadsScreen', () => {
   it('shows the empty state with one way out', async () => {

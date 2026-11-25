@@ -108,9 +108,7 @@ function PlayerTitles({ phone, onChapters }: { phone: boolean; onChapters: () =>
   const many = queue.chapters.length > 1 || queue.tracks.length > 1;
   const titleClass = cn(
     'text-center',
-    phone
-      ? 'text-[23px] web:text-[length:min(1.4375rem,46px)] leading-[27px] web:leading-[length:min(1.6875rem,54px)]'
-      : 'text-[30px] web:text-[length:min(1.875rem,60px)] leading-[34px] web:leading-[length:min(2.125rem,68px)]',
+    phone ? 'text-display-23 leading-display-27' : 'text-display-30 leading-display-34',
   );
   return (
     <View className="w-full items-center gap-1">
@@ -180,6 +178,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   // the rest leaves (measured), so the player fits a phone without scrolling; the column
   // scrolls only once the slot is at its minimum.
   const [coverSlot, setCoverSlot] = useState(0);
+  const [room, setRoom] = useState(0);
 
   // Entrance: the cover scales up and fades in, the titles and the controls rise after
   // it, once per open (the view stays mounted as chapters change). Reduced motion
@@ -217,9 +216,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
   const w = width || windowWidth;
   const bottomPad = insets.bottom + (phone ? 12 : 24);
   const coverSize = phone ? phoneCoverSize(w, coverSlot) : playerCoverSize(layout, w, height);
-  // The main column's width, which the transport (grown with the text size) must fit.
   const columnMax = desktop ? 640 : 560;
-  const room = Math.min(columnMax, desktop ? w - COMPANION_WIDTH - 80 : w - (phone ? 40 : 96));
+  const transportSize = phone ? 'md' : 'lg';
   const wash = playerWash(book?.cover_color, themed.mutedForeground, themed.brand);
 
   const main = (
@@ -240,7 +238,12 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           <BreathingCover size={coverSize} coverVersion={book?.cover_version} />
         </Animated.View>
       )}
-      <Animated.View style={restStyle} className="w-full items-center gap-3">
+      <Animated.View
+        style={restStyle}
+        className="w-full items-center gap-3"
+        onLayout={(e) => setRoom(e.nativeEvent.layout.width)}
+        testID="player-controls-column"
+      >
         <PlayerTitles phone={phone} onChapters={onChapters} />
         {/* The sleep timer's last seconds take the status line's place: in the flow, so
             the card never covers the transport or the actions. */}
@@ -255,6 +258,8 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
         </View>
         <View className="w-full gap-3">
           <PlayerSeekBar
+            room={room}
+            transportSize={transportSize}
             bookmarks={pins.bookmarks}
             bars={phone ? 56 : 96}
             onTip={setTip}
@@ -263,7 +268,7 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           />
           <PlayerBookTimeline pins={pins} onTip={setTimelineTip} />
         </View>
-        <TransportControls size={phone ? 'md' : 'lg'} room={room} className="py-1" />
+        <TransportControls size={transportSize} room={room} className="py-1" />
         <PlayerErrorLine />
         <PlayerActions wide={!phone} upNext={!desktop} />
         {phone ? <CompanionChips /> : null}
@@ -305,7 +310,9 @@ export function PlayerView({ onClose }: { onClose: () => void }) {
           // on a phone too, so a page turned into a tablet's knows where it is.
           {...pageScrollProps}
           className="flex-1"
-          contentContainerClassName={phone ? 'grow px-5 pt-1' : 'px-12 pt-2'}
+          contentContainerClassName={
+            phone ? 'grow px-5 web:px-[min(1.25rem,20px)] pt-1' : 'px-12 pt-2'
+          }
           contentContainerStyle={{ paddingBottom: bottomPad }}
           // The tablet's inline companion holds the Notes composer: with the keyboard up,
           // a tap on "Add note" must add it, not only dismiss the keyboard.

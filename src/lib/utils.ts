@@ -1,10 +1,14 @@
 import { clsx, type ClassValue } from 'clsx';
-import { extendTailwindMerge } from 'tailwind-merge';
+import { extendTailwindMerge, validators } from 'tailwind-merge';
 
 // Teach tailwind-merge the theme names it can't know: the Stacks radii and overlay
 // shadow (src/global.css), so `cn('rounded-control', 'rounded-full')` resolves to one.
 const twMerge = extendTailwindMerge({
   extend: {
+    classGroups: {
+      'font-size': [{ 'text-display': [validators.isInteger] }],
+      leading: [{ 'leading-display': [validators.isInteger] }],
+    },
     theme: {
       radius: ['cover', 'control', 'menu', 'card', 'dialog', 'sheet'],
       shadow: ['overlay'],

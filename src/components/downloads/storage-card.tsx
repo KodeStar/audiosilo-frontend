@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { View } from 'react-native';
 
 import { Card } from '@/components/ui/card';
+import { TrackOutline } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import type { StorageBar, StorageSegment } from '@/downloads/downloads-view';
 import type { StorageEstimate } from '@/downloads/types';
@@ -75,13 +76,19 @@ export function StorageCard({
         accessible
         accessibilityRole="image"
         accessibilityLabel={[t('downloads.storage.label'), ...legend].join(', ')}
-        className="h-2.5 flex-row overflow-hidden rounded-full bg-muted"
+        className="h-2.5 flex-row overflow-hidden rounded-full bg-track"
       >
+        <TrackOutline />
         {bar.scale > 0
           ? bar.segments.map((s, i) => (
               <View
                 key={s.kind === 'server' ? s.connectionId : s.kind}
-                className={cn('h-full', segmentClass(s), i > 0 && 'border-l-2 border-card')}
+                className={cn(
+                  'h-full',
+                  segmentClass(s),
+                  i > 0 && 'border-l-2 border-card',
+                  i === bar.segments.length - 1 && 'border-r border-r-primary',
+                )}
                 // A sliver stays visible however small its share.
                 style={{ width: `${Math.max(0.8, (s.bytes / bar.scale) * 100)}%` }}
               />

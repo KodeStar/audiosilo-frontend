@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from '@testing-library/react-native
 import { StyleSheet, Text } from 'react-native';
 
 import { settleFlashList } from '@/testing/flash-list';
+import { setFontScale } from '@/testing/font-scale';
 
 const mockPush = jest.fn();
 // A tile's actions menu (book actions, the player) has its own tests.
@@ -33,6 +34,10 @@ jest.mock('@/lib/layout', () => ({
 }));
 
 /* eslint-disable import/first */
+import { ICON_DATA } from '@/components/ui/icon-data';
+import { colors } from '@/theme/tokens';
+import { ScopedThemeColors } from '@/theme/use-theme-colors';
+
 import { ChipRow, FilterChip } from '@/components/ui/filter-chip';
 
 import { CoverGrid, CoverGridSkeleton, CoverListRow } from './cover-grid';
@@ -77,6 +82,21 @@ describe('CoverTile', () => {
     expect(screen.getByText('Maya')).toBeTruthy();
   });
 
+  it('lets long titles and captions wrap within the tile at large text sizes', async () => {
+    const title = 'The Restaurant at the End of the Universe';
+    const caption = 'Douglas Adams, read by Martin Freeman';
+    await render(<CoverTile {...tile} title={title} caption={caption} />);
+    expect(screen.getByText(title).props.numberOfLines).toBe(2);
+    expect(screen.getByText(caption).props.numberOfLines).toBe(1);
+    try {
+      await setFontScale(3.1);
+      expect(screen.getByText(title).props.numberOfLines).toBeUndefined();
+      expect(screen.getByText(caption).props.numberOfLines).toBeUndefined();
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   // Native/web layout jest can't measure: the flags row must be bound to the tile on
   // both sides and the server name must be the part that gives way (an iPhone showed
   // "mac-studio-3.local:18571" running off the cover's left edge).
@@ -106,7 +126,17 @@ describe('CoverTile', () => {
   });
 
   it('says finished instead of a percentage', async () => {
-    await render(<CoverTile {...tile} progress={1} finished />);
+    await render(
+      <ScopedThemeColors theme="dark">
+        <CoverTile {...tile} progress={1} finished />
+      </ScopedThemeColors>,
+    );
+    const checks = screen
+      .getByTestId('tile-flags')
+      .queryAll((node) => node.props.d === ICON_DATA.check.path);
+    expect(checks.map((node) => node.props.fill.payload)).toEqual([
+      parseInt(`ff${colors.dark.successForeground.slice(1)}`, 16),
+    ]);
     expect(screen.getByRole('button', { name: 'Dune, Finished' })).toBeTruthy();
   });
 
@@ -235,8 +265,9 @@ describe('FilterChip', () => {
     const chip = screen.getByRole('checkbox', { name: 'In progress, 12', checked: false });
     await fireEvent.press(chip);
     expect(onPress).toHaveBeenCalled();
-    await render(<FilterChip label="Finished" selected onPress={jest.fn()} />);
-    expect(screen.getByRole('checkbox', { name: 'Finished', checked: true })).toBeTruthy();
+    await render(<FilterChip label="Finished" count={3} selected onPress={jest.fn()} />);
+    expect(screen.getByRole('checkbox', { name: 'Finished, 3', checked: true })).toBeTruthy();
+    expect(screen.getByText('3').props.className).toContain('text-primary-muted-foreground');
   });
 });
 

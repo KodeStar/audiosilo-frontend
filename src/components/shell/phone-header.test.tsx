@@ -8,6 +8,7 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 /* eslint-disable import/first */
+import { setFontScale } from '@/testing/font-scale';
 import { PhoneHeader } from './phone-header';
 /* eslint-enable import/first */
 
@@ -18,6 +19,20 @@ describe('PhoneHeader', () => {
     const bar = String(screen.getByTestId('phone-header-bar').props.className);
     expect(bar).toContain('border-b');
     expect(bar).toContain('border-border');
+  });
+
+  it('lets the named iOS back button wrap and its bar grow on a deep link at AX5', async () => {
+    await render(<PhoneHeader title="" backTitle="Home" onBack={jest.fn()} />);
+    const back = screen.getByText('Home');
+    expect(back.props.numberOfLines).toBe(1);
+    try {
+      await setFontScale(3.12);
+      expect(screen.getByText('Home').props.numberOfLines).toBeUndefined();
+      expect(screen.getByTestId('phone-header-bar').props.className).toContain('min-h-[45px]');
+      expect(screen.getByRole('button', { name: 'Back to Home' })).toBeTruthy();
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   it('gives a tab root its large title, with no back button', async () => {

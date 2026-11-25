@@ -74,6 +74,7 @@
   --color-popover-foreground: unset;
   --color-primary: unset;
   --color-primary-foreground: unset;
+  --color-primary-muted-foreground: unset;
   --color-secondary: unset;
   --color-secondary-foreground: unset;
   --color-muted: unset;
@@ -131,6 +132,7 @@
       --color-popover-foreground: #121c36;
       --color-primary: #15203d;
       --color-primary-foreground: #f5f7fa;
+      --color-primary-muted-foreground: #bdc1cb;
       --color-secondary: #eaedf3;
       --color-secondary-foreground: #18244a;
       --color-muted: #eef1f5;
@@ -186,6 +188,7 @@
       --color-popover-foreground: #e7ebf4;
       --color-primary: #eef1f8;
       --color-primary-foreground: #0a0f1e;
+      --color-primary-muted-foreground: #434752;
       --color-secondary: #1a2340;
       --color-secondary-foreground: #dfe5f2;
       --color-muted: #151d34;
@@ -289,6 +292,48 @@
   --radius-card: 16px; /* cards */
   --radius-dialog: 20px; /* dialogs, the palette */
   --radius-sheet: 24px; /* sheets, the Now card */
+}
+
+/* Tailwind's named text sizes at the default 16px web root (see text.tsx).
+ * A title can use any of them, including a responsive caller override. */
+@theme {
+  --display-step-xs: 12;
+  --display-step-sm: 14;
+  --display-step-base: 16;
+  --display-step-lg: 18;
+  --display-step-xl: 20;
+  --display-step-2xl: 24;
+  --display-step-3xl: 30;
+  --display-step-4xl: 36;
+  --display-step-5xl: 48;
+  --display-step-6xl: 60;
+  --display-step-7xl: 72;
+  --display-step-8xl: 96;
+  --display-step-9xl: 128;
+}
+
+@utility text-* {
+  @variant web {
+    &:where(.display-title) {
+      /* prettier-ignore */
+      font-size: calc(--value(--display-step-*) * var(--display-px));
+    }
+  }
+}
+
+/* Display titles in design pixels. Native scales the text itself and the web
+ * supplies the capped unit from Text. */
+@utility text-display-* {
+  font-size: calc(--value(integer) * 1px);
+  @variant web {
+    font-size: calc(--value(integer) * var(--display-px));
+  }
+}
+@utility leading-display-* {
+  line-height: calc(--value(integer) * 1px);
+  @variant web {
+    line-height: calc(--value(integer) * var(--display-px));
+  }
 }
 
 /*

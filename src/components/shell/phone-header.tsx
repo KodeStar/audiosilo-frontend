@@ -8,6 +8,7 @@ import { ReconnectBanner } from '@/components/layout/reconnect-banner';
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { BackGlyph } from './back-glyph';
@@ -39,6 +40,7 @@ export function PhoneHeader({
   const { t } = useTranslation();
   const themed = useThemeColors();
   const insets = useSafeAreaInsets();
+  const large = useLargeText();
   const canGoBack = backTitle !== undefined;
   const namedBack = Platform.OS === 'ios' && !!backTitle;
   return (
@@ -48,25 +50,34 @@ export function PhoneHeader({
         // rows), and on the page's own colour the back button seemed to float over them.
         <View
           testID="phone-header-bar"
-          className="h-[45px] flex-row items-center border-b border-border px-2"
+          className="min-h-[45px] flex-row items-center border-b border-border px-2"
         >
           <AnimatedPressable
             onPress={onBack}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={namedBack ? t('nav.backTo', { name: backTitle }) : t('nav.back')}
-            className="min-h-[44px] min-w-[44px] flex-row items-center gap-1 rounded-control px-1.5 active:bg-accent"
+            className="min-h-[44px] min-w-[44px] shrink flex-row items-center gap-1 rounded-control px-1.5 active:bg-accent"
           >
             <BackGlyph size={20} color={themed.foreground} />
             {namedBack ? (
-              <Text variant="label" className="text-[15px] web:text-[0.9375rem]" numberOfLines={1}>
+              <Text
+                variant="label"
+                className="shrink text-[15px] web:text-[0.9375rem]"
+                numberOfLines={linesFor(1, large)}
+              >
                 {backTitle}
               </Text>
             ) : null}
           </AnimatedPressable>
           {title ? (
             // The page's own title: its level-1 heading, like a tab root's.
-            <Text variant="label" level={1} className="flex-1 text-center" numberOfLines={1}>
+            <Text
+              variant="label"
+              level={1}
+              className="flex-1 text-center"
+              numberOfLines={linesFor(1, large)}
+            >
               {title}
             </Text>
           ) : null}
@@ -76,7 +87,7 @@ export function PhoneHeader({
           <Text
             variant="display"
             accessibilityRole="header"
-            className="flex-1 text-[30px] web:text-[length:min(1.875rem,60px)] leading-[36px] web:leading-[length:min(2.25rem,72px)]"
+            className="flex-1 text-display-30 leading-display-36"
             numberOfLines={1}
           >
             {title}

@@ -68,6 +68,9 @@ jest.mock('@/api/hooks', () => ({
 }));
 
 /* eslint-disable import/first */
+import { ICON_DATA } from '@/components/ui/icon-data';
+import { colors } from '@/theme/tokens';
+import { ScopedThemeColors } from '@/theme/use-theme-colors';
 import { GhostCover } from '@/components/library/ghost-cover';
 import { SeriesMode } from '@/components/library/modes/series-mode';
 
@@ -104,6 +107,18 @@ describe('Spine', () => {
     );
     await fireEvent.press(screen.getByRole('button', { name: `Book 1, ${title}` }));
     expect(onPress).toHaveBeenCalled();
+  });
+
+  it('draws the finished check with the foreground for a dark success fill', async () => {
+    await render(
+      <ScopedThemeColors theme="dark">
+        <Spine title="Dune" width={30} height={180} scale={1} variant="book" finished />
+      </ScopedThemeColors>,
+    );
+    const checks = screen.root?.queryAll((node) => node.props.d === ICON_DATA.check.path);
+    expect(checks?.map((node) => node.props.fill.payload)).toEqual([
+      parseInt(`ff${colors.dark.successForeground.slice(1)}`, 16),
+    ]);
   });
 
   it('is decoration without a press (the mini shelves)', async () => {

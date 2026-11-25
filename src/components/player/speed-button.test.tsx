@@ -48,6 +48,7 @@ describe('SpeedSheet', () => {
     await open();
     expect(screen.getAllByText('1.25×')).toHaveLength(2); // the readout and its preset
     // 8 hours of content at 1.25x: 6h 24m.
+    expect(screen.getByText('6h 24m').props.className).toContain('text-primary-muted-foreground');
     expect(
       screen.getByText('6h 24m left in the book at 1.25× · remembered for this book'),
     ).toBeTruthy();

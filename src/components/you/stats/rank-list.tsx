@@ -3,6 +3,7 @@ import { Platform, Pressable, View } from 'react-native';
 
 import { Portrait } from '@/components/series/portrait';
 import { Cover } from '@/components/ui/cover';
+import { ProgressBar } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDurationOrZero } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -68,12 +69,12 @@ export function RankList({
             <Text variant="label" numberOfLines={1}>
               {row.name}
             </Text>
-            <View className="h-1.5 overflow-hidden rounded-full bg-muted">
-              <View
-                className="h-full rounded-full bg-foreground/80"
-                style={{ width: `${Math.max(2, row.fraction * 100)}%` }}
-              />
-            </View>
+            <ProgressBar
+              fraction={row.fraction}
+              minPercent={2}
+              className="h-1.5"
+              fillClassName="bg-foreground/80"
+            />
           </View>
           <Text className="font-sans-semibold text-sm text-foreground" style={tabularNums}>
             {formatDurationOrZero(row.listened)}

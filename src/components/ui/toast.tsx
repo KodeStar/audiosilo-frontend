@@ -217,7 +217,7 @@ function ToastCard({ item }: { item: ToastItem }) {
         <View className="flex-1 gap-0.5 py-0.5">
           <Text className="font-sans-bold text-sm text-primary-foreground">{title}</Text>
           {description ? (
-            <Text className="font-sans text-xs text-primary-foreground/75">{description}</Text>
+            <Text className="font-sans text-xs text-primary-muted-foreground">{description}</Text>
           ) : null}
         </View>
         {action ? (

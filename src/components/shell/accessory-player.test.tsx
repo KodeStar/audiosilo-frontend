@@ -22,6 +22,8 @@ jest.mock('@/components/library/book-cover', () => ({ BookCover: () => null }));
 import { useEpisodeFetch } from '@/playback/episode-fetch';
 import { useSettings } from '@/stores/settings';
 import { playerStoreMock } from '@/testing/player-store-mock';
+import { setFontScale } from '@/testing/font-scale';
+import { ACCESSORY_TEXT_MAX_SCALE } from './accessory-support';
 import { expectNativeTarget } from '@/testing/touch-target';
 
 import { AccessoryPlayer } from './accessory-player';
@@ -49,6 +51,21 @@ it('gives skip back a 44 pt target', async () => {
   expectNativeTarget(screen.getByLabelText('Back 15 seconds'));
 });
 
+it('caps both lines in the fixed-height iOS accessory at AX5', async () => {
+  try {
+    await setFontScale(3.12);
+    await render(<AccessoryPlayer />);
+    expect(screen.getByText('The Way of Kings')).toHaveProp(
+      'maxFontSizeMultiplier',
+      ACCESSORY_TEXT_MAX_SCALE,
+    );
+    expect(screen.getByText(/left/)).toHaveProp('maxFontSizeMultiplier', ACCESSORY_TEXT_MAX_SCALE);
+    expect(ACCESSORY_TEXT_MAX_SCALE).toBe(1.3);
+  } finally {
+    await setFontScale(1);
+  }
+});
+
 describe('an episode on its way (no room for the strip)', () => {
   const PENDING = {
     key: 'c1:5:Show/Ep.mp3',
@@ -69,8 +86,14 @@ describe('an episode on its way (no room for the strip)', () => {
     useEpisodeFetch.setState({ pending: PENDING });
     await render(<AccessoryPlayer />);
     expect(screen.getByTestId('accessory-fetch-regular')).toBeTruthy();
-    expect(screen.getByText('Monday')).toBeTruthy();
-    expect(screen.getByTestId('accessory-fetch-line')).toBeTruthy();
+    expect(screen.getByText('Monday')).toHaveProp(
+      'maxFontSizeMultiplier',
+      ACCESSORY_TEXT_MAX_SCALE,
+    );
+    expect(screen.getByTestId('accessory-fetch-line')).toHaveProp(
+      'maxFontSizeMultiplier',
+      ACCESSORY_TEXT_MAX_SCALE,
+    );
     expect(screen.getByLabelText('Stop getting Monday')).toBeTruthy();
     expect(screen.queryByLabelText('Back 15 seconds')).toBeNull();
   });
@@ -79,7 +102,10 @@ describe('an episode on its way (no room for the strip)', () => {
     playerStoreMock().usePlayer.setState({ nowPlaying: null } as never);
     useEpisodeFetch.setState({ pending: { ...PENDING, phase: 'failed' as never } });
     await render(<AccessoryPlayer />);
-    expect(screen.getByTestId('accessory-fetch-retry')).toBeTruthy();
+    expect(screen.getByText('Try again')).toHaveProp(
+      'maxFontSizeMultiplier',
+      ACCESSORY_TEXT_MAX_SCALE,
+    );
     expect(screen.getByText("Couldn't get this episode")).toBeTruthy();
   });
 
@@ -87,6 +113,10 @@ describe('an episode on its way (no room for the strip)', () => {
     useEpisodeFetch.setState({ pending: PENDING });
     await render(<AccessoryPlayer />);
     expect(screen.getByLabelText('Back 15 seconds')).toBeTruthy();
+    expect(screen.getByTestId('accessory-fetch-line')).toHaveProp(
+      'maxFontSizeMultiplier',
+      ACCESSORY_TEXT_MAX_SCALE,
+    );
     expect(screen.getByTestId('accessory-fetch-line').props.children).toBe('Getting Monday');
   });
 

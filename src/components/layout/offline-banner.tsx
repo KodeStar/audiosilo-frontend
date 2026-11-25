@@ -12,9 +12,11 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 function Bar({ label }: { label: string }) {
   const themed = useThemeColors();
   return (
-    <View className="flex-row items-center justify-center gap-2 border-b border-border bg-muted py-1.5">
-      <Icon name="offline" size={12} color={themed.mutedForeground} />
-      <Text variant="caption">{label}</Text>
+    <View className="flex-row items-center justify-center gap-2 border-b border-border bg-muted px-2 py-1.5">
+      <Icon name="offline" size={12} color={themed.mutedForeground} className="shrink-0" />
+      <Text variant="caption" className="min-w-0 shrink">
+        {label}
+      </Text>
     </View>
   );
 }

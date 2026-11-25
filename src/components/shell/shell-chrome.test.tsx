@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform, Text, View } from 'react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Dimensions, Platform, Text, View } from 'react-native';
 import type { StoreApi, UseBoundStore } from 'zustand';
 
 // --- router -------------------------------------------------------------------------
@@ -107,12 +107,15 @@ jest.mock('@/components/upnext/up-next-button', () => {
 });
 
 /* eslint-disable import/first */
+import { switchLanguage } from '@/i18n';
+import { setFontScale } from '@/testing/font-scale';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 
+import { useAndroidTabLabels } from './android-tab-labels';
 import { AccessoryPlayer } from './accessory-player';
 import { DockedPlayer } from './docked-player';
 import { usePalette } from './palette-store';
@@ -148,10 +151,22 @@ describe('PhoneTabBar', () => {
     mockSegments = ['(app)', '(library)', 'book', '[libraryId]'];
     await render(<PhoneTabBar />);
     for (const label of ['Home', 'Library', 'Search', 'Downloads', 'Me']) {
-      expect(screen.getByLabelText(label)).toBeTruthy();
+      expect(screen.getByLabelText(label).props.className).toContain('px-[2px]');
     }
     expect(screen.getByLabelText('Library')).toBeSelected();
     expect(screen.getByLabelText('Home')).not.toBeSelected();
+  });
+
+  it('uses intrinsic web label widths and lets large labels wrap', async () => {
+    await render(<PhoneTabBar />);
+    expect(screen.getByLabelText('Downloads').props.className).toContain('web:min-w-min');
+    try {
+      await setFontScale(2);
+      expect(screen.getByText('Downloads').props.numberOfLines).toBeUndefined();
+      expect(screen.getByLabelText('Downloads').props.className).toContain('basis-auto');
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   it('jumps to another tab (keeping its stack) and pops the active one to its root', async () => {
@@ -165,6 +180,44 @@ describe('PhoneTabBar', () => {
     await fireEvent.press(screen.getByLabelText('Home'));
     expect(mockPressActiveTab).toHaveBeenCalledWith('(home)');
     expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('Android tab label measurement', () => {
+  it('feeds the translated system-font measurement back into the native bar', async () => {
+    function Labels() {
+      const { probe, labelStyle } = useAndroidTabLabels();
+      return (
+        <>
+          {probe}
+          <Text testID="drawn-size" style={labelStyle} />
+        </>
+      );
+    }
+    try {
+      await act(async () => {
+        await switchLanguage('fr');
+      });
+      await render(<Labels />);
+      const probe = screen.getByText(/Téléchargements/, { includeHiddenElements: true });
+      expect(probe).toHaveProp('allowFontScaling', false);
+      expect(screen.queryByText(/Téléchargements/)).toBeNull();
+      const slot = Dimensions.get('window').width / 5;
+      const measured = Math.ceil(slot * 1.3);
+      await fireEvent(probe, 'layout', { nativeEvent: { layout: { width: measured } } });
+      const drawn = screen.getByTestId('drawn-size').props.style.fontSize;
+      expect(drawn).toBeLessThan(12);
+      expect((drawn * measured) / 12).toBeLessThan(slot);
+      await setFontScale(2);
+      expect(
+        (screen.getByTestId('drawn-size').props.style.fontSize * 2 * measured) / 12,
+      ).toBeLessThan(slot);
+    } finally {
+      await setFontScale(1);
+      await act(async () => {
+        await switchLanguage('en');
+      });
+    }
   });
 });
 

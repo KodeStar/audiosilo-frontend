@@ -1,3 +1,5 @@
+import { RankList } from './rank-list';
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { Platform, StyleSheet } from 'react-native';
 
@@ -304,6 +306,21 @@ describe('StatsSection content', () => {
     expect(screen.getByText('Hearthside')).toBeTruthy();
     expect(screen.queryByText('Your listening · Hearthside')).toBeNull();
     expect(screen.queryByText('Open your 2026 story')).toBeNull();
+  });
+
+  it('draws an outlined track under an ink rank bar in high contrast', async () => {
+    await render(
+      <ThemeColorsProvider highContrast>
+        <RankList
+          rows={[{ name: 'A', listened: 900, rank: 1, books: 1, fraction: 0.25 }]}
+          kind="series"
+          onOpen={jest.fn()}
+        />
+      </ThemeColorsProvider>,
+    );
+    const track = screen.getByTestId('track-outline').parent;
+    expect(track?.props.className).toContain('bg-track');
+    expect(track?.children[1]).toHaveStyle({ width: '25%' });
   });
 
   it("opens a rank row's page in the library its books are in", async () => {

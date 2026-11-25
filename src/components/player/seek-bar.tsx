@@ -21,7 +21,7 @@ import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { headFraction, Playhead, ScrubTip, useWebHoverFraction } from './scrub-parts';
 import { barCountFor, barsPath, seekBars } from './seek-texture';
-import { CONTROL_MAX_SCALE } from './transport-controls';
+import { CONTROL_MAX_SCALE, controlScale, type TransportSize } from './transport-controls';
 import { SEGMENT_LABEL, type SegmentKind, usePlayingSegment } from './use-playing-segment';
 
 /** The bars' band at the default text size (`scale` grows it). */
@@ -289,7 +289,7 @@ export function SeekBar({
               {formatClock(tipSeconds)}
             </Text>
             <Text
-              className="font-sans text-[11px] web:text-[0.6875rem] text-primary-foreground/70"
+              className="font-sans text-[11px] web:text-[0.6875rem] text-primary-muted-foreground"
               style={tabularNums}
               numberOfLines={1}
             >
@@ -380,12 +380,16 @@ export function PlayerSeekBar({
   hoverTip,
   timesHidden = false,
   bars,
+  room,
+  transportSize = 'md',
 }: {
   bookmarks?: readonly number[];
   onTip?: (showing: boolean) => void;
   hoverTip?: boolean;
   timesHidden?: boolean;
   bars?: number;
+  room?: number;
+  transportSize?: TransportSize;
 }) {
   const { t } = useTranslation();
   const bookKey = usePlayer(selectBookKey);
@@ -402,7 +406,7 @@ export function PlayerSeekBar({
     onSeek,
     bookmarks: inSegment,
   } = usePlayingSegment(bookmarks, { hold: scrub !== null });
-  const scale = useFontScale();
+  const scale = controlScale(transportSize, useFontScale(), room);
   if (!bookKey) return null;
 
   return (

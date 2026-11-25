@@ -17,18 +17,6 @@ function contrast(a: string, b: string): number {
   return (hi + 0.05) / (lo + 0.05);
 }
 
-/** `fg` at `alpha` over `bg` (both #rrggbb), as the eye sees it: `text-x/70` on a fill. */
-function over(fg: string, bg: string, alpha: number): string {
-  const channel = (hex: string, i: number) => parseInt(hex.slice(i, i + 2), 16);
-  return `#${[1, 3, 5]
-    .map((i) =>
-      Math.round(channel(fg, i) * alpha + channel(bg, i) * (1 - alpha))
-        .toString(16)
-        .padStart(2, '0'),
-    )
-    .join('')}`;
-}
-
 /**
  * Text on its surfaces: WCAG AA 1.4.3, 4.5:1. Each [text, surfaces it sits on]. The
  * surfaces are the page (`background`), `card`, `popover` and the fills the text is
@@ -41,6 +29,7 @@ const TEXT: [Token, Token[]][] = [
   ['mutedForeground', ['background', 'card', 'popover', 'muted', 'secondary', 'accent']],
   ['subtleForeground', ['background', 'card', 'popover', 'muted']],
   ['primaryForeground', ['primary']],
+  ['primaryMutedForeground', ['primary']],
   ['secondaryForeground', ['secondary']],
   ['accentForeground', ['accent']],
   ['brandInk', ['background', 'card', 'brandSoft']],
@@ -72,10 +61,6 @@ const NON_TEXT: [Token, Token[]][] = [
   ['primary', ['track']],
 ];
 
-/** Faded text the app draws on a solid fill (`text-primary-foreground/70` and up: the
- * seek tooltip's book time, a selected option's caption, a selected chip's count). */
-const FADED: [Token, Token, number][] = [['primaryForeground', 'primary', 0.7]];
-
 /** Pairs one scheme's components draw that the other's don't: dark lifts a segmented
  * control's selected segment to `secondary` (`toggle-group.tsx`), with its count in subtle
  * text; light keeps it on `card`. */
@@ -102,10 +87,6 @@ describe.each(SETS)('the %s colours', (_name, t, text) => {
   it.each(pairs(NON_TEXT))('%s on %s meets 3:1', (fg, bg) => {
     expect(contrast(t[fg], t[bg])).toBeGreaterThanOrEqual(3);
   });
-
-  it.each(FADED)('%s on %s at %s alpha meets 4.5:1', (fg, bg, alpha) => {
-    expect(contrast(over(t[fg], t[bg], alpha), t[bg])).toBeGreaterThanOrEqual(4.5);
-  });
 });
 
 describe.each(['light', 'dark'] as const)('high contrast over the normal %s colours', (scheme) => {
@@ -128,6 +109,10 @@ describe.each(['light', 'dark'] as const)('high contrast over the normal %s colo
         expect(contrast(high[fg], high[bg])).toBeGreaterThanOrEqual(7);
       }
     }
+  });
+
+  it('makes secondary text on an ink fill AAA (7:1)', () => {
+    expect(contrast(high.primaryMutedForeground, high.primary)).toBeGreaterThanOrEqual(7);
   });
 
   it('makes the plain border 3:1 and the strong border and field outline 4.5:1', () => {

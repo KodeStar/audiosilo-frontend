@@ -1,4 +1,7 @@
 import { render, screen } from '@testing-library/react-native';
+import { Platform, StyleSheet } from 'react-native';
+
+import { setFontScale } from '@/testing/font-scale';
 
 import { DISPLAY_MAX_FONT_SCALE, headingLevelFor, Text, TextClassContext } from './text';
 
@@ -44,7 +47,10 @@ describe('Text', () => {
 });
 
 describe('display titles stop growing at 2x (fe#267)', () => {
+  afterEach(() => setFontScale(1));
+
   it('caps a display title, not running text, and lets a caller choose', async () => {
+    await setFontScale(3.1);
     await render(
       <>
         <Text variant="display">Settings</Text>
@@ -61,23 +67,36 @@ describe('display titles stop growing at 2x (fe#267)', () => {
     expect(screen.getByText('Own').props.maxFontSizeMultiplier).toBe(1.3);
   });
 
-  it('caps a display title on the web in CSS, where the prop does nothing (fe#305)', async () => {
-    await render(
-      <>
-        <Text variant="display">Settings</Text>
-        <Text variant="display-xl">Hero</Text>
-        <Text variant="display" className="text-[38px] web:text-[length:min(2.375rem,76px)]">
-          Greeting
-        </Text>
-      </>,
-    );
-    const cls = (text: string) => String(screen.getByText(text).props.className);
-    // 2x of the size at the browser's default 16 px, as `DISPLAY_MAX_FONT_SCALE`.
-    expect(cls('Settings')).toContain('text-3xl web:text-[length:min(1.875rem,60px)]');
-    expect(cls('Hero')).toContain('text-4xl web:text-[length:min(2.25rem,72px)]');
-    // A caller's own capped size replaces the role's on the web too.
-    expect(cls('Greeting')).toContain('web:text-[length:min(2.375rem,76px)]');
-    expect(cls('Greeting')).not.toContain('min(1.875rem,60px)');
+  it('shares the web cap across title sizes and preserves caller overrides (fe#305)', async () => {
+    const os = jest.replaceProperty(Platform, 'OS', 'web');
+    try {
+      await render(
+        <>
+          <Text variant="display">Settings</Text>
+          <Text variant="display-xl">Hero</Text>
+          <Text variant="display" className="text-xl md:text-lg">
+            Small
+          </Text>
+          <Text variant="display" className="text-display-38 leading-display-42">
+            Greeting
+          </Text>
+          <Text>Body</Text>
+        </>,
+      );
+      const props = (text: string) => screen.getByText(text).props;
+      const cap = StyleSheet.flatten(props('Settings').style);
+      expect(cap['--display-px']).toBe(`min(0.0625rem, ${DISPLAY_MAX_FONT_SCALE}px)`);
+      expect(props('Settings').className).toMatch(/display-title .*text-3xl/);
+      expect(props('Hero').className).toMatch(/display-title .*text-4xl/);
+      expect(props('Small').className).toMatch(/display-title .*text-xl md:text-lg/);
+      expect(props('Small').className).not.toMatch(/text-3xl|web:text-/);
+      expect(props('Greeting').className).toContain('text-display-38 leading-display-42');
+      expect(props('Greeting').className).not.toMatch(/text-3xl|web:text-/);
+      expect(props('Body').className).not.toContain('display-title');
+      expect(StyleSheet.flatten(props('Body').style)?.['--display-px']).toBeUndefined();
+    } finally {
+      os.restore();
+    }
   });
 });
 

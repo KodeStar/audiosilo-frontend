@@ -70,7 +70,11 @@ jest.mock('./book-timeline', () => ({
 jest.mock('./use-playing-pins', () => ({ usePlayingPins: () => ({ bookmarks: [], notes: [] }) }));
 jest.mock('./transport-controls', () => {
   const { Text: T } = jest.requireActual('react-native');
-  return { TransportControls: ({ size }: { size: string }) => <T>{`transport ${size}`}</T> };
+  return {
+    TransportControls: ({ size, room }: { size: string; room: number }) => (
+      <T testID="transport" accessibilityHint={String(room)}>{`transport ${size}`}</T>
+    ),
+  };
 });
 let mockHostLayout: string | undefined;
 jest.mock('./player-sheet-host', () => ({
@@ -159,6 +163,16 @@ describe('PlayerView', () => {
     expect(screen.getByText('actions+upnext')).toBeTruthy();
     expect(screen.getByText('chips')).toBeTruthy();
     expect(screen.queryByText(/^companion /)).toBeNull();
+  });
+
+  it('fits the transport to the laid-out column after browser text or padding changes', async () => {
+    mockLayout = 'phone';
+    await mount(<PlayerView onClose={jest.fn()} />);
+    const column = screen.getByTestId('player-controls-column');
+    for (const width of [350, 280]) {
+      await fireEvent(column, 'layout', { nativeEvent: { layout: { width } } });
+      expect(screen.getByTestId('transport')).toHaveProp('accessibilityHint', String(width));
+    }
   });
 
   it('tablet: the companion sits below the controls', async () => {

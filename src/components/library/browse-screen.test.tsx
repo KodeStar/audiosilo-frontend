@@ -68,6 +68,24 @@ beforeEach(() => {
 });
 
 describe('BrowseScreen', () => {
+  it('wraps a long crumb inside the visible width at large text sizes', async () => {
+    const folder = 'The collected stories of Ursula K. Le Guin';
+    mockParams = { libraryId: '1', path: [folder, 'Volume one'] };
+    mockData = { pages: [{ entries: [], total: 0 }] };
+    await render(<BrowseScreen />);
+    await fireEvent(screen.getByTestId('breadcrumbs'), 'layout', {
+      nativeEvent: { layout: { width: 288 } },
+    });
+    expect(screen.getByText(folder).props.numberOfLines).toBe(1);
+    try {
+      await setFontScale(3.1);
+      expect(screen.getByText(folder).props.numberOfLines).toBeUndefined();
+      expect(screen.getByRole('link', { name: folder })).toHaveStyle({ maxWidth: 288 });
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   it('says the folder could not be opened, with a Retry', async () => {
     mockError = new TypeError('Network request failed');
     await render(<BrowseScreen />);

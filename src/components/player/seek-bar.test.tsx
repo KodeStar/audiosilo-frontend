@@ -178,7 +178,9 @@ describe('SeekBar', () => {
     expect(screen.getByTestId('seek-bars-hovered')).toBeTruthy();
     // Three quarters of 1:17:48.
     expect(screen.getByText('58:21')).toBeTruthy();
-    expect(screen.getByText('Click to jump')).toBeTruthy();
+    expect(screen.getByText('Click to jump').props.className).toContain(
+      'text-primary-muted-foreground',
+    );
     await fireEvent(slider, 'pointerLeave');
     expect(screen.queryByTestId('seek-bars-hovered')).toBeNull();
   });
@@ -312,6 +314,18 @@ describe('PlayerSeekBar', () => {
       seekInTrack: jest.fn(),
       skipSeconds: jest.fn(),
     });
+  });
+
+  it('fits the waveform height with the transport in a narrow player at large text', async () => {
+    try {
+      await setFontScale(2);
+      await render(<PlayerSeekBar room={280} transportSize="md" />);
+      expect(screen.getByRole('adjustable')).toHaveStyle({ height: 58 });
+      await screen.rerender(<PlayerSeekBar room={600} transportSize="md" />);
+      expect(screen.getByRole('adjustable')).toHaveStyle({ height: 80 });
+    } finally {
+      await setFontScale(1);
+    }
   });
 
   it('is the current chapter, seeking in the whole book', async () => {

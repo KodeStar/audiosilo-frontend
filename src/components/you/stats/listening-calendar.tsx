@@ -6,6 +6,7 @@ import type { ListeningDay } from '@/api/types';
 import { HORIZONTAL_SCROLLER } from '@/components/ui/horizontal-scroller';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { formatDurationOrZero, formatServerShortDay } from '@/lib/format';
+import { isLargeText, useFontScale } from '@/lib/text-scale';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
 
@@ -52,9 +53,14 @@ export function ListeningCalendar({
   // means another day there (or none), so the tip closes rather than misread it.
   const [tip, setTip] = useState<{ grid: CalendarGrid; slot: CalendarSlot } | null>(null);
   const scroller = useRef<ScrollViewInstance>(null);
-  const room = Math.max(0, width - DAYS_COLUMN);
+  const scale = Math.max(1, useFontScale());
+  const large = isLargeText(scale);
+  const daysColumn = Math.ceil(DAYS_COLUMN * scale);
+  const monthsRow = Math.ceil(MONTHS_ROW * scale);
+  const room = Math.max(0, width - daysColumn);
+  // At large sizes a square must also fit a full weekday line. The weeks scroll sideways.
   const cell = Math.max(
-    MIN_CELL,
+    large ? Math.ceil(MAX_CELL * scale) : MIN_CELL,
     Math.min(MAX_CELL, Math.floor((room - GAP * (CALENDAR_WEEKS - 1)) / CALENDAR_WEEKS)),
   );
   const pitch = cell + GAP;
@@ -67,7 +73,7 @@ export function ListeningCalendar({
   const tipCell = slot ? (grid.columns[slot.c]?.[slot.r] ?? null) : null;
 
   const body = (
-    <View style={{ width: gridWidth, height: MONTHS_ROW + gridHeight }}>
+    <View style={{ width: gridWidth, height: monthsRow + gridHeight }}>
       {grid.months.map((m) => (
         <Text
           key={m.column}
@@ -77,14 +83,14 @@ export function ListeningCalendar({
           {months[m.month] ?? ''}
         </Text>
       ))}
-      <CalendarCells grid={grid} cell={cell} />
+      <CalendarCells grid={grid} cell={cell} top={monthsRow} />
       {grid.today ? (
         <View
           pointerEvents="none"
           className="absolute rounded-[5px] border-2 border-foreground"
           style={{
             left: grid.today.c * pitch - 3,
-            top: MONTHS_ROW + grid.today.r * pitch - 3,
+            top: monthsRow + grid.today.r * pitch - 3,
             width: cell + 6,
             height: cell + 6,
           }}
@@ -92,7 +98,7 @@ export function ListeningCalendar({
       ) : null}
       <ChartPointer
         testID="calendar-pointer"
-        top={MONTHS_ROW}
+        top={monthsRow}
         width={gridWidth}
         height={gridHeight}
         onPoint={(p) => {
@@ -109,7 +115,7 @@ export function ListeningCalendar({
         <ChartTip
           testID="calendar-tip"
           x={slot.c * pitch + cell / 2}
-          y={MONTHS_ROW + slot.r * pitch}
+          y={monthsRow + slot.r * pitch}
           boundsWidth={gridWidth}
         >
           <TipText
@@ -133,13 +139,13 @@ export function ListeningCalendar({
         accessibilityLabel={t('stats.calendar.label', { count: listenedDays })}
         className="flex-row"
       >
-        <View style={{ width: DAYS_COLUMN, paddingTop: MONTHS_ROW, gap: GAP }}>
+        <View style={{ width: daysColumn, paddingTop: monthsRow, gap: GAP }}>
           {weekdays.map((d, i) => (
             <Text
               key={i}
               numberOfLines={1}
               className="font-sans-semibold text-[10.5px] web:text-[0.65625rem] text-subtle-foreground"
-              style={{ height: cell, lineHeight: cell }}
+              style={{ height: cell, lineHeight: large ? undefined : cell }}
             >
               {d}
             </Text>
@@ -189,12 +195,14 @@ export function ListeningCalendar({
 const CalendarCells = memo(function CalendarCells({
   grid,
   cell,
+  top,
 }: {
   grid: CalendarGrid;
   cell: number;
+  top: number;
 }) {
   return (
-    <View pointerEvents="none" className="absolute flex-row" style={{ top: MONTHS_ROW, gap: GAP }}>
+    <View pointerEvents="none" className="absolute flex-row" style={{ top, gap: GAP }}>
       {grid.columns.map((col, c) => (
         <View key={c} style={{ gap: GAP }}>
           {col.map((d, r) => (

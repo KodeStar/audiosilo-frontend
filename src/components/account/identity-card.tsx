@@ -47,7 +47,7 @@ export function IdentityCard({
         <Text
           variant="display"
           numberOfLines={1}
-          className="text-2xl web:text-[length:min(1.5rem,48px)] leading-7 web:leading-[length:min(1.75rem,56px)]"
+          className="text-2xl leading-7 web:leading-display-28"
         >
           {name}
         </Text>

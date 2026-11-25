@@ -10,6 +10,7 @@ import {
   type ScaleState,
 } from '@/components/home/now-card-model';
 import { Icon } from '@/components/ui/icon';
+import { TrackOutline } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { chapterLabel } from '@/lib/chapter-label';
@@ -42,12 +43,6 @@ const PIN_ROOM = PIN_HEAD + 4;
 /** The playhead: 3 wide, 4 past the track at each end. */
 const HEAD_W = 3;
 const HEAD_OVER = 4;
-
-const SEGMENT_CLASS: Record<ScaleState, string> = {
-  past: 'bg-foreground/35',
-  current: 'bg-brand/25',
-  ahead: 'bg-muted-foreground/15',
-};
 
 /** A pin head (a teardrop pointing down at its place) and its stem. */
 function Pin({
@@ -114,9 +109,13 @@ const Segment = memo(function Segment({
       style={{ left: `${left}%`, width: `${width}%` }}
     >
       <View
-        className={cn('flex-1 overflow-hidden rounded-[3px]', SEGMENT_CLASS[state])}
+        className={cn(
+          'flex-1 overflow-hidden rounded-[3px]',
+          state === 'past' ? 'bg-foreground/35' : 'bg-track',
+        )}
         style={{ marginRight: gap }}
       >
+        {state !== 'past' ? <TrackOutline rounded="rounded-[3px]" /> : null}
         {played > 0 ? (
           <View className="h-full rounded-[3px] bg-brand" style={{ width: `${played * 100}%` }} />
         ) : null}
@@ -157,8 +156,8 @@ export type BookTimelineProps = {
 /**
  * The whole-book timeline (STYLEGUIDE section 8): one segment per chapter, placed by time
  * like the playhead, taps, the hover tip and the pins (`runBox`), with 2-point gaps
- * carved out of each segment's own end; past chapters in ink, the current one pink with
- * its heard part solid, a pink playhead; bookmark pins (ink) and note pins (community) on
+ * carved out of each segment's own end. Past chapters use ink, the heard part of the
+ * current chapter and the playhead use pink; bookmark pins (ink) and note pins (community) on
  * stems above. On the web a hover names the chapter and the time. A tap or drag seeks (a
  * jump, so the Undo chip offers the way back by itself); a tap on a pin lands on it
  * exactly. Accessible as an adjustable "Whole-book timeline" whose steps are chapters.

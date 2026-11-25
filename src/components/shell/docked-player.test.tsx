@@ -46,6 +46,7 @@ jest.mock('@/components/player/player-shortcuts', () => ({
 }));
 
 /* eslint-disable import/first */
+import { setFontScale } from '@/testing/font-scale';
 import { expectNativeTarget } from '@/testing/touch-target';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { useReachability } from '@/api/reachability';
@@ -194,6 +195,19 @@ describe('dockLayout', () => {
 });
 
 describe('DockedPlayer', () => {
+  it('gives the enlarged transport its own row on a narrow dock and grows the bar with it', async () => {
+    try {
+      await setFontScale(2);
+      await renderAt(640);
+      expect(screen.getByTestId('dock-centre')).toHaveStyle({ width: 330 });
+      expect(screen.getByLabelText('Play')).toHaveStyle({ height: 66, width: 66 });
+      expect(screen.getByTestId('dock-row').props.className).not.toContain('flex-row');
+      expect(screen.getByTestId('dock-row')).toHaveStyle({ minHeight: 84 });
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   it('carries every action on a wide bar, all labelled', async () => {
     await renderAt(1280);
     for (const label of [

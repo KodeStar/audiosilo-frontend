@@ -205,6 +205,35 @@ const check = (ok, message) => ok || failures.push(message);
     `px text without its web: rem twin (fe#267):\n  ${untwinned.join('\n  ')}`,
   );
 
+  // A display size uses native pixels and the web unit supplied by Text. Both
+  // size and leading must survive the actual Metro transform, including md:.
+  for (const [cls, cssProp, nativeProp, size] of [
+    ['text-display-38', 'font-size', 'fontSize', 38],
+    ['leading-display-42', 'line-height', 'lineHeight', 42],
+    ['md:text-display-24', 'font-size', 'fontSize', 24],
+  ]) {
+    const start = webCss.lastIndexOf(`.${cls.replace(':', '\\:')} {`);
+    const rule = webCss.slice(start, webCss.indexOf('}', start));
+    check(
+      start >= 0 && rule.includes(`${cssProp}: calc(${size} * var(--display-px))`),
+      `web: ${cls} does not follow the capped display unit`,
+    );
+    check(entry(cls, nativeProp)?.(vars) === size, `ios: ${cls} is no longer ${size}`);
+  }
+
+  // The named title sizes share Tailwind's default metrics. Check the named
+  // steps in this build against the real theme so an upgrade cannot resize one.
+  for (const [name, [rem]] of Object.entries(require('tailwindcss/defaultTheme').fontSize)) {
+    if (pos(`text-${name}`) === -1) continue;
+    const step = `--display-step-${name}`;
+    check(
+      webCss.includes(`${step}: ${parseFloat(rem) * 16};`) &&
+        webCss.includes(`.text-${name}:where(.display-title)`) &&
+        webCss.includes(`font-size: calc(var(${step}) * var(--display-px))`),
+      `web: text-${name} does not retain the role's default size and cap`,
+    );
+  }
+
   if (failures.length) {
     console.error(`Style guards failed:\n- ${failures.join('\n- ')}`);
     process.exit(1);

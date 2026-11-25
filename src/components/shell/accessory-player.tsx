@@ -23,6 +23,7 @@ import { usePlayer } from '@/playback/store';
 import { useSettings } from '@/stores/settings';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
+import { ACCESSORY_TEXT_MAX_SCALE } from './accessory-support';
 import { useChromeEdge } from './shell-metrics';
 
 /**
@@ -107,15 +108,29 @@ export function AccessoryPlayer() {
           className="rounded-full"
         />
         <View className="min-w-0 flex-1">
-          <Text variant="label" className={MINI_TITLE_CLASS} numberOfLines={1}>
+          <Text
+            variant="label"
+            className={MINI_TITLE_CLASS}
+            numberOfLines={1}
+            maxFontSizeMultiplier={ACCESSORY_TEXT_MAX_SCALE}
+          >
             {heading}
           </Text>
           {regular && fetchLine ? (
-            <Text variant="caption" numberOfLines={1} testID="accessory-fetch-line">
+            <Text
+              variant="caption"
+              maxFontSizeMultiplier={ACCESSORY_TEXT_MAX_SCALE}
+              numberOfLines={1}
+              testID="accessory-fetch-line"
+            >
               {fetchLine}
             </Text>
           ) : regular ? (
-            <MiniPlayerSubtitle title={nowPlaying.title} showTitle={isChapter} />
+            <MiniPlayerSubtitle
+              title={nowPlaying.title}
+              showTitle={isChapter}
+              maxFontSizeMultiplier={ACCESSORY_TEXT_MAX_SCALE}
+            />
           ) : null}
         </View>
       </AnimatedPressable>

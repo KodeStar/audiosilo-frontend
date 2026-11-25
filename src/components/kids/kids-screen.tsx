@@ -161,7 +161,7 @@ export function KidsScreen() {
         <Text
           variant="display"
           accessibilityRole="header"
-          className={cn('shrink', !phone && 'text-5xl web:text-[length:min(3rem,96px)]')}
+          className={cn('shrink', !phone && 'text-5xl')}
         >
           {name ? t('kids.greeting', { name }) : t('kids.greetingNoName')}
         </Text>

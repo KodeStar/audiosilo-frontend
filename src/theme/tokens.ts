@@ -19,6 +19,7 @@ export const colors = {
     popoverForeground: '#121c36', // --color-popover-foreground
     primary: '#15203d', // --color-primary
     primaryForeground: '#f5f7fa', // --color-primary-foreground
+    primaryMutedForeground: '#bdc1cb', // --color-primary-muted-foreground
     secondary: '#eaedf3', // --color-secondary
     secondaryForeground: '#18244a', // --color-secondary-foreground
     muted: '#eef1f5', // --color-muted
@@ -74,6 +75,7 @@ export const colors = {
     popoverForeground: '#e7ebf4', // --color-popover-foreground
     primary: '#eef1f8', // --color-primary
     primaryForeground: '#0a0f1e', // --color-primary-foreground
+    primaryMutedForeground: '#434752', // --color-primary-muted-foreground
     secondary: '#1a2340', // --color-secondary
     secondaryForeground: '#dfe5f2', // --color-secondary-foreground
     muted: '#151d34', // --color-muted
@@ -131,6 +133,7 @@ export const colors = {
       popoverForeground: '#0a1020', // --color-popover-foreground
       primary: '#15203d', // --color-primary
       primaryForeground: '#f5f7fa', // --color-primary-foreground
+      primaryMutedForeground: '#dfe2ea', // --color-primary-muted-foreground
       secondary: '#eaedf3', // --color-secondary
       secondaryForeground: '#0a1020', // --color-secondary-foreground
       muted: '#eef1f5', // --color-muted
@@ -186,6 +189,7 @@ export const colors = {
       popoverForeground: '#f4f6fb', // --color-popover-foreground
       primary: '#eef1f8', // --color-primary
       primaryForeground: '#0a0f1e', // --color-primary-foreground
+      primaryMutedForeground: '#2c3445', // --color-primary-muted-foreground
       secondary: '#1a2340', // --color-secondary
       secondaryForeground: '#f4f6fb', // --color-secondary-foreground
       muted: '#151d34', // --color-muted

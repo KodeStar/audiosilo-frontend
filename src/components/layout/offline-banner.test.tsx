@@ -4,6 +4,7 @@ import { useReachability } from '@/api/reachability';
 import i18n from '@/i18n';
 import { useProfiles } from '@/stores/profiles';
 import { useSession } from '@/stores/session';
+import { setFontScale } from '@/testing/font-scale';
 
 let mockDeviceOnline = true;
 jest.mock('@/lib/device-online', () => ({
@@ -33,6 +34,22 @@ beforeEach(() => {
 
 // CONNECT-15: with a network, the server that is down is named.
 describe('OfflineBanner', () => {
+  it('leaves room for the offline icon when the message needs several lines', async () => {
+    try {
+      await setFontScale(3.1);
+      mockDeviceOnline = false;
+      await render(<OfflineBanner connectionId="a" />);
+      const message = screen.getByText(OFFLINE);
+      expect(message.props.className.split(' ')).toEqual(
+        expect.arrayContaining(['min-w-0', 'shrink']),
+      );
+      expect(message.props.numberOfLines).toBeUndefined();
+      expect(message.parent?.children[0]).toHaveProp('className', 'shrink-0');
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   it("names the page's own server when it isn't answering", async () => {
     useReachability.setState({ online: { a: true, b: false } });
     await render(<OfflineBanner connectionId="a" />);
