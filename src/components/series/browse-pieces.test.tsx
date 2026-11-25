@@ -64,7 +64,7 @@ jest.mock('@/api/hooks', () => ({
   useLibraryBooks: () => ({ data: undefined }),
   useSeriesList: () => ({ isPaused: false, error: null, ...mockSeries }),
   useAllLibraryBooks: () => mockBooks,
-  useProgressLookup: () => ({ progressOf: mockProgressOf, isLoading: false }),
+  useProgressLookup: () => ({ progressOf: mockProgressOf }),
 }));
 
 /* eslint-disable import/first */

@@ -4184,12 +4184,11 @@ function progressIndex(rows: readonly Progress[]): Map<string, Progress> {
  */
 export function useProgressLookup(): {
   progressOf: SavedProgressOf;
-  isLoading: boolean;
   /** Whether ONE connection's list is still loading (a screen about one server must not
    * wait on another that is slow or unreachable). */
   loadingOf: (connectionId: string) => boolean;
 } {
-  const { progress, loading, isLoading } = useAllProgressAll();
+  const { progress, loading } = useAllProgressAll();
   const progressOf = useMemo(() => {
     const byBook = new Map(
       progress.map((p) => [contentKey(p.connectionId, p.library_id, p.path), p]),
@@ -4197,7 +4196,7 @@ export function useProgressLookup(): {
     return (cid: string, lib: number, path: string) => byBook.get(contentKey(cid, lib, path));
   }, [progress]);
   const loadingOf = useCallback((cid: string) => loading.includes(cid), [loading]);
-  return { progressOf, loadingOf, isLoading };
+  return { progressOf, loadingOf };
 }
 
 /**

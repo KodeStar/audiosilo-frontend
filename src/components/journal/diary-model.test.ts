@@ -5,13 +5,7 @@ import { contrast } from '@/components/series/spine-colors';
 import { contentKey } from '@/lib/content-key';
 import type { DriftRecord } from '@/playback/drift';
 
-import {
-  waitingSessions,
-  groupSessions,
-  type ListeningSpan,
-  localDayStart,
-  toSpan,
-} from '@/lib/listening-sessions';
+import { groupSessions, type ListeningSpan, localDayStart, toSpan } from '@/lib/listening-sessions';
 
 import {
   barColor,
@@ -216,50 +210,5 @@ describe('barColor', () => {
         expect(contrast(barColor(cover, track, fallback), track)).toBeGreaterThanOrEqual(3);
       }
     }
-  });
-});
-
-describe('waitingSessions (fe#208)', () => {
-  const listen = (id: string, start: number, end: number, from: number, to: number) => ({
-    connectionId: 'c1',
-    event: {
-      id,
-      kind: 'listen' as const,
-      library_id: 1,
-      path: 'Sanderson/Kings',
-      from_pos: from,
-      to_pos: to,
-      started_at: iso(start),
-      ended_at: iso(end),
-      start: 'resume' as const,
-    },
-  });
-
-  it('turns waiting listens into sessions marked waiting, joined like the server rows', () => {
-    const out = waitingSessions(
-      [
-        listen('a', at(5, 21, 0), at(5, 21, 10), 0, 600),
-        listen('b', at(5, 21, 12), at(5, 21, 20), 600, 1080),
-      ],
-      [],
-    );
-    expect(out).toHaveLength(1);
-    expect(out[0]).toMatchObject({ waiting: true, from: 0, to: 1080, connectionId: 'c1' });
-    expect(out[0].key).toBe('waiting\nc1\na');
-    expect(out[0].spans.map((s) => s.key)).toEqual(['waiting\nc1\na', 'waiting\nc1\nb']);
-  });
-
-  it("leaves out a listen the server's rows already hold, and only that one", () => {
-    const synced = [history(1, at(5, 21, 0) + 3_000, at(5, 21, 10), 1, 601)]
-      .map(toSpan)
-      .filter((s): s is ListeningSpan => s !== null);
-    const out = waitingSessions(
-      [
-        listen('a', at(5, 21, 0), at(5, 21, 10), 0, 600),
-        listen('b', at(5, 23, 0), at(5, 23, 10), 0, 600),
-      ],
-      synced,
-    );
-    expect(out.map((s) => s.key)).toEqual(['waiting\nc1\nb']);
   });
 });

@@ -475,11 +475,12 @@ export async function outboxEvents(connectionId?: string): Promise<OutboxEntry[]
     : queue.filter((e) => e.connectionId === connectionId);
 }
 
+/** A listen the history views show as waiting: a queued event or a previewed span. */
+export type WaitingListen = { connectionId: string; event: ListeningSpanEvent };
+
 /** The history views may show a recent span left on disk before its owner is
  * known to have gone away. Only preview offline listening another document kept.
  * Recovery alone can close it, and its queued event supersedes the preview. */
-export type WaitingListen = { connectionId: string; event: ListeningSpanEvent };
-
 export async function waitingListens(): Promise<WaitingListen[]> {
   const [queue, spans] = await Promise.all([
     outboxEvents(),

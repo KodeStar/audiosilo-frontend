@@ -178,7 +178,7 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
   const total = queue?.total || savedPlace.total;
   // While a book is still loading the player reports 0: keep the saved place until it
   // has really moved. The saved place as Resume plays it: this device's file place read on
-  // these chapters' files (`positionOn`).
+  // these chapters' files (`savedTimeline`).
   const live = loaded && livePosition > 0;
   const position = live ? livePosition : savedPlace.position;
   const fileAt = live

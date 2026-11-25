@@ -38,7 +38,7 @@ jest.mock('@/api/hooks', () => ({
     mockSeriesBooks(query.series ?? '');
     return { books: [], complete: false, isLoading: true };
   },
-  useProgressLookup: () => ({ progressOf: () => undefined, isLoading: false }),
+  useProgressLookup: () => ({ progressOf: () => undefined }),
   useSavedProgress: () => undefined,
 }));
 const mockSeriesBooks = jest.fn((_series: string) => undefined);

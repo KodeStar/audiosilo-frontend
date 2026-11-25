@@ -33,18 +33,18 @@ export function useOutboxRead<T>(
   const [value, setValue] = useState<T>(initial);
   useEffect(() => {
     if (key === null) return;
-    let live = true;
+    // Only the newest read lands; the cleanup's bump discards any still in flight.
     let revision = 0;
     const run = () => {
       const current = ++revision;
       void read()
-        .then((v) => live && revision === current && setValue((prev) => (same(prev, v) ? prev : v)))
+        .then((v) => revision === current && setValue((prev) => (same(prev, v) ? prev : v)))
         .catch(() => undefined);
     };
     run();
     const stop = onOutboxChange(run);
     return () => {
-      live = false;
+      revision++;
       stop();
     };
     // `read` is rebuilt each render; `key` names what it reads.
@@ -105,9 +105,10 @@ export function useWaitingListens(): WaitingListen[] {
     waitingListens,
     NO_WAITING,
     (a, b) =>
-      sameIds(a, b) &&
+      a.length === b.length &&
       a.every(
         (w, i) =>
+          w.event.id === b[i].event.id &&
           w.connectionId === b[i].connectionId &&
           w.event.ended_at === b[i].event.ended_at &&
           w.event.to_pos === b[i].event.to_pos,

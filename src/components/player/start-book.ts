@@ -201,21 +201,15 @@ async function startNow(
   // (`readPlaceEarly`), so a frozen server holds the start for one wait, not two.
   const key = contentKeyOf(target);
   const download = downloadedEntryOf(target);
+  const reachableClient = () =>
+    isReachable(target.connectionId) ? resolveClient(target.connectionId) : null;
   let online = isDeviceOnline();
-  if (
-    download &&
-    online === undefined &&
-    isReachable(target.connectionId) &&
-    resolveClient(target.connectionId)
-  ) {
+  if (download && online === undefined && reachableClient()) {
     online = await waitForDeviceOnline();
     if (!mayActFor(target.connectionId) || !isLatestStart(key) || how.wanted?.() === false)
       return false;
   }
-  const asked =
-    download && online && isReachable(target.connectionId)
-      ? resolveClient(target.connectionId)
-      : null;
+  const asked = download && online ? reachableClient() : null;
   const saved = download?.manifest.book;
   if (asked && saved && opts.position === undefined && opts.track === undefined && !opts.file) {
     readPlaceEarly(asked, target.connectionId, target.libraryId, saved.rel_path);
