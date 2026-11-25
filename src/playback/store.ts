@@ -3231,7 +3231,7 @@ let lateTabSeek: {
   confirmed: boolean;
   lastAt: number;
   askedAt: number;
-  fail: () => void;
+  fail: () => boolean;
   timer: ReturnType<typeof setTimeout>;
 } | null = null;
 
@@ -3402,8 +3402,8 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
     ask.seq === askSeq &&
     attempt === playAttempts &&
     noted === notedPlay;
-  const refused = () => {
-    if (!current()) return;
+  const refused = (): boolean => {
+    if (!current()) return false;
     // The engine stayed at the old place. Show the shared place for Retry and ignore
     // reports from the old one, as for a seek clamped by a short file.
     dropListening();
@@ -3420,6 +3420,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       },
     });
     void persist();
+    return true;
   };
   try {
     seek = engineTakes(
@@ -3447,10 +3448,11 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       if (play && playPos !== undefined) play.pos = playPos;
       // Given up on, not refused: the seek may still land (a refused one never does).
       if (seek) {
-        const fail = () => {
-          if (lateTabSeek !== late) return;
+        // Whether the book was held in error at the place (not once the move went stale).
+        const fail = (): boolean => {
+          if (lateTabSeek !== late) return false;
           clearLateTabSeek();
-          refused();
+          return refused();
         };
         const timer = setTimeout(fail, Math.max(0, ask.at + ASK_SETTLE_MAX_MS - Date.now()));
         const late = {
@@ -3497,9 +3499,10 @@ function landTabPlaceLate(prev?: PlaybackSnapshot) {
   const elapsed = Math.max(0, now - late.lastAt) / 1000;
   late.lastAt = now;
   if (!atLateTabPlace(np, snapshot.trackIndex, snapshot.position)) {
+    // Only a refusal that held the book in error replaces this report. A stale move just
+    // ends, and the report (a play, the book's end) is taken as any other.
     if (now - late.askedAt >= ASK_SETTLE_MAX_MS || snapshot.state === 'ended') {
-      late.fail();
-      return 'failed';
+      return late.fail() ? 'failed' : undefined;
     }
     return;
   }

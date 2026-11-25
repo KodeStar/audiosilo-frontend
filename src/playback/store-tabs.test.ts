@@ -1775,6 +1775,41 @@ describe.each([
         }
       });
 
+      // An OS-controls play since makes the move stale without ending it. Its deadline then
+      // holds nothing in error, so the report that passes it is taken as any other.
+      it('takes the report at the deadline once an OS play made the move stale', async () => {
+        await playedPast(a, b);
+        b.engine.at(900);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === 900, 'B to save');
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const bound = shortenTabMoveBound();
+        try {
+          a.engine.svc.seekTo.mockImplementationOnce(() => new Promise<void>(() => {}));
+          await a.player().toggle();
+          bound.mockRestore();
+          a.engine.at(40);
+          await a.engine.remotePause();
+          const now = Date.now;
+          const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() + 16_000);
+          try {
+            // The OS play's own `playing` is the report past the deadline: its listening is
+            // recorded as any play's.
+            await a.engine.remotePlay();
+            a.engine.at(45);
+            await a.player().pause();
+            await until(() => listens().some((e) => e.to_pos === 45), 'the OS play heard');
+            expect(a.player().snapshot.state).toBe('paused');
+          } finally {
+            clock.mockRestore();
+          }
+        } finally {
+          warn.mockRestore();
+          bound.mockRestore();
+        }
+      });
+
       /** A's next seek stays out until the returned `land`; the 5 s bound is 20 ms. */
       function slowSeek() {
         let target = 0;
