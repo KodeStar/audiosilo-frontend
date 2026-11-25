@@ -145,6 +145,8 @@ async function handleNavigation(request, shellFallback, event) {
     const copy = fresh.clone();
     const save = async () => {
       if (shellFallback && !(await matchesBuild(copy.clone()))) return;
+      // The server still serves this build: put its precache back if it went missing.
+      if (shellFallback) await repairBuild();
       const cache = await caches.open(SHELL_CACHE);
       await cache.put(request, copy);
     };
@@ -250,6 +252,24 @@ async function matchesBuild(response) {
   return BUILD.start.length > 0 && BUILD.start.every((file) => html.includes(file));
 }
 
+let repairing;
+
+/** Install this build again when its offline root is gone. Another worker on this origin
+ * can delete every cache but its own (the admin console's, scope "/", on activation), and
+ * the same worker bytes never install again until the next deploy. One repair at a time. */
+function repairBuild() {
+  repairing ??= (async () => {
+    if ((await caches.keys()).includes(SHELL_CACHE)) {
+      const cache = await caches.open(SHELL_CACHE);
+      if (await cache.match(self.registration.scope)) return;
+    }
+    await installBuild();
+  })().finally(() => {
+    repairing = undefined;
+  });
+  return repairing;
+}
+
 /** Install in a separate cache. A required file going missing rejects the install, so
  * the browser keeps its working worker and retries the update on a later visit. */
 async function installBuild() {
@@ -271,8 +291,11 @@ async function installBuild() {
   ];
   const fonts = new Set(BUILD.fonts);
   const pending = files.values();
+  // A required file failed: the install is over, so the other transfers take no more files.
+  let stopped = false;
   async function takeFiles() {
     for (const file of pending) {
+      if (stopped) return;
       const url = new URL(file, scope).href;
       const font = fonts.has(file);
       const reader = file === READER_DOCUMENT;
@@ -290,7 +313,10 @@ async function installBuild() {
         if (!cacheable(response) || response.redirected) throw new Error('Precache failed: ' + url);
         await cache.put(url, response);
       } catch (error) {
-        if (!font && !reader) throw error;
+        if (!font && !reader) {
+          stopped = true;
+          throw error;
+        }
         // A book already downloaded keeps opening in the reader if this server cannot
         // send a new reader document. Its cached response carries the reader's own CSP.
         if (reader && !(await cache.match(url))) {

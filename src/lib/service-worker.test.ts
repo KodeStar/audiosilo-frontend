@@ -326,3 +326,37 @@ it('revalidates a runtime image while using the cached bytes', async () => {
   await sw.serveAsset(request, new URL(url));
   expect(t.fetched).toEqual([url, url]);
 });
+
+it('stops taking files once a required one fails, so a failed install downloads no more', async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  const m = build('a');
+  t.offline.add(scopeUrl(m.start[0]));
+  await expect(sw.installBuild()).rejects.toThrow('offline');
+  // The reader comes last: four transfers can take at most one more file each.
+  expect(t.fetched).not.toContain(scopeUrl('reader.html'));
+  expect(t.fetched).not.toContain(scopeUrl(m.routes[3]));
+  expect(t.caches.has(cacheName('a'))).toBe(false);
+});
+
+it("installs its build again when another worker deleted the build's cache", async () => {
+  const t = browser();
+  const sw = t.worker('a');
+  await sw.installBuild();
+  // The admin console's worker (scope "/") deletes every cache but its own on activation.
+  t.caches.delete(cacheName('a'));
+  const page = SCOPE + 'library';
+  t.site.set(page, t.site.get(SCOPE)!);
+  const writes: Promise<void>[] = [];
+  await sw.handleNavigation(new Request(page), true, { waitUntil: (w) => writes.push(w) });
+  await Promise.all(writes);
+  expect(t.cached('a')).toEqual(
+    expect.arrayContaining([SCOPE, page, ...build('a').routes.map(scopeUrl)]),
+  );
+  // A newer deploy's page leaves the cache alone: this build is no longer the server's.
+  t.caches.delete(cacheName('a'));
+  t.site.set(page, '<p>newer deploy</p>');
+  await sw.handleNavigation(new Request(page), true, { waitUntil: (w) => writes.push(w) });
+  await Promise.all(writes);
+  expect(t.caches.has(cacheName('a'))).toBe(false);
+});
