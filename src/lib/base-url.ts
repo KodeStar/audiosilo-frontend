@@ -55,7 +55,8 @@ export function onlyOwnServer(origin: string | null, serverUrls: readonly string
 
 /** A static player can ask for a server elsewhere. If /api answers like a static host,
  * check the player document independently: the server serves it under connect-src 'self',
- * even when a proxy routes /api to the wrong place. An unreadable document is inconclusive. */
+ * even when a proxy routes /api to the wrong place. A same-origin redirect (a static host's
+ * pretty URLs) is followed to the document; an unreadable document is inconclusive. */
 export async function playerAllowsOtherServers(signal?: AbortSignal): Promise<boolean> {
   const ask = new AbortController();
   const cancel = () => ask.abort();
@@ -66,7 +67,7 @@ export async function playerAllowsOtherServers(signal?: AbortSignal): Promise<bo
     const res = await fetch(`${BASE_URL}/`, {
       method: 'HEAD',
       mode: 'same-origin',
-      redirect: 'error',
+      redirect: 'follow',
       signal: ask.signal,
     });
     if (!res.ok) return false;

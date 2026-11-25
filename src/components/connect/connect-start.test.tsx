@@ -896,7 +896,7 @@ describe('the player the server serves', () => {
       expect(useSession.getState().pendingServerUrl).toBeNull();
       expect(head).toHaveBeenCalledWith(
         '/',
-        expect.objectContaining({ method: 'HEAD', mode: 'same-origin' }),
+        expect.objectContaining({ method: 'HEAD', mode: 'same-origin', redirect: 'follow' }),
       );
     } finally {
       head.mockRestore();
