@@ -352,6 +352,9 @@ async function installBuild() {
  * for tabs still running it, with only its immutable assets. An update to the worker
  * alone can reuse its build cache and the already-retired previous one. */
 async function retireBuilds() {
+  // A newer worker may already be installing into its own cache, which has no root yet.
+  // Its activation retires the builds instead, once that cache is complete.
+  if (self.registration.installing) return;
   const others = otherBuilds(await caches.keys());
   let previous = others.at(-1);
   for (const name of others) {

@@ -102,7 +102,8 @@ function browser() {
     if (redirected.has(url)) Object.defineProperty(response, 'redirected', { value: true });
     return response;
   };
-  function worker(id: string, language = 'fr') {
+  /** `registration`: the registration's other workers (`installing`: a newer one). */
+  function worker(id: string, language = 'fr', registration: { installing?: object } = {}) {
     const manifest = build(id);
     const shell = manifest.start
       .map((file) => '<script src="/web/' + file + '"></script>')
@@ -118,7 +119,7 @@ function browser() {
       site.set(scopeUrl(file), file);
     const self = {
       location: new URL(SCOPE + 'sw.js?lang=' + language),
-      registration: { scope: SCOPE },
+      registration: { scope: SCOPE, ...registration },
       addEventListener: () => {},
     };
     const ctx = vm.createContext({ self, caches: api, fetch, Request, Response, URL, Headers });
@@ -337,6 +338,18 @@ it('refuses a redirected root, which an offline navigation could not be answered
   t.redirected.add(SCOPE);
   await expect(sw.installBuild()).rejects.toThrow('does not match build');
   expect(t.caches.has(cacheName('a'))).toBe(false);
+});
+
+it('leaves the builds alone while a newer worker installs, so its unfinished cache survives', async () => {
+  const t = browser();
+  await t.worker('a').installBuild();
+  const b = t.worker('b', 'fr', { installing: {} });
+  await b.installBuild();
+  // The newer worker's install has begun: its cache has files but no root yet.
+  await (await t.api.open(cacheName('c'))).put(scopeUrl(js('entry-c')), new Response('c'));
+  await b.retireBuilds();
+  expect(t.cached('c')).toEqual([scopeUrl(js('entry-c'))]);
+  expect(t.cached('a')).toContain(SCOPE);
 });
 
 it('stops taking files once a required one fails, so a failed install downloads no more', async () => {
