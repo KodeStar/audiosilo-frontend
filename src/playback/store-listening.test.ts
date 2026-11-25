@@ -2580,6 +2580,37 @@ describe('Mark as finished outside the player (finish-route)', () => {
     }
   });
 
+  it("keeps the device's file place when the edit's seconds differ only in the last digits", async () => {
+    // The page reads the place on the chapters' timeline (`positionOn`), summing file
+    // lengths, so its seconds can miss the record's by a rounding step.
+    const prior = {
+      ...ref,
+      position: 21,
+      finished: false,
+      file: 'old.mp3',
+      file_pos: 21,
+      device_id: 'here',
+      updated_at: '2026-01-01T00:00:00Z',
+      playback_speed: 1,
+    };
+    const marked = { ...prior, position: 100, finished: true, before: prior };
+    mockReadMirror.mockResolvedValue(marked);
+    mockWithdraw.mockResolvedValueOnce({ unsent: false, restore: async () => {} });
+    try {
+      const edit = jest.fn(async () => {});
+      await undoFinish({ ...ref, position: 21.000000000000004 }, edit);
+      expect(edit).toHaveBeenCalledTimes(1);
+      expect(mockMirrorUpdates.at(-1)).toMatchObject({
+        position: 21,
+        finished: false,
+        file: 'old.mp3',
+        file_pos: 21,
+      });
+    } finally {
+      mockReadMirror.mockImplementation(async () => null);
+    }
+  });
+
   it('Undo after a place saved since the finish: that place stays', async () => {
     const before = {
       connectionId: 'c1',

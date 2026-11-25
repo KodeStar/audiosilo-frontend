@@ -3123,7 +3123,7 @@ media GETs only.
     reload and another tab see it, another tab's finish or a place saved since is never undone
     from an earlier look, and a place another device saved after it, read next, is newer and
     wins; a finished record without it, the server's row read back since, goes to the place
-    its Undo toast kept from that Mark, file place included if it matches the edit's position, else to the
+    its Undo toast kept from that Mark, file place included if it is within a second of the edit's position, else to the
     Undo's own place). One a request carried with no answer while its server looked
     reachable (`gotNoAnswer`: a timeout, a dropped connection, a gateway that lost the
     server (502, 504, Cloudflare's 520 and 524), a 2xx that could not be read; and the
@@ -3153,7 +3153,7 @@ media GETs only.
     without `listening_sync` nothing waits to be taken back and both take the edit, then
     the same mirror change and hold below. After an edit that went
     through the mirror takes the edit's position (`unrecordFinish`), keeping the prior file
-    place when its seconds agree, under the mirror's lock (`updateMirror`). The edit's
+    place when its seconds agree within a second, under the mirror's lock (`updateMirror`). The edit's
     answer only reaches the query caches, and the finished record would start the book again at 0 on the next
     offline Play; the record put back is stamped as the finished one it replaces, which for
     a downloaded book may be the server's row for the finish, newer than the finish's own

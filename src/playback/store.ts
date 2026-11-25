@@ -2179,8 +2179,10 @@ async function unrecordFinish(ref: UndoRef, since: number): Promise<void> {
     const sync = { ack_version: now.ack_version, answered: now.answered, ignored: now.ignored };
     // A server refresh can replace the mirror's finish. Its Undo still carries the place.
     const prior = ref.atPosition ? undefined : (now.before ?? ref.before);
-    // By the clock of the stamp it took (`localTimeOf`): `now`'s `server_clock`.
-    if (prior && !prior.finished && prior.position === ref.position) {
+    // By the clock of the stamp it took (`localTimeOf`): `now`'s `server_clock`. The same
+    // place within a second: the page's seconds are read on the chapters' timeline
+    // (`positionOn`), which can differ from the record's in the last digits.
+    if (prior && !prior.finished && Math.abs(prior.position - ref.position) <= CAPTURED_PLACE_S) {
       return { ...prior, ...sync, server_clock: now.server_clock, updated_at: at };
     }
     // The finished record at the place before it: its file place was the book's end.
