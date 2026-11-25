@@ -1037,6 +1037,7 @@
       "markedFinished": "Als abgeschlossen markiert",
       "markedUnfinished": "Als nicht abgeschlossen markiert",
       "markingFinished": "Wird als abgeschlossen markiert...",
+      "markingUnfinished": "Wird als nicht abgeschlossen markiert...",
       "undoUnreachable": "Rückgängig geht nicht, solange der Server nicht erreichbar ist. Versuche es noch einmal, sobald er wieder da ist.",
       "unfinishUnreachable": "Kann nicht als nicht abgeschlossen markiert werden, solange der Server nicht erreichbar ist. Versuche es noch einmal, sobald er wieder da ist.",
       "downloading": "Wird für offline heruntergeladen",
@@ -1918,7 +1919,8 @@
       "stay": "Bleiben"
     },
     "otherTab": {
-      "title": "Wiedergabe in einem anderen Tab"
+      "title": "Die Wiedergabe wurde in einem anderen Tab gestartet",
+      "castPauseFailed": "Das Cast-Gerät ließ sich nicht pausieren. Pausiere die Wiedergabe am Gerät."
     },
     "partialDownload": {
       "title": "Der Rest dieses Buchs ist nicht heruntergeladen"

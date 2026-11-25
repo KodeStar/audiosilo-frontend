@@ -19,7 +19,7 @@ import { startPartialDownloadNotice } from '@/playback/partial-download-notice';
 import { startPlaceReconcile } from '@/playback/place-reconcile';
 import { startQueueReplays } from '@/playback/queue-replays';
 import { startRemovedInOtherTab } from '@/playback/removed-in-other-tab';
-import { startUndoneElsewhere } from '@/playback/undone-elsewhere';
+import { startFinishChangesElsewhere } from '@/playback/finish-changes-elsewhere';
 import { startWidgetSync } from '@/widgets/widget-sync';
 
 /**
@@ -67,12 +67,10 @@ export function startRootServices({ late = false }: { late?: boolean } = {}): ()
     // app is picked up again, so a replay that died with its tab is not left waiting for
     // the next save; see the module.
     startQueueReplays(),
-    // Web: "Playing in another tab", when this tab paused because another one began
-    // playing (one tab plays at a time per connection); see the module.
+    // Web tabs follow the shared place and tell the listener when another tab took over.
     startOtherTabNotice(),
-    // Web: a finish another tab undid is read again here, so this tab's pages stop showing
-    // the book finished; see the module.
-    startUndoneElsewhere(),
+    // Web: when another tab delivers or undoes a finish, read this tab's lists again.
+    startFinishChangesElsewhere(),
     // Web: a connection another tab removed stops playing here too, before this tab purges
     // what it holds of it (and a stale identity a sign-in retires, anywhere); see the module.
     startRemovedInOtherTab(),

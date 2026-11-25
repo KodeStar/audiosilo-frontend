@@ -38,8 +38,8 @@ export type ToastOptions = {
   description?: string;
   /** At most one action ("Undo", "Add note", "Show"); pressing it also dismisses. */
   action?: { label: string; onPress: () => void };
-  /** Milliseconds on screen (default 5s, 8s with an action so it can be reached). */
-  duration?: number;
+  /** Milliseconds on screen (default 5s, 8s with an action). Null keeps it until dismissed. */
+  duration?: number | null;
   /** Called when the listener closes the toast with its close button (an answer: "Stay"
    * beside a "Jump"), never when it times out or its action is pressed. */
   onClose?: () => void;
@@ -84,6 +84,7 @@ export function toastDuration(
   options: Pick<ToastOptions, 'duration' | 'action'>,
   screenReader: boolean,
 ): number | null {
+  if (options.duration === null) return null;
   const base = options.duration ?? (options.action ? 8000 : 5000);
   if (!screenReader) return base;
   return options.action ? null : base * SCREEN_READER_FACTOR;

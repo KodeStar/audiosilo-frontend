@@ -177,6 +177,7 @@ function buildPlayerStoreMock() {
       s.snapshot.state === 'playing' || s.snapshot.state === 'loading',
     /** Whether the snapshot is a faulted book's place (`setFaultPlace`). */
     showsFaultPlace: () => faultPlace,
+    followsOtherTab: () => false,
     engineOtherBookPlays: () => otherPlays,
     onOtherBookPlays: (listener: () => void) => {
       otherPlaysListeners.add(listener);

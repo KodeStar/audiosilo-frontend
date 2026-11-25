@@ -183,6 +183,7 @@ function makeEngine() {
     onSilenceSaved: jest.fn(),
     setup: jest.fn(async () => {}),
     configure: jest.fn(async () => {}),
+    forgetPauseAge: jest.fn(),
     load: jest.fn(async (tracks: PlaybackTrack[], trackIndex: number, position: number) => {
       loaded = tracks;
       push({ state: 'loading', trackIndex, position, duration: 50 });
@@ -394,7 +395,12 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
   }
   openOutboxes.push(outbox);
   let gaveWay = 0;
-  const listen = () => store.onGaveWayToTab(() => gaveWay++);
+  let lastNotice: string | null = null;
+  const listen = () =>
+    store.onGaveWayToTab((reason) => {
+      gaveWay++;
+      lastNotice = reason;
+    });
   if (!lateNotice) listen();
   return {
     engine,
@@ -408,6 +414,7 @@ async function openTab(browser: ReturnType<typeof fakeBrowser>, { lateNotice = f
     player: () => store.usePlayer.getState(),
     /** How often the tab told its listener it gave way (the notice). */
     gaveWay: () => gaveWay,
+    lastNotice: () => lastNotice,
     /** Register the notice's listener (a tab opened with `lateNotice`). */
     listen,
     /** Start the book on `connectionId` at `at` seconds (the engine plays from there). */
@@ -774,6 +781,51 @@ describe.each([
     await a.engine.svc.play();
     await until(() => b.player().snapshot.state === 'paused', 'B to give way');
     expect(a.player().snapshot.state).toBe('playing');
+  });
+
+  it('a refused Cast pause tells the losing tab and its next receiver status retries the pause', async () => {
+    await a.start(5);
+    a.engine.svc.isCasting.mockReturnValue(true);
+    a.engine.svc.pause.mockRejectedValueOnce(new Error('receiver refused'));
+    await sleep(5);
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      await b.start(30);
+      await until(() => a.lastNotice() === 'cast-pause-failed', 'A to report the Cast failure');
+      const now = Date.now;
+      const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() + 60_000);
+      try {
+        a.engine.stall();
+        await until(() => a.player().snapshot.state === 'paused', 'A to pause the receiver');
+      } finally {
+        clock.mockRestore();
+      }
+      expect(b.player().snapshot.state).toBe('playing');
+      expect(b.gaveWay()).toBe(0);
+    } finally {
+      warn.mockRestore();
+    }
+  });
+
+  it('a Cast pause reported before the request rejects still permits the next receiver play', async () => {
+    await a.start(5);
+    a.engine.svc.isCasting.mockReturnValue(true);
+    const pause = Promise.withResolvers<void>();
+    a.engine.svc.pause.mockImplementationOnce(() => pause.promise);
+    await sleep(5);
+    await b.start(30);
+    await until(() => a.lastNotice() === 'gave-way', 'A to give way');
+    await a.engine.svc.pause(); // receiver reports paused independently of the first call
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      pause.reject(new Error('lost reply'));
+      await sleep(0);
+      expect(a.lastNotice()).toBe('gave-way');
+      await a.engine.svc.play();
+      await until(() => b.player().snapshot.state === 'paused', 'B to yield to the receiver');
+    } finally {
+      warn.mockRestore();
+    }
   });
 
   it('a newer play wins while an older OS Play is still waiting for audio', async () => {
@@ -1323,6 +1375,7 @@ describe.each([
       // Moved before it played: the engine's own seek, then the play.
       expect(a.engine.svc.seekTo).toHaveBeenCalledTimes(1);
       expect(a.engine.svc.seekTo).toHaveBeenCalledWith(90);
+      expect(a.engine.svc.forgetPauseAge).toHaveBeenCalled();
       expect(a.engine.svc.seekTo.mock.invocationCallOrder[0]).toBeLessThan(
         a.engine.svc.play.mock.invocationCallOrder[1],
       );
@@ -1359,6 +1412,7 @@ describe.each([
       await a.player().toggle();
       await until(() => b.player().snapshot.state === 'paused', 'B to give way');
       expect(a.engine.svc.seekTo).not.toHaveBeenCalled();
+      expect(a.engine.svc.forgetPauseAge).not.toHaveBeenCalled();
       expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
       await sleep(10);
       a.engine.at(40);
@@ -1405,46 +1459,56 @@ describe.each([
     it('moves nothing for a place a moment away', async () => {
       await playedPast(a, b);
       b.engine.at(31.5);
-      await b.save();
+      await b.player().pause();
+      await until(() => listens().length === 2, 'B to save its place');
       await a.player().toggle();
-      await until(() => b.player().snapshot.state === 'paused', 'B to give way');
       expect(a.engine.svc.seekTo).not.toHaveBeenCalled();
+      expect(a.engine.svc.forgetPauseAge).toHaveBeenCalled();
     });
 
-    it('a move the engine refuses leaves the play that follows saved from where it is', async () => {
-      await playedPast(a, b);
-      // Far past A's 30 s (more than the save guard's slip tolerance), and B is paused, so
-      // no answer of B's moves A there after all.
-      b.engine.at(900);
-      await b.player().pause();
-      await until(() => listens().length === 2, "B's span on the server");
-      const key = mirrorKey('c1', 2, long.book.rel_path);
-      expect(mockMirror.records.get(key)?.position).toBe(900);
-      const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
-      try {
-        a.engine.svc.seekTo.mockRejectedValueOnce(new Error('no seek'));
-        await a.player().toggle();
-        expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
-        await sleep(10);
-        a.engine.at(40);
-        // The floor is not left at the 900 s the engine never reached: the place saves.
-        await a.save();
-        expect(mockMirror.records.get(key)?.position).toBe(40);
-        await a.player().pause();
-        await until(() => listens().length === 3, 'the three spans on the server');
-        expect(heard()).toEqual([
-          [5, 30, 'jump'],
-          [30, 40, 'resume'],
-          [30, 900, 'jump'],
-        ]);
-      } finally {
-        warned.mockRestore();
-      }
-    });
+    it.each(['page', 'remote'] as const)(
+      'a refused %s takeover holds the shared place until Retry plays from it',
+      async (source) => {
+        await playedPast(a, b);
+        // B has paused, so no answer from B can repair a failed seek in A.
+        b.engine.at(45);
+        await b.player().pause();
+        await until(() => listens().length === 2, "B's span on the server");
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        expect(mockMirror.records.get(key)?.position).toBe(45);
+        const warned = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        try {
+          a.engine.svc.seekTo.mockRejectedValueOnce(new Error('no seek'));
+          if (source === 'remote') await a.engine.remotePlay();
+          else await a.player().toggle();
+          await until(() => a.player().snapshot.state === 'error', 'A to stop at the shared place');
+          expect(a.player().snapshot.position).toBe(45);
+          a.engine.at(40);
+          await a.save();
+          expect(mockMirror.records.get(key)?.position).toBe(45);
+          expect(listens()).toHaveLength(2);
+          await a.player().toggle();
+          expect(a.engine.svc.load.mock.lastCall?.slice(1, 3)).toEqual([0, 45]);
+          expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 45 });
+          await sleep(10);
+          a.engine.at(46); // the first advancing tick confirms the reloaded place
+          a.engine.at(49);
+          await a.player().pause();
+          await until(() => listens().length === 3, 'the three spans on the server');
+          expect(heard()).toEqual([
+            [5, 30, 'jump'],
+            [30, 45, 'jump'],
+            [45, 49, 'resume'],
+          ]);
+        } finally {
+          warned.mockRestore();
+        }
+      },
+    );
 
     // Left standing, the ask for the 900 s the engine never went to read the engine's next
     // file as a run off a file it measured short (`engineFault`): an error, and a pause.
-    it('a move the engine refuses leaves no ask standing: its next file is no fault', async () => {
+    it('after retrying a refused move, the next file plays normally', async () => {
       mockMirror.on = true;
       await a.start(5, 'c1', parts);
       await sleep(10);
@@ -1460,7 +1524,9 @@ describe.each([
       try {
         a.engine.svc.seekTo.mockRejectedValueOnce(new Error('no seek'));
         await a.player().toggle();
-        expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 30 });
+        expect(a.player().snapshot).toMatchObject({ state: 'error', position: 900 });
+        await a.player().retry();
+        a.engine.at(901); // heard in this file before advancing
         // The lock screen's next: the engine reports the second file.
         await a.engine.svc.skipToTrack(1, 0);
         expect(a.player().snapshot).toMatchObject({ state: 'playing', trackIndex: 1, position: 0 });
@@ -1641,6 +1707,74 @@ describe.each([
     // the place the engine had refused every save of a landing far behind it, and the span
     // opened at that place ran on over the audio in between.
     describe('a move there that lands after it was given up', () => {
+      it.each([
+        { target: 900, outcome: 'refuses' },
+        { target: 12, outcome: 'never answers' },
+        { target: 900, outcome: 'listener moves' },
+      ])('keeps the shared $target until a late seek $outcome', async ({ target, outcome }) => {
+        await playedPast(a, b);
+        if (target < 30) await b.player().seekBook(target);
+        b.engine.at(target);
+        await b.player().pause();
+        const key = mirrorKey('c1', 2, long.book.rel_path);
+        await until(() => mockMirror.records.get(key)?.position === target, 'B to save');
+        const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+        const bound = shortenTabMoveBound();
+        const delayed = Promise.withResolvers<void>();
+        try {
+          a.engine.svc.seekTo.mockImplementationOnce(() => delayed.promise);
+          await a.player().toggle();
+          bound.mockRestore();
+          // Past the first deadline, the mirror and server still belong to B's place.
+          a.engine.at(40);
+          await a.save();
+          expect(mockMirror.records.get(key)?.position).toBe(target);
+          expect(heard().filter(([from, , start]) => from === 30 && start === 'resume')).toEqual(
+            [],
+          );
+          if (outcome === 'listener moves') {
+            await a.player().seekBook(330);
+            delayed.reject(new Error('older seek failed'));
+            await sleep(5);
+            a.engine.at(331);
+            await a.player().pause();
+            await until(
+              () => listens().some((e) => e.from_pos === 330 && e.to_pos === 331),
+              'A to save its chosen listening',
+            );
+            expect(mockMirror.records.get(key)?.position).toBe(331);
+            return;
+          }
+          // A never-answering seek stops even with a throttled tab timer. A refusal
+          // after a periodic save was due cannot publish A's old 40 in either path.
+          const now = Date.now;
+          const clock = jest.spyOn(Date, 'now').mockImplementation(() => now() + 16_000);
+          try {
+            if (outcome === 'refuses') {
+              delayed.reject(new Error('late refusal'));
+              await until(
+                () => a.player().snapshot.state === 'error',
+                'the late refusal to pause A',
+              );
+            }
+            a.engine.at(41);
+            await until(() => a.player().snapshot.state === 'error', 'A to offer Retry');
+            expect(a.player().snapshot.position).toBe(target);
+            await a.save();
+            expect(mockMirror.records.get(key)?.position).toBe(target);
+            expect(mockMirror.saved).not.toContain(41);
+            expect(heard().filter(([from, , start]) => from === 30 && start === 'resume')).toEqual(
+              [],
+            );
+          } finally {
+            clock.mockRestore();
+          }
+        } finally {
+          warn.mockRestore();
+          bound.mockRestore();
+        }
+      });
+
       /** A's next seek stays out until the returned `land`; the 5 s bound is 20 ms. */
       function slowSeek() {
         let target = 0;
@@ -1711,8 +1845,7 @@ describe.each([
       );
 
       // On Cast a remote move at the place is taken as the late landing only while the
-      // call could still land. Past `ASK_SETTLE_MAX_MS` it is the listener's own move: the
-      // span from 900 starts as a jump, and the listening at A's place before it is kept.
+      // call could still land. Past `ASK_SETTLE_MAX_MS` it is the listener's own move.
       it.each([{ late: false }, { late: true }])(
         'on Cast, a move to the place after the call is long out is the listener’s (late $late)',
         async ({ late }) => {
@@ -1744,7 +1877,7 @@ describe.each([
             await until(() => listens().some((e) => e.to_pos === 910), "A's span to 910");
             const starts = heard().map(([from, , start]) => [from, start]);
             if (late) {
-              expect(starts).toContainEqual([30, 'resume']);
+              expect(starts).not.toContainEqual([30, 'resume']);
               expect(starts).toContainEqual([900, 'jump']);
             } else {
               expect(starts).not.toContainEqual([30, 'resume']);
@@ -2145,6 +2278,30 @@ describe.each([
         expect.anything(),
       );
       expect(a.player().snapshot.state).toBe('playing');
+    });
+
+    it('a play during a slow visible-window update reads the latest save before taking over', async () => {
+      await playedPast(a, b);
+      b.engine.at(90);
+      await b.save();
+      const seek = Promise.withResolvers<void>();
+      a.engine.svc.seekTo.mockImplementationOnce(async (position: number) => {
+        await seek.promise;
+        a.engine.at(position);
+      });
+      a.lookAt();
+      await until(() => a.engine.svc.seekTo.mock.calls.length === 1, 'the first save to reach A');
+      b.engine.at(150);
+      await b.player().pause();
+      await until(() => listens().length === 2, 'B to save');
+      a.lookAt();
+      const play = a.player().toggle();
+      await sleep(5);
+      expect(a.engine.svc.play).toHaveBeenCalledTimes(1);
+      seek.resolve();
+      await play;
+      expect(a.engine.svc.seekTo.mock.calls).toEqual([[90], [150]]);
+      expect(a.player().snapshot).toMatchObject({ state: 'playing', position: 150 });
     });
 
     it.each(['foreground', 'play', 'remote', 'seek'] as const)(

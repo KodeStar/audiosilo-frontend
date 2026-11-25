@@ -6,22 +6,25 @@ import es from '@/i18n/locales/es.json';
 import fr from '@/i18n/locales/fr.json';
 import italian from '@/i18n/locales/it.json';
 import pt from '@/i18n/locales/pt.json';
+import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
+import * as tabChannel from '@/lib/tab-channel';
 
 const mockToast = jest.fn();
 jest.mock('@/components/ui/toast', () => ({ toast: (o: unknown) => mockToast(o) }));
 jest.mock('expo-router', () => ({ router: { push: jest.fn(), replace: jest.fn() } }));
-let mockGaveWay: (() => void) | null = null;
+let mockGaveWay: ((reason?: 'gave-way' | 'cast-pause-failed') => void) | null = null;
 let mockState = 'paused';
 const mockShowPlace = jest.fn();
 jest.mock('./store', () => ({
   showOtherTabsPlace: () => mockShowPlace(),
-  onGaveWayToTab: (listener: () => void) => {
+  onGaveWayToTab: (listener: NonNullable<typeof mockGaveWay>) => {
     mockGaveWay = listener;
     return () => {
       if (mockGaveWay === listener) mockGaveWay = null;
     };
   },
   usePlayer: { getState: () => ({ snapshot: { state: mockState } }) },
+  selectIsTransportLive: () => mockState === 'playing' || mockState === 'loading',
 }));
 
 /* eslint-disable import/first */
@@ -52,13 +55,13 @@ beforeEach(() => {
 });
 afterEach(() => jest.restoreAllMocks());
 
-describe('the "Playing in another tab" notice', () => {
+describe('the notice after another tab starts playing', () => {
   it('is shown at once in a tab that is looked at (its pause has not landed yet)', () => {
     const stop = startOtherTabNotice();
     mockState = 'playing'; // the pause is on its way
     mockGaveWay?.();
     expect(mockToast).toHaveBeenCalledTimes(1);
-    expect(mockToast).toHaveBeenCalledWith({ title: 'Playing in another tab' });
+    expect(mockToast).toHaveBeenCalledWith({ title: 'Playback started in another tab' });
     stop();
   });
 
@@ -73,13 +76,24 @@ describe('the "Playing in another tab" notice', () => {
     stop();
   });
 
-  it('is not shown in a hidden tab that plays again by the time it is looked at', () => {
+  it.each(['playing', 'loading'])('is skipped when this tab is %s again on return', (state) => {
     const stop = startOtherTabNotice();
     appState = 'background';
     mockGaveWay?.();
-    mockState = 'playing'; // claimed back from the OS media controls
+    mockState = state;
     emit('active');
     expect(mockToast).not.toHaveBeenCalled();
+    stop();
+  });
+
+  it('explains a receiver pause failure even when the receiver still reports playing', () => {
+    const stop = startOtherTabNotice();
+    appState = 'background';
+    mockGaveWay?.('gave-way');
+    mockGaveWay?.('cast-pause-failed');
+    mockState = 'playing';
+    emit('active');
+    expect(mockToast.mock.calls).toEqual([[{ title: en.player.otherTab.castPauseFailed }]]);
     stop();
   });
 
@@ -112,6 +126,24 @@ describe('the "Playing in another tab" notice', () => {
     '%s has its words',
     (_language, catalog) => {
       expect(catalog.player.otherTab.title).toBeTruthy();
+      expect(catalog.player.otherTab.castPauseFailed).toBeTruthy();
     },
   );
+
+  it('follows the other window’s saves while visible and reads again on return', () => {
+    const unsubscribe = jest.fn();
+    const watch = jest.spyOn(tabChannel, 'onStoredChange').mockReturnValue(unsubscribe);
+    const stop = startOtherTabNotice();
+    const [key, changed] = watch.mock.calls[0];
+    expect(key).toBe(PROGRESS_MIRROR_KEY);
+    changed('{}');
+    expect(mockShowPlace).toHaveBeenCalledTimes(1);
+    emit('background');
+    changed('{}');
+    expect(mockShowPlace).toHaveBeenCalledTimes(1);
+    emit('active');
+    expect(mockShowPlace).toHaveBeenCalledTimes(2);
+    stop();
+    expect(unsubscribe).toHaveBeenCalledTimes(1);
+  });
 });

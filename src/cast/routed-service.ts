@@ -549,6 +549,9 @@ export class RoutedPlaybackService implements PlaybackService {
     }
   }
 
+  forgetPauseAge() {
+    this.local.forgetPauseAge?.();
+  }
   play() {
     if (this.handingOver()) {
       this.handoverAsk = 'play';

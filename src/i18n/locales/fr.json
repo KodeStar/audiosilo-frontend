@@ -1037,6 +1037,7 @@
       "markedFinished": "Marqué comme terminé",
       "markedUnfinished": "Marqué comme non terminé",
       "markingFinished": "Marquage comme terminé...",
+      "markingUnfinished": "Marquage comme non terminé...",
       "undoUnreachable": "Impossible d'annuler tant que le serveur est injoignable. Réessaie quand il sera de retour.",
       "unfinishUnreachable": "Impossible de marquer comme non terminé tant que le serveur est injoignable. Réessaie quand il sera de retour.",
       "downloading": "Téléchargement pour hors ligne",
@@ -1918,7 +1919,8 @@
       "stay": "Rester"
     },
     "otherTab": {
-      "title": "Lecture dans un autre onglet"
+      "title": "La lecture a démarré dans un autre onglet",
+      "castPauseFailed": "Impossible de mettre l’appareil Cast en pause. Utilisez ses commandes pour le mettre en pause."
     },
     "partialDownload": {
       "title": "La suite de ce livre n'est pas téléchargée"

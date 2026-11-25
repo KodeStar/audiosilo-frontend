@@ -254,6 +254,7 @@ describe('useBookActions', () => {
 
   it('marks finished on an older server through the save at the end, without an Undo', async () => {
     mockCaps = { collections: true, progress_edit: false };
+    mockMarkFinished.mockResolvedValue(undefined);
     const { find } = await actions(book(), progress());
     await act(async () => find('finish')!.onPress());
     expect(mockEdit).not.toHaveBeenCalled();
@@ -275,7 +276,8 @@ describe('useBookActions', () => {
     });
 
     it('marks finished as the event, with an Undo through a progress edit', async () => {
-      mockMarkFinished.mockResolvedValue(undefined);
+      const before = { position: 900, file: 'Book/02.mp3', file_pos: 17 };
+      mockMarkFinished.mockResolvedValue({ before });
       const { find } = await actions(book(), progress({ position: 900 }));
       await act(async () => find('finish')!.onPress());
       expect(mockEdit).not.toHaveBeenCalled();
@@ -290,7 +292,7 @@ describe('useBookActions', () => {
       mockUndoRefs.length = 0;
       await act(async () => t.action.onPress());
       expect(mockUndoRefs).toEqual([
-        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 900 },
+        { connectionId: 'c', libraryId: 1, path: 'Author/Series/01 - Book', position: 900, before },
       ]);
       expect(mockEdit).toHaveBeenLastCalledWith({
         libraryId: 1,
@@ -417,6 +419,36 @@ describe('useBookActions', () => {
         jest.advanceTimersByTime(5_000);
       });
       expect(mockToast.mock.calls.map((c) => c[0].title)).toEqual(['Marked as finished']);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  it('shows which book a slow Undo is waiting for and clears the notice on failure', async () => {
+    jest.useFakeTimers();
+    try {
+      mockEdit.mockResolvedValueOnce(progress({ finished: true }));
+      const { find } = await actions(book(), progress());
+      await act(async () => find('finish')!.onPress());
+      const undo = mockToast.mock.calls.at(-1)![0].action;
+      mockToast.mockClear().mockReturnValue(17);
+      let refuse!: (error: Error) => void;
+      mockEdit.mockImplementationOnce(() => new Promise((_, reject) => (refuse = reject)));
+      await act(async () => undo.onPress());
+      expect(mockToast).not.toHaveBeenCalled();
+      await act(async () => {
+        jest.advanceTimersByTime(600);
+      });
+      expect(mockToast).toHaveBeenCalledWith({
+        title: 'Marking as not finished...',
+        description: 'Book',
+        duration: null,
+      });
+      await act(async () => refuse(new ApiError(503, 'busy')));
+      expect(mockDismissToast).toHaveBeenCalledWith(17);
+      expect(mockToast.mock.calls.at(-1)![0].title).toBe(
+        'The server is busy. Try again in a moment.',
+      );
     } finally {
       jest.useRealTimers();
     }

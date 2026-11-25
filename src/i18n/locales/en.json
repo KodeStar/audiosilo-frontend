@@ -1037,6 +1037,7 @@
       "markedFinished": "Marked as finished",
       "markedUnfinished": "Marked as not finished",
       "markingFinished": "Marking as finished...",
+      "markingUnfinished": "Marking as not finished...",
       "undoUnreachable": "Can't undo while the server can't be reached. Try again once it's back.",
       "unfinishUnreachable": "Can't mark as not finished while the server can't be reached. Try again once it's back.",
       "downloading": "Downloading for offline",
@@ -1918,7 +1919,8 @@
       "stay": "Stay"
     },
     "otherTab": {
-      "title": "Playing in another tab"
+      "title": "Playback started in another tab",
+      "castPauseFailed": "Couldn't pause the Cast device. Pause it with its controls."
     },
     "partialDownload": {
       "title": "The rest of this book isn't downloaded"

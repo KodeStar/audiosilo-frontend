@@ -547,6 +547,18 @@ describe('the heartbeat runs only away from the foreground', () => {
     stop();
   });
 
+  it('offers Undo for the place a paused tab follows after a long suspension', () => {
+    const { player, report, jump, stop, go } = withAppState('active');
+    report('paused', 1003);
+    go('background');
+    jest.spyOn(player, 'followsOtherTab').mockReturnValue(true);
+    jest.setSystemTime(Date.now() + 3600_000);
+    go('active');
+    report('paused', 1500);
+    expect(jump()?.from).toBe(1003);
+    stop();
+  });
+
   it('keeps seeing a lock-screen seek in the background while JS runs', () => {
     const { report, jump, stop, go } = withAppState('active');
     report('paused', 1003);

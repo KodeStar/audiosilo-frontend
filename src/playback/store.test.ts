@@ -3477,7 +3477,7 @@ describe('finishBook', () => {
     expect(usePlayer.getState().nowPlaying).toBeNull();
   });
 
-  it('invalidates the progress lists AND the finished book own progress key', async () => {
+  it('leaves the server reads to the acknowledgement of the finished save', async () => {
     await startBook(makeBook(), 0);
     pushSnapshot(snap('playing', 40));
     await Promise.resolve();
@@ -3486,8 +3486,8 @@ describe('finishBook', () => {
     usePlayer.getState().finishBook();
     await flushMicrotasks();
 
-    expect(invalidatedKeys()).toContainEqual(qk.allProgress('c1'));
-    expect(invalidatedKeys()).toContainEqual(qk.progress('c1', 2, 'A/Book.m4b'));
+    expect(invalidatedKeys()).not.toContainEqual(qk.allProgress('c1'));
+    expect(invalidatedKeys()).not.toContainEqual(qk.progress('c1', 2, 'A/Book.m4b'));
   });
 
   it('returns null when nothing is playing', () => {

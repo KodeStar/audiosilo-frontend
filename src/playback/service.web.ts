@@ -762,6 +762,10 @@ class WebPlaybackService implements PlaybackService {
     }
   }
 
+  forgetPauseAge() {
+    this.pausedAt = null;
+  }
+
   async play() {
     // A play tap is a gesture: the moment to make (or wake) Voice Boost's graph, before
     // anything here awaits.

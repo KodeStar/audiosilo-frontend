@@ -54,7 +54,7 @@ type FinishRecorder = {
    * was left at, when nothing was loaded since. */
   reload: (ref: FinishBook) => Promise<void>;
   /** Record the finish as an event; resolves once it waits in the outbox. */
-  record: (ref: FinishRef) => Promise<void>;
+  record: (ref: FinishRef) => Promise<ProgressSave | undefined>;
   /** Take the book's not-yet-sent finish events back (one being sent is waited for). */
   withdraw: (connectionId: string, libraryId: number, path: string) => Promise<Withdrawal>;
   /** An undone finish leaves this device: its record goes back to the place before it
@@ -64,10 +64,14 @@ type FinishRecorder = {
    * to the one before it, the place the server still holds, when its mirror holds the
    * finish's record carrying that place (decided as it is changed). Resolves whether it did. */
   restoreBefore: (ref: FinishBook, since: number) => Promise<boolean>;
+  /** Save any live listening since the unsent Mark. */
+  capturePlayingUndo: (ref: FinishBook, since: number) => Promise<void>;
 };
 
 /** The book an Undo unfinishes, and the place it goes back to. */
 export type UndoRef = Pick<FinishRef, 'connectionId' | 'libraryId' | 'path' | 'position'> & {
+  /** The unfinished place this Mark replaced. Its Undo keeps it across a server refresh. */
+  before?: ProgressSave;
   /** Mark as not finished, not the Undo of a Mark: this device's record goes to `position`,
    * never to the one before a finish marked earlier (kept for that finish's Undo, it may be
    * long out of date). Unless that finish never reached the server (`undoFinish`). */
@@ -105,10 +109,11 @@ export async function reloadLeftBook(ref: FinishBook): Promise<void> {
 
 /** Record a finish as a `finish` event when its server takes one; false when it does not
  * (the caller saves it by PUT). */
-export async function recordFinishEvent(ref: FinishRef): Promise<boolean> {
+export async function recordFinishEvent(
+  ref: FinishRef,
+): Promise<false | { before?: ProgressSave }> {
   if (!recorder?.takesEvent(ref.connectionId)) return false;
-  await recorder.record(ref);
-  return true;
+  return { before: await recorder.record(ref) };
 }
 
 /** How an Undo of a Mark as finished ended (`undoFinish`): the book is unfinished, or the
@@ -145,9 +150,10 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Pr
   // Where this device does not know that place (a reload, another tab's finish), the Undo of
   // a Mark goes to its own place, no edit either; Mark as not finished takes the edit.
   if (taken.unsent) {
-    if (await r.restoreBefore(ref, since).catch(() => false)) return 'undone';
-    if (!ref.atPosition) {
-      await r.unrecord(ref, since).catch(() => undefined);
+    const restored = await r.restoreBefore(ref, since).catch(() => false);
+    if (restored || !ref.atPosition) {
+      if (!restored) await r.unrecord(ref, since).catch(() => undefined);
+      if (!ref.atPosition) await r.capturePlayingUndo(ref, since).catch(() => undefined);
       return 'undone';
     }
   }

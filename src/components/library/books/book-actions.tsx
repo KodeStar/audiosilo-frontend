@@ -39,6 +39,7 @@ import {
   leaveFinishedBook,
   reloadLeftBook,
   undoFinish,
+  type UndoRef,
 } from '@/playback/finish-route';
 import { failureTitle } from '@/lib/failure-title';
 import { useLayout } from '@/lib/layout';
@@ -68,8 +69,19 @@ export type BookAction<K extends string = string> = {
   group?: boolean;
 };
 
-/** How long a Mark as finished waits on its server before a toast says it is on its way. */
+/** A quick change only shows its result. */
 const PENDING_TOAST_MS = 600;
+
+function pendingBookAction(title: string, description: string) {
+  let id: number | undefined;
+  const timer = setTimeout(() => {
+    id = toast({ title, description, duration: null });
+  }, PENDING_TOAST_MS);
+  return () => {
+    clearTimeout(timer);
+    if (id !== undefined) dismissToast(id);
+  };
+}
 
 /** The download item by the book's download state. */
 const DOWNLOAD_ACTION = {
@@ -186,26 +198,23 @@ export function useBookActions(
   // behind the close of the span the book was left with. Never a progress edit there: sent
   // over HTTP beside the outbox, it reached the server before that span did. An older server
   // with progress edits: the edit (no span waits there, and Undo is an edit too); one without:
-  // the offline-aware save at the book's end. The route is chosen before the `try`: the React
-  // Compiler skips a hook with a condition inside one, and this hook is built by it (fe#280).
-  const recordFinished = async (): Promise<boolean> => {
+  // the offline-aware save at the book's end.
+  const recordFinished = async (): Promise<Pick<UndoRef, 'before'> | null> => {
     const viaEdit = progressEdit === true && !finishTakesEvent(connectionId);
-    try {
-      if (viaEdit) {
-        await edit.mutateAsync({ libraryId, path, edit: { finished: true } });
-      } else {
-        await markFinished.mutateAsync({
+    const recording = viaEdit
+      ? edit.mutateAsync({ libraryId, path, edit: { finished: true } }).then(() => ({}))
+      : markFinished.mutateAsync({
           libraryId,
           path,
           position: book.duration,
           duration: book.duration,
         });
-      }
-      return true;
-    } catch (e) {
-      failed(e);
-      return false;
-    }
+    return recording
+      .then((record) => record ?? {})
+      .catch((error: unknown) => {
+        failed(error);
+        return null;
+      });
   };
 
   // Not finished, at `position` (the Undo of Mark as finished, and Mark as not finished);
@@ -215,17 +224,19 @@ export function useBookActions(
   // titled `unreachable` offers `retry`. `atPosition` for Mark as not finished: this device's
   // record goes to `position`, not to the one before a finish marked earlier.
   const unfinish = async (
-    position: number,
+    place: Pick<UndoRef, 'position' | 'before' | 'atPosition'>,
     unreachable: string,
     retry: () => void,
-    atPosition?: boolean,
   ): Promise<boolean> => {
-    const outcome = await undoFinish({ ...ref, position, atPosition }, () =>
-      edit.mutateAsync({ libraryId, path, edit: { finished: false, position } }),
-    ).catch((e: unknown) => {
-      failed(e);
-      return null;
-    });
+    const settled = pendingBookAction(t('library.bookActions.markingUnfinished'), book.title);
+    const outcome = await undoFinish({ ...ref, ...place }, () =>
+      edit.mutateAsync({ libraryId, path, edit: { finished: false, position: place.position } }),
+    )
+      .finally(settled)
+      .catch((e: unknown) => {
+        failed(e);
+        return null;
+      });
     if (outcome === 'unreachable') {
       toast({
         title: unreachable,
@@ -247,38 +258,31 @@ export function useBookActions(
   const onFinish = async () => {
     // A finish that waits on its server says so (FE-1): the menu has closed, and nothing
     // else shows the request. Only when it is slow, so a quick one shows one toast.
-    let pending: number | null = null;
-    const slow = setTimeout(() => {
-      pending = toast({ title: t('library.bookActions.markingFinished'), duration: 15_000 });
-    }, PENDING_TOAST_MS);
-    const settled = () => {
-      clearTimeout(slow);
-      if (pending !== null) dismissToast(pending);
-    };
+    const settled = pendingBookAction(t('library.bookActions.markingFinished'), book.title);
     // The loaded book stops first, its place saved before the finish (fe#258). That place is
     // the one Undo goes back to: the page's progress was read before that listening, and with
     // the book unloaded no later save moves an Undo there.
-    const left = await leaveFinishedBook(ref);
-    const before = left ?? progress?.position ?? 0;
-    // Undo is a progress edit (`progress_edit`): the only way to mark a book not finished
-    // at the place it had.
-    const canUndo = progressEdit === true;
-    const undo = () => void unfinish(before, t('library.bookActions.undoUnreachable'), undo);
-    const done = () =>
-      toast({
-        title: t('library.bookActions.markedFinished'),
-        description: book.title,
-        action: canUndo ? { label: t('queue.undo'), onPress: undo } : undefined,
-      });
-    const ok = await recordFinished().finally(settled);
-    if (ok) done();
-    else await reloadLeftBook(ref);
+    const { left, recorded } = await leaveFinishedBook(ref)
+      .then(async (left) => ({ left, recorded: await recordFinished() }))
+      .finally(settled);
+    if (!recorded) {
+      await reloadLeftBook(ref);
+      return;
+    }
+    const place = { position: left ?? progress?.position ?? 0, before: recorded.before };
+    const undo = () => void unfinish(place, t('library.bookActions.undoUnreachable'), undo);
+    toast({
+      title: t('library.bookActions.markedFinished'),
+      description: book.title,
+      action: progressEdit === true ? { label: t('queue.undo'), onPress: undo } : undefined,
+    });
   };
 
   const onUnfinish = async () => {
     const position = unfinishedPosition(latestProgress.current, book.duration);
     const unreachable = t('library.bookActions.unfinishUnreachable');
-    if (!(await unfinish(position, unreachable, () => void onUnfinish(), true))) return;
+    if (!(await unfinish({ position, atPosition: true }, unreachable, () => void onUnfinish())))
+      return;
     toast({
       title: t('library.bookActions.markedUnfinished'),
       description: book.title,

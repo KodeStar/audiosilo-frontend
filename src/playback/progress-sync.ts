@@ -16,6 +16,7 @@ import type { ChaptersResponse, Progress } from '@/api/types';
 import { downloadEndsBefore } from '@/downloads/kept-offline';
 import {
   identityMovePending,
+  legacyIdOf,
   resolveConnectionId,
   sameConnection,
   storedConnectionIds,
@@ -23,7 +24,6 @@ import {
 import { contentKey } from '@/lib/content-key';
 import { type ClaimCheck, replayQueue, type Route } from '@/lib/queue-claims';
 import { serialQueue } from '@/lib/serial-queue';
-import { tabChannel, type TabChannel } from '@/lib/tab-channel';
 import { tabLock } from '@/lib/tab-lock';
 import { getItem, getItemStrict, setItem, setItemStrict } from '@/lib/storage';
 import { withTimeout } from '@/lib/with-timeout';
@@ -37,12 +37,13 @@ import {
 import { onConnectionRemoved } from '@/stores/session';
 import { shallow } from 'zustand/shallow';
 
+import { finishDelivered } from './finish-delivery';
 import { placeEndsBook } from './book-queue';
 import { connectionGeneration } from './connection-generation';
 import type { OutboxEntry } from './listening-outbox';
 import { type OpenSpan, storedSpans } from './open-span-doc';
 import { hasStoredSkews, readStoredSkews } from './stored-skews';
-import { type BookRef, bookRefOf } from './types';
+import { bookRefOf } from './types';
 
 // Reconnect-driven replay is wired in `provider.tsx`: when a connection recovers it runs
 // `flushConnection(cid)`, so a returning server replays exactly its own queued saves.
@@ -439,6 +440,8 @@ export type LocalPlaces = {
   mirror: Record<string, ProgressSave>;
   queue: ProgressSave[];
   pending: Set<string>;
+  /** Books with a locally finished place waiting for its PUT or finish event. */
+  finishes?: Map<string, ProgressSave>;
   /** Each connection's server clock ahead of this device's (ms), where known. */
   skews?: Record<string, number>;
 };
@@ -453,12 +456,28 @@ export async function readLocalPlaces(): Promise<LocalPlaces> {
     readClockSkews(),
   ]);
   const pending = new Set<string>();
+  const finishes = new Map<string, ProgressSave>();
+  const places = { mirror, queue, pending, finishes, skews };
+  const keepFinish = (id: string, lib: number, path: string) => {
+    const cid = resolveConnectionId(id);
+    const legacy = legacyIdOf(cid);
+    const current = localRecords(places, cid, lib, path).local;
+    const old = legacy === cid ? null : localRecords(places, legacy, lib, path).local;
+    const skew = skews[cid] ?? skews[legacy] ?? 0;
+    const newest =
+      old && (!current || localTimeOf(old, skew) > localTimeOf(current, skew)) ? old : current;
+    if (newest?.finished) finishes.set(contentKey(cid, lib, path), newest);
+  };
+  for (const save of queue) {
+    if (save.finished) keepFinish(save.connectionId, save.libraryId, save.path);
+  }
   for (const e of outbox) {
-    if (typeof e?.connectionId === 'string' && e.event)
-      pending.add(contentKey(e.connectionId, e.event.library_id, e.event.path));
+    if (typeof e?.connectionId !== 'string' || !e.event) continue;
+    pending.add(contentKey(e.connectionId, e.event.library_id, e.event.path));
+    if (e.event.kind === 'finish') keepFinish(e.connectionId, e.event.library_id, e.event.path);
   }
   for (const span of spans) pending.add(contentKey(span.connectionId, span.libraryId, span.path));
-  return { mirror, queue, pending, skews };
+  return places;
 }
 
 /** The device's two records, compared before conversion drops the mirror's clock marker.
@@ -650,6 +669,31 @@ function resumePlaceOf(
   return lookup.kind === 'progress' ? placedOf(lookup) : null;
 }
 
+/** The displayed place for an undelivered finish, using Resume's ordering even when a
+ * newer row has already arrived. No pending finish on this book leaves its reader alone. */
+export function pendingFinishPlace(
+  places: LocalPlaces | null,
+  connectionId: string,
+  libraryId: number,
+  path: string,
+  row?: PlacedProgress | null,
+): PlacedProgress | undefined {
+  const cid = resolveConnectionId(connectionId);
+  const save = places?.finishes?.get(contentKey(cid, libraryId, path));
+  if (!save) return;
+  const server = row?.server ?? row;
+  const skew = places?.skews?.[cid] ?? places?.skews?.[save.connectionId] ?? 0;
+  if (server && serverTimeOf(server.updated_at, skew) >= localTimeOf(save, skew)) return;
+  const progress = mirrorAsProgress(libraryId, path, save)!;
+  return {
+    ...progress,
+    ...(save.file && typeof save.file_pos === 'number'
+      ? { file: { path: save.file, pos: save.file_pos } }
+      : {}),
+    ...(server ? { server } : {}),
+  };
+}
+
 /** A resume lookup's record with its file place; the same object when it has none. */
 function placedOf(lookup: Extract<ResumeLookup, { kind: 'progress' }>): PlacedProgress {
   return lookup.file ? { ...lookup.progress, file: lookup.file } : lookup.progress;
@@ -668,7 +712,9 @@ export function withLocalPlaces<T extends Progress & { connectionId: string }>(
   if (!places) return rows;
   let changed = false;
   const out = rows.map((row): T & PlacedProgress => {
-    const place = resumePlaceOf(row, places, row.connectionId, row.library_id, row.path);
+    const place =
+      pendingFinishPlace(places, row.connectionId, row.library_id, row.path, row) ??
+      resumePlaceOf(row, places, row.connectionId, row.library_id, row.path);
     if (!place || place === row) return row;
     changed = true;
     return { ...row, ...place };
@@ -836,7 +882,7 @@ const mirrorLock = tabLock(MIRROR_KEY);
 
 /** One write of records into the mirror (`writeMirrors`); `before`: the record of this
  * device's Mark as finished (`writeFinishedMirror`). */
-type MirrorWrite = { save: ProgressSave; before?: true };
+type MirrorWrite = { save: ProgressSave; before?: true; advanceOnly?: boolean };
 
 /** The writes waiting together for the mirror's lock, until their job starts: a write asked
  * meanwhile joins them, so the writes of one tick (and of a wait for the lock: on plain http
@@ -855,8 +901,8 @@ function withMirrorLock<T>(job: () => Promise<T>): Promise<T> {
  * fields a capture doesn't carry (`ack_version`, `answered`) are kept from the record it
  * replaces, and so is its file place when the new record holds that place without one (a
  * server row read back after this device's own save: `holdsFilePlace`). */
-export function writeMirror(save: ProgressSave): Promise<void> {
-  return writeMirrors([save]);
+export function writeMirror(save: ProgressSave, { advanceOnly = false } = {}): Promise<void> {
+  return queueMirrorWrites([{ save, advanceOnly }]);
 }
 
 /** `writeMirror` for many records at once: one read and at most one write of the mirror
@@ -914,9 +960,13 @@ async function applyMirrorWrites(writes: readonly MirrorWrite[]): Promise<void> 
   // another tab.
   const shared = writes.some((w) => w.save.finished) ? await readUndoneFinishes() : {};
   let changed = false;
-  for (const { save, before } of writes) {
+  for (const { save, before, advanceOnly } of writes) {
     const key = contentKey(save.connectionId, save.libraryId, save.path);
     const existing = map[key];
+    // Hearing more while an unsent finish was undone can advance the restored place.
+    // A different finish or a newer, further place could have arrived since the Undo.
+    if (advanceOnly && (!existing || existing.finished || existing.position >= save.position))
+      continue;
     const undone = save.finished ? latestUndo(undoneFinishes.get(key), shared[key]) : undefined;
     const skew = existing || undone !== undefined ? await knownSkew(save.connectionId) : 0;
     if (undone !== undefined && undoneBy(key, undone, save, skew)) continue;
@@ -960,31 +1010,6 @@ async function readUndoneFinishes(): Promise<Record<string, number>> {
     if (typeof at === 'number' && Number.isFinite(at)) out[key] = at;
   }
   return out;
-}
-
-/** The channel a tab tells the others of a finish it undid on (`tellUndoneElsewhere`). */
-const UNDONE_CHANNEL = 'audiosilo-undone-finish';
-let undoneTabs: TabChannel<BookRef> | null | undefined;
-/** The channel, opened on first use (null off the web). */
-const undoneChannel = () =>
-  undoneTabs === undefined ? (undoneTabs = tabChannel<BookRef>(UNDONE_CHANNEL)) : undoneTabs;
-
-/** Test-only: the channel `tellUndoneElsewhere` and `onFinishUndoneElsewhere` use. */
-export function setUndoneChannelForTests(channel: TabChannel<BookRef> | null | undefined): void {
-  undoneTabs = channel;
-}
-
-/** Tell the other tabs of the web player that this one undid `ref`'s finish (its Undo, or
- * Mark as not finished), once its mirror record went back: their pages still show the book
- * finished until they read it again. */
-export function tellUndoneElsewhere(ref: BookRef): void {
-  undoneChannel()?.post(bookRefOf(ref));
-}
-
-/** Be told of a finish another tab of the web player undid (`tellUndoneElsewhere`).
- * Returns the unsubscribe. */
-export function onFinishUndoneElsewhere(listener: (ref: BookRef) => void): () => void {
-  return undoneChannel()?.subscribe(listener) ?? (() => {});
 }
 
 /** The later of two Undo times, either unknown. */
@@ -1404,6 +1429,7 @@ async function putSave(
   await client.saveProgress(save.libraryId, save.path, putBody(save));
   if (!current()) return 'dropped';
   notePut(save);
+  if (save.finished) finishDelivered(save.connectionId, [save]);
   noteSuccess(save.connectionId);
   return 'saved';
 }

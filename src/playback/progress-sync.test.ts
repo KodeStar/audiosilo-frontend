@@ -29,7 +29,6 @@ import {
   noteClockSkew,
   knownSkew,
   noteUndoneFinish,
-  onFinishUndoneElsewhere,
   pendingSaveCount,
   pendingSaves,
   routeOnly,
@@ -43,14 +42,19 @@ import {
   resumeLookupOf,
   saveProgress,
   serverRowOf,
-  setUndoneChannelForTests,
-  tellUndoneElsewhere,
   updateMirror,
   writeFinishedMirror,
   writeMirror,
   readPlaceEarly,
   EARLY_READ_MS,
 } from '@/playback/progress-sync';
+import {
+  finishDelivered,
+  onFinishDelivered,
+  onFinishChangedElsewhere,
+  setFinishChannelForTests,
+  tellFinishChangedElsewhere,
+} from './finish-delivery';
 import { provideStoredSkews } from '@/playback/stored-skews';
 
 // babel-jest hoists jest.mock above the imports, so the module under test sees the
@@ -612,6 +616,41 @@ describe('progress-sync', () => {
 
     expect(c2.saveProgress).toHaveBeenCalledTimes(1);
     expect(await readQueue()).toEqual([expect.objectContaining({ connectionId: 'c1' })]);
+  });
+
+  it('announces a queued finish only when its legacy PUT lands', async () => {
+    const delivered = jest.fn();
+    const stop = onFinishDelivered(delivered);
+    const api = fakeApi(() => Promise.resolve());
+    const finish = { ...save, finished: true, position: save.duration };
+    routeClients({ c1: api });
+    try {
+      reachable.mockReturnValue(false);
+      await expect(saveProgress(api, finish)).resolves.toBe('queued');
+      expect(delivered).not.toHaveBeenCalled();
+      reachable.mockReturnValue(true);
+      await flushQueue('c1');
+      await flushQueue('c1');
+      expect(delivered).toHaveBeenCalledTimes(1);
+      expect(delivered).toHaveBeenCalledWith('c1', [expect.objectContaining({ path: save.path })]);
+    } finally {
+      stop();
+    }
+  });
+
+  it('a capture after a no-edit Undo only advances the restored place', async () => {
+    const prior = { ...save, position: 40 };
+    await writeMirror(prior);
+    const heard = { ...save, position: 50, updated_at: '2999-04-02T00:00:00Z' };
+    await writeMirror(heard, { advanceOnly: true });
+    await writeMirror({ ...heard, position: 12 }, { advanceOnly: true });
+    expect((await readMirrorOf(save.connectionId, save.libraryId, save.path))?.position).toBe(50);
+    await writeMirror({ ...heard, finished: true });
+    await writeMirror({ ...heard, position: 60 }, { advanceOnly: true });
+    expect(await readMirrorOf(save.connectionId, save.libraryId, save.path)).toMatchObject({
+      position: 50,
+      finished: true,
+    });
   });
 
   // fe#197: the sync pills read the queue again as it is written, so a drain takes them down.
@@ -2698,7 +2737,7 @@ describe('the place before a finish (writeFinishedMirror)', () => {
     // The server's row for the finish read back: not this device's Mark, so the record no
     // longer carries the place (carried on, an old finish's place would stand for every
     // later one). The Undo in the tab that marked it keeps that place itself, outside the
-    // mirror (`placeBefore` in the store), so it still goes back to the file place.
+    // mirror (with its Undo toast), so it still goes back to the file place.
     await writeMirror({ ...finish, updated_at: '2026-01-02T00:00:01Z', server_clock: true });
     expect(await readMirrorOf('c1', 1, 'A/Book')).not.toHaveProperty('before');
   });
@@ -2765,12 +2804,12 @@ describe('mirror writes asked together', () => {
 // fe#258's follow-up: after an Undo in one tab, another tab kept showing the book finished
 // ("Listen again") until clicked. The undoing tab tells the others on a tab channel.
 describe('a finish undone in another tab', () => {
-  afterEach(() => setUndoneChannelForTests(undefined));
+  afterEach(() => setFinishChannelForTests(undefined));
 
   it('is posted on the channel and heard by its subscribers', () => {
     const listeners = new Set<(ref: unknown) => void>();
     const posted: unknown[] = [];
-    setUndoneChannelForTests({
+    setFinishChannelForTests({
       post: (message) => {
         posted.push(message);
         for (const l of listeners) l(message);
@@ -2781,23 +2820,28 @@ describe('a finish undone in another tab', () => {
       },
     });
     const told: unknown[] = [];
-    const stop = onFinishUndoneElsewhere((ref) => told.push(ref));
+    const stop = onFinishChangedElsewhere((ref) => told.push(ref));
     const ref = { connectionId: 'c1', libraryId: 4, path: 'Author/Book: Two' };
-    tellUndoneElsewhere({ ...ref, position: 12 } as typeof ref);
+    tellFinishChangedElsewhere({ ...ref, position: 12 } as typeof ref);
     // Only the book goes out.
     expect(posted).toEqual([ref]);
     expect(told).toEqual([ref]);
+    // A different tab drained the finish after reconnect. The receiving tab uses the
+    // same invalidation it already understands for Undo, without a second broadcast.
+    finishDelivered('c1', [{ libraryId: 4, path: ref.path }]);
+    expect(posted).toEqual([ref, ref]);
+    expect(told).toEqual([ref, ref]);
     stop();
-    tellUndoneElsewhere(ref);
-    expect(told).toHaveLength(1);
+    tellFinishChangedElsewhere(ref);
+    expect(told).toHaveLength(2);
   });
 
   it('is nothing without a channel (off the web)', () => {
-    setUndoneChannelForTests(null);
+    setFinishChannelForTests(null);
     expect(() =>
-      tellUndoneElsewhere({ connectionId: 'c1', libraryId: 1, path: 'A' }),
+      tellFinishChangedElsewhere({ connectionId: 'c1', libraryId: 1, path: 'A' }),
     ).not.toThrow();
-    expect(typeof onFinishUndoneElsewhere(() => {})).toBe('function');
+    expect(typeof onFinishChangedElsewhere(() => {})).toBe('function');
   });
 });
 

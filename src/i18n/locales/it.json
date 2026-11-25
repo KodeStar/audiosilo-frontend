@@ -1037,6 +1037,7 @@
       "markedFinished": "Segnato come finito",
       "markedUnfinished": "Segnato come non finito",
       "markingFinished": "Segno come finito...",
+      "markingUnfinished": "Segno come non finito...",
       "undoUnreachable": "Impossibile annullare finché il server non è raggiungibile. Riprova quando torna disponibile.",
       "unfinishUnreachable": "Impossibile segnare come non finito finché il server non è raggiungibile. Riprova quando torna disponibile.",
       "downloading": "Download per l’ascolto offline",
@@ -1918,7 +1919,8 @@
       "stay": "Resta"
     },
     "otherTab": {
-      "title": "In riproduzione in un'altra scheda"
+      "title": "La riproduzione è iniziata in un’altra scheda",
+      "castPauseFailed": "Impossibile mettere in pausa il dispositivo Cast. Usa i suoi comandi per metterlo in pausa."
     },
     "partialDownload": {
       "title": "Il resto di questo libro non è scaricato"
