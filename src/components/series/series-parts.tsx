@@ -5,7 +5,7 @@ import Svg, { Line } from 'react-native-svg';
 
 import { BookCover } from '@/components/library/book-cover';
 import { GhostCover } from '@/components/library/ghost-cover';
-import { ProgressBar } from '@/components/ui/progress-bar';
+import { ProgressBar, TrackOutline } from '@/components/ui/progress-bar';
 import { Text } from '@/components/ui/text';
 import type { NamedChapter } from '@/lib/chapter-label';
 import { formatDuration, formatReleaseDate } from '@/lib/format';
@@ -77,10 +77,13 @@ export function ProgressTrack({
             className={cn(
               'overflow-hidden rounded-[3px]',
               s.state === 'finished' && 'bg-success',
-              (s.state === 'partial' || s.state === 'unread') && 'bg-muted-foreground/20',
+              (s.state === 'partial' || s.state === 'unread') && 'bg-track',
               s.state === 'missing' && 'border border-border-strong',
             )}
           >
+            {s.state === 'partial' || s.state === 'unread' ? (
+              <TrackOutline rounded="rounded-[3px]" />
+            ) : null}
             {s.state === 'missing' ? <Hatch color={themed.borderStrong} /> : null}
             {s.state === 'partial' ? (
               <View className="h-full bg-brand" style={{ width: `${s.fraction * 100}%` }} />

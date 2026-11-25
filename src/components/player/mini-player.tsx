@@ -103,9 +103,11 @@ export function FloatingMiniPlayer() {
 export function MiniPlayerSubtitle({
   title,
   showTitle = true,
+  maxFontSizeMultiplier = MINI_TEXT_MAX_SCALE,
 }: {
   title: string;
   showTitle?: boolean;
+  maxFontSizeMultiplier?: number;
 }) {
   const themed = useThemeColors();
   const left = usePlayingTimeLeft();
@@ -120,7 +122,7 @@ export function MiniPlayerSubtitle({
             variant="caption"
             className="font-sans-semibold text-foreground"
             style={tabularNums}
-            maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
+            maxFontSizeMultiplier={maxFontSizeMultiplier}
           >
             {rest ? `${sleep} ·` : sleep}
           </Text>
@@ -132,7 +134,7 @@ export function MiniPlayerSubtitle({
           numberOfLines={1}
           className="flex-1"
           style={tabularNums}
-          maxFontSizeMultiplier={MINI_TEXT_MAX_SCALE}
+          maxFontSizeMultiplier={maxFontSizeMultiplier}
         >
           {rest}
         </Text>

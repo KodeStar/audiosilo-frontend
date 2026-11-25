@@ -31,7 +31,7 @@ import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useDownloadEntry } from '@/downloads/store';
 import { formatCountdown, formatDuration, formatReleaseDate } from '@/lib/format';
 import { openExternalUrl } from '@/lib/support';
-import { linesFor } from '@/lib/text-scale';
+import { linesFor, useLargeText } from '@/lib/text-scale';
 import { httpUrl } from '@/lib/url-host';
 import { cn } from '@/lib/utils';
 import type { UnplacedWork, UpNextBook } from '@/playback/up-next-resolver';
@@ -334,6 +334,7 @@ export function UpNextCard({
 }) {
   const { t } = useTranslation();
   const server = useConnectionName(next.connectionId);
+  const large = useLargeText();
   const entry = useDownloadEntry(next.connectionId, next.libraryId, next.path);
   const reason = upNextReason(next);
   const where = nextAvailability(entry);
@@ -350,7 +351,8 @@ export function UpNextCard({
   return (
     <Card
       className={cn(
-        'w-full max-w-[560px] flex-row items-center',
+        'w-full max-w-[560px]',
+        large ? 'items-start' : 'flex-row items-center',
         phone ? 'gap-3 p-3' : 'gap-4 p-4',
       )}
     >
@@ -363,15 +365,15 @@ export function UpNextCard({
         title={next.title}
         author={next.author}
       />
-      <View className="min-w-0 flex-1 gap-1">
-        <Text variant="eyebrow" numberOfLines={2}>
+      <View className={cn('gap-1', large ? 'w-full' : 'min-w-0 flex-1')}>
+        <Text variant="eyebrow" numberOfLines={linesFor(2, large)}>
           {t(`player.finished.${reason.key}`, reason.values)}
         </Text>
-        <Text variant="heading" numberOfLines={2}>
+        <Text variant="heading" numberOfLines={linesFor(2, large)}>
           {next.title}
         </Text>
         {meta ? (
-          <Text variant="caption" style={tabularNums} numberOfLines={2}>
+          <Text variant="caption" style={tabularNums} numberOfLines={linesFor(2, large)}>
             {meta}
           </Text>
         ) : null}

@@ -46,6 +46,7 @@ jest.mock('@/components/player/player-shortcuts', () => ({
 }));
 
 /* eslint-disable import/first */
+import { setFontScale } from '@/testing/font-scale';
 import { expectNativeTarget } from '@/testing/touch-target';
 import { usePlayerSheets } from '@/components/player/player-sheets';
 import { useReachability } from '@/api/reachability';
@@ -172,6 +173,7 @@ describe('dockLayout', () => {
         scrubber: false,
         centre: 228,
         centred: false,
+        stacked: false,
       });
     },
   );
@@ -183,6 +185,7 @@ describe('dockLayout', () => {
       scrubber: false,
       centre: 228,
       centred: true,
+      stacked: false,
     });
     // And at every width above it, with or without the scrubber row, whatever the actions.
     const offCentre: number[] = [];
@@ -191,9 +194,100 @@ describe('dockLayout', () => {
     }
     expect(offCentre).toEqual([]);
   });
+
+  it('puts the transport below the book and actions only where large text leaves no equal columns', () => {
+    expect(dockLayout(640, 2)).toMatchObject({ centred: false, stacked: true });
+    expect(dockLayout(1500, 2)).toMatchObject({ centred: true, stacked: false });
+    // The default size gives up the centre at 640 but keeps one row.
+    expect(dockLayout(640)).toMatchObject({ centred: false, stacked: false });
+  });
+
+  it('stacks below large text where the grown transport and actions leave the book no room', () => {
+    // A 20 px browser font: 576 inner, a 285 transport and about 275 of actions left the
+    // book about 16 px (and less with a running sleep pill), so the columns overlapped.
+    expect(dockLayout(640, 1.25)).toMatchObject({ centred: false, stacked: true });
+    // A wider dock still has room for the book beside them.
+    expect(dockLayout(760, 1.1)).toMatchObject({ stacked: false });
+    // Never at the default size or below, at any width.
+    for (let width = 600; width <= 1440; width += 4) {
+      expect(dockLayout(width).stacked).toBe(false);
+      expect(dockLayout(width, 0.85).stacked).toBe(false);
+    }
+  });
+
+  it('never squeezes or hides the scrubber from 800: larger text stacks it instead', () => {
+    // A 32 px font at 1280 left the scrubber a 30 px stub between its labels; a 20 px font
+    // hid it on 800 and 832 docks, which show it at the default size.
+    expect(dockLayout(1280, 2)).toEqual({
+      allActions: false,
+      scrubber: true,
+      centre: 560,
+      centred: false,
+      stacked: true,
+    });
+    expect(dockLayout(800, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: true });
+    expect(dockLayout(832, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: true });
+    // Where it fits beside the side columns it stays there, as at the default size.
+    expect(dockLayout(1280, 1.25)).toMatchObject({ scrubber: true, centre: 560, stacked: false });
+    // Its track keeps 100 beside its labels (200 at the default size, grown with the text).
+    for (const scale of [1, 1.1, 1.25, 1.5, 2, 3.1]) {
+      for (let width = 800; width <= 1880; width += 4) {
+        const { scrubber, centre } = dockLayout(width, scale);
+        expect(scrubber).toBe(true);
+        expect(centre - 200 * scale).toBeGreaterThanOrEqual(100);
+      }
+    }
+    // Below 800 the dock has no scrubber at any size.
+    expect(dockLayout(799, 2).scrubber).toBe(false);
+  });
+
+  it('lays out the default size as before the scrubber minimum, at every width', () => {
+    // The scrubber row's minimum (100 + 200) is the default's CENTRE_MIN: nothing moves.
+    for (let width = 600; width <= 1880; width += 2) {
+      const inner = width - 64;
+      const { allActions, scrubber, centre, centred, stacked } = dockLayout(width);
+      expect(allActions).toBe(inner - 780 >= 300);
+      expect(scrubber).toBe(width >= 800);
+      const side = allActions ? 390 : 220;
+      expect(centre).toBe(scrubber ? Math.min(560, Math.max(300, inner - 2 * side)) : 228);
+      expect(centred).toBe(scrubber || inner - 228 >= 2 * side);
+      expect(stacked).toBe(false);
+    }
+  });
 });
 
 describe('DockedPlayer', () => {
+  it('gives the enlarged transport its own row on a narrow dock and grows the bar with it', async () => {
+    try {
+      await setFontScale(2);
+      await renderAt(640);
+      expect(screen.getByTestId('dock-centre')).toHaveStyle({ width: 330 });
+      expect(screen.getByLabelText('Play')).toHaveStyle({ height: 66, width: 66 });
+      expect(screen.getByTestId('dock-row').props.className).not.toContain('flex-row');
+      expect(screen.getByTestId('dock-row')).toHaveStyle({ minHeight: 84 });
+      // Room above and below, so the window's bottom edge never cuts the play button.
+      expect(screen.getByTestId('dock-row')).toHaveStyle({ paddingVertical: 8 });
+      // The same beside the book and actions, where the grown transport is the tallest.
+      await renderAt(1500);
+      expect(screen.getByTestId('dock-row').props.className).toContain('flex-row');
+      expect(screen.getByTestId('dock-row')).toHaveStyle({ paddingVertical: 8 });
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
+  it('gives the transport and a full-size scrubber their own row where the text leaves no room', async () => {
+    try {
+      await setFontScale(2);
+      await renderAt(1280);
+      expect(screen.getByTestId('dock-centre')).toHaveStyle({ width: 560 });
+      expect(screen.getByTestId('dock-row').props.className).not.toContain('flex-row');
+      expect(screen.getByText('47m left at 1.25×')).toBeTruthy();
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   it('carries every action on a wide bar, all labelled', async () => {
     await renderAt(1280);
     for (const label of [
@@ -395,6 +489,7 @@ describe('DockedPlayer', () => {
     expect(screen.getByTestId('dock-book').props.className).toContain('p-1.5');
     expect(screen.getByTestId('dock-actions').props.className).toContain('px-1.5');
     expect(screen.getByTestId('dock-row').props.style).toMatchObject({ paddingHorizontal: 16 });
+    expect(screen.getByTestId('dock-row').props.style.paddingVertical).toBeUndefined();
     expect(screen.getByTestId('dock-centre').props.style).toMatchObject({ width: 436 });
     expect(screen.getByTestId('dock-centre').props.className).toContain('shrink-0');
   });

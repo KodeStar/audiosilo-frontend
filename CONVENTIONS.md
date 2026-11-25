@@ -5005,16 +5005,23 @@ tokens, type and components; its section 17 maps them onto these files.
   - **Controls scale, capped**: the player's transport and scrubber follow the scale up to
     `CONTROL_MAX_SCALE` (1.5) and shrink back to fit the room (`controlScale(size, scale,
     room)`, `transport-controls.tsx`), so the player fits a 320-wide phone at the largest
-    size; the dock's `sm` transport is not scaled. A px-sized label inside a fixed control
+    size. The full player measures its controls column. The dock reserves the scaled width of its
+    transport and moves it, with the scrubber, to its own row below the book and actions whenever
+    text above the default size leaves the row too little room (`dockLayout`, `SCRUBBER_MIN` plus
+    `SCRUBBER_LABELS`), never shrinking or hiding the scrubber instead. A px-sized label inside a fixed control
     (the skip number) sets `allowFontScaling={false}` and sizes itself with `scaleCapped`
     so the scale is not applied twice; its box takes a min width, never a fixed one.
   - **Text that stops growing**: `display` and `display-xl` titles stop at 2x
     (`DISPLAY_MAX_FONT_SCALE`, `text.tsx`; at iOS's AX5 one word broke mid-word; the web
-    ignores `maxFontSizeMultiplier`, so there the variants cap in CSS,
-    `web:text-[length:min(1.875rem,60px)]`, and a caller sizing a display title twins its
-    size and leading the same capped way), and the
-    Android tab bar's labels at 1.3x (`tab-label-size.ts`: the Material bar's labels are sp
-    with no limit). Elsewhere prefer a row that stacks or a min width over capping: a value
+    ignores `maxFontSizeMultiplier`, so Text supplies a capped CSS unit there).
+    Named title sizes keep their usual classes; their rem leading (14 on native) caps on the
+    web with a `web:` display leading (`text-2xl leading-7 web:leading-display-28`). For a
+    display title drawn in design px,
+    use `text-display-38 leading-display-42`: the utilities take native px and resolve
+    against the capped unit on the web, including at a breakpoint. The
+    Android tab labels grow up to 1.3x; under large text they shrink to fit the widest
+    translated name measured in the system typeface, down to 10 sp (`TAB_LABEL_MIN_SP`),
+    and below it never draw smaller than the system size (a long name ends in "..."). In the iOS tab accessory, a 1.3x cap leaves room for both lines. Elsewhere prefer a row that stacks or a min width over capping: a value
     in a fixed width ("15 / s") is a bug.
   - **px text on the web**: every `text-[Npx]` / `leading-[Npx]` carries a `web:` twin in
     rem, N/16, with the same variants (`text-[13px] web:text-[0.8125rem]`, `lg:text-[17px]
@@ -5657,7 +5664,7 @@ chrome; a tab root fills the rest with `SubNavSections` (its segmented sections)
 (contextual actions, keyed by id and ordered) from `tab-root-nav.tsx`, which publish into the
 `useSubNav` store on tablet/desktop and render in place on a phone; published nodes render in the
 sub-nav's tree, so they must not need the screen's context), banners, the page capped at 1480 (`CONTENT_WIDTH`), the `DrawerSlot` on desktop (Up next's drawer, below),
-and `DockedPlayer` (84) whenever a book is loaded (nothing while the full player is on top, as for
+and `DockedPlayer` (84 minimum) whenever a book is loaded (nothing while the full player is on top, as for
 the mini player and the accessory: `usePlayerOnTop`): the 3 px whole-book line, book + sync state
 (`usePlaceSync`, shared with the full player's status line: sign in again > saved on this device
 (offline, or saves queued) > synced / synced just now), `TransportControls size="sm"` over a chapter
@@ -5665,13 +5672,15 @@ scrubber with bookmark ticks (`usePlayingSegment`; the dock's one `usePlayingPin
 speed, sleep (`SleepTimerButton`, `useSleepPill`: `brand-soft` + countdown while running), bookmark
 (`addBookmarkHere`), output (`canRoutePick`), Up next and expand. The player controls share one chrome
 (`control-pill.tsx`: `pillClass` / `ControlPill`). What fits is decided by its MEASURED width
-(`dockLayout`: all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
+(`dockLayout`: at default text size, all actions from 1144, the tablet set below, no scrubber below 800; everything hidden is
 in the full player). Each side column is sized for its actions with the sleep pill at its widest (a
 running "10:05:00" or "Keep going"): `SIDE_ALL` and `SIDE_TABLET` are px estimates at the default text
-size, not measurements, so the actions keep clear of the transport at that size only. Scaled text (a
-browser font size of 20 px or more, iPad Dynamic Type XXXL and up) widens the pills past the estimates
-and can still put them over the transport; measuring the actions column is the follow-up. Three columns
-(fe#244): the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
+size. The dock scales these estimates with text and reserves the transport's scaled width. When large
+text leaves too little space for equal sides, the transport sits below the book and actions and the
+row grows in height. From 800 the scrubber row never squeezes or hides its track: `SCRUBBER_MIN` (100)
+plus its labels (`SCRUBBER_LABELS`, about 200 at the default size, scaled with text, so the two fill
+`CENTRE_MIN` and the default layout is unchanged); where larger text leaves less between the side
+columns, the transport and scrubber take their own row, `CENTRE_MAX` wide (wider where the text needs it). At default text size (fe#244), the book and the actions are equal side columns (`flex-1 basis-0`, the same padding both
 sides) and the middle column's width comes from `dockLayout` (`centre`), so the transport is centred on
 the bar whatever the title, actions or sleep countdown. The one exception is `dockLayout`'s `centred:
 false`, a bar of 640 to 731: with no scrubber row an equal side column, (width - 292) / 2, is narrower

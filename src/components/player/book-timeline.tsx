@@ -10,6 +10,7 @@ import {
   type ScaleState,
 } from '@/components/home/now-card-model';
 import { Icon } from '@/components/ui/icon';
+import { TrackOutline } from '@/components/ui/progress-bar';
 import { FOCUS_RING_CLASS, Text } from '@/components/ui/text';
 import { useSliderControl } from '@/components/ui/use-slider-control';
 import { chapterLabel } from '@/lib/chapter-label';
@@ -43,10 +44,12 @@ const PIN_ROOM = PIN_HEAD + 4;
 const HEAD_W = 3;
 const HEAD_OVER = 4;
 
+/** Past chapters in ink, the current one in a pink tint under its heard part, the chapters
+ * ahead on the track colour (a non-text contrast token, outlined in high contrast). */
 const SEGMENT_CLASS: Record<ScaleState, string> = {
   past: 'bg-foreground/35',
   current: 'bg-brand/25',
-  ahead: 'bg-muted-foreground/15',
+  ahead: 'bg-track',
 };
 
 /** A pin head (a teardrop pointing down at its place) and its stem. */
@@ -117,6 +120,7 @@ const Segment = memo(function Segment({
         className={cn('flex-1 overflow-hidden rounded-[3px]', SEGMENT_CLASS[state])}
         style={{ marginRight: gap }}
       >
+        {state !== 'past' ? <TrackOutline rounded="rounded-[3px]" /> : null}
         {played > 0 ? (
           <View className="h-full rounded-[3px] bg-brand" style={{ width: `${played * 100}%` }} />
         ) : null}

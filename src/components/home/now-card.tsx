@@ -382,7 +382,7 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
               ) : null}
               <Text
                 variant="display"
-                className="text-[24px] web:text-[length:min(1.5rem,48px)] leading-[26px] web:leading-[length:min(1.625rem,52px)]"
+                className="text-display-24 leading-display-26"
                 numberOfLines={linesFor(3, large)}
               >
                 {title}
@@ -408,7 +408,7 @@ function NowCardBody({ at, saved, playable }: NowCardProps) {
             ) : null}
             <Text
               variant="display"
-              className="text-[36px] web:text-[length:min(2.25rem,72px)] leading-[38px] web:leading-[length:min(2.375rem,76px)] tracking-tighter"
+              className="text-display-36 leading-display-38 tracking-tighter"
               numberOfLines={3}
             >
               {title}

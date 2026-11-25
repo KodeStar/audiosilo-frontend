@@ -33,7 +33,9 @@ describe('toast / ToastHost', () => {
       id = toast({ title: 'Bookmark added', description: 'At 41:12 in chapter 23' });
     });
     expect(screen.getByText('Bookmark added')).toBeTruthy();
-    expect(screen.getByText('At 41:12 in chapter 23')).toBeTruthy();
+    expect(screen.getByText('At 41:12 in chapter 23').props.className).toContain(
+      'text-primary-muted-foreground',
+    );
     expect(screen.getByLabelText('Notifications')).toHaveProp('accessibilityLiveRegion', 'polite');
 
     await act(async () => {

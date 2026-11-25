@@ -35,7 +35,6 @@ import {
   scaledTransportWidth,
   TransportControls,
   transportDims,
-  transportWidth,
 } from './transport-controls';
 /* eslint-enable import/first */
 
@@ -151,14 +150,14 @@ describe('the transport grows with the text size (fe#267)', () => {
   });
 
   it('shrinks a transport wider than its column at the default size, to a floor', () => {
-    expect(transportWidth('md')).toBe(286);
+    expect(scaledTransportWidth('md')).toBe(286);
     const scale = controlScale('md', 1, 280);
     expect(scale).toBeLessThan(1);
     expect(scaledTransportWidth('md', scale)).toBeLessThanOrEqual(280);
     expect(controlScale('md', 1, 100)).toBe(0.9);
   });
 
-  it('draws the full player bigger at a large text size, the dock not', async () => {
+  it('grows the full player and the dock when there is room', async () => {
     await setFontScale(2);
     await render(<TransportControls size="md" room={600} />);
     const play = screen.getByRole('button', { name: 'Play' });
@@ -168,10 +167,10 @@ describe('the transport grows with the text size (fe#267)', () => {
     expect(StyleSheet.flatten(screen.getByText('-15s').props.style)).toMatchObject({
       fontSize: 23,
     });
-    await render(<TransportControls size="sm" />);
+    await render(<TransportControls size="sm" room={350} />);
     expect(
       StyleSheet.flatten(screen.getByRole('button', { name: 'Play' }).props.style),
-    ).toMatchObject({ width: 44, height: 44 });
+    ).toMatchObject({ width: 66, height: 66 });
   });
 });
 

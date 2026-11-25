@@ -14,7 +14,9 @@ jest.mock('@/lib/layout', () => ({
 import { formatReleaseDate } from '@/lib/format';
 
 import type { SeriesEntry } from './series-model';
-import { EntryList, ShelfCaption } from './series-parts';
+import { ThemeColorsProvider } from '@/theme/use-theme-colors';
+
+import { EntryList, ProgressTrack, ShelfCaption } from './series-parts';
 /* eslint-enable import/first */
 
 // A ghost's release date (Track U2): "Out <date>" while it is ahead (the model sets
@@ -31,6 +33,26 @@ const ghost = (over: Partial<SeriesEntry>): SeriesEntry =>
     finished: false,
     ...over,
   }) as SeriesEntry;
+
+it('outlines the unused part of the series track in high contrast', async () => {
+  await render(
+    <ThemeColorsProvider highContrast>
+      <ProgressTrack
+        label="50%"
+        segments={[
+          { key: '1', flex: 1, state: 'partial', fraction: 0.5 },
+          { key: '2', flex: 1, state: 'unread', fraction: 0 },
+          { key: '3', flex: 1, state: 'finished', fraction: 1 },
+          { key: '4', flex: 1, state: 'missing', fraction: 0 },
+        ]}
+      />
+    </ThemeColorsProvider>,
+  );
+  const outlines = screen.getAllByTestId('track-outline', { includeHiddenElements: true });
+  expect(outlines).toHaveLength(2);
+  for (const outline of outlines) expect(outline.parent?.props.className).toContain('bg-track');
+  expect(outlines[0].parent?.children[1]).toHaveStyle({ width: '50%' });
+});
 
 describe('a ghost with a release date', () => {
   it('says "Out <date>" in the list while its release is ahead', async () => {

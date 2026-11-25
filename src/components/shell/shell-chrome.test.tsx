@@ -1,5 +1,5 @@
-import { fireEvent, render, screen } from '@testing-library/react-native';
-import { Platform, Text, View } from 'react-native';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { Dimensions, Platform, Text, View } from 'react-native';
 import type { StoreApi, UseBoundStore } from 'zustand';
 
 // --- router -------------------------------------------------------------------------
@@ -107,12 +107,15 @@ jest.mock('@/components/upnext/up-next-button', () => {
 });
 
 /* eslint-disable import/first */
+import { switchLanguage } from '@/i18n';
+import { setFontScale } from '@/testing/font-scale';
 import { useSleepTimer } from '@/playback/sleep-timer';
 import { usePlayer } from '@/playback/store';
 import { useSearchStore } from '@/stores/search';
 import { useSession } from '@/stores/session';
 import { ThemeColorsProvider } from '@/theme/use-theme-colors';
 
+import { useAndroidTabLabels } from './android-tab-labels';
 import { AccessoryPlayer } from './accessory-player';
 import { DockedPlayer } from './docked-player';
 import { usePalette } from './palette-store';
@@ -154,6 +157,29 @@ describe('PhoneTabBar', () => {
     expect(screen.getByLabelText('Home')).not.toBeSelected();
   });
 
+  it('keeps each label in its fifth below large text and lets large labels wrap', async () => {
+    await render(<PhoneTabBar />);
+    // A label too long for its slot ends in "..." instead of widening the tab: French
+    // "Téléchargements" at a 20 px browser font pushed "Moi" off a 320 px screen.
+    expect(screen.getByText('Downloads').props.numberOfLines).toBe(1);
+    expect(screen.getByText('Downloads').props.style).toBeUndefined();
+    expect(screen.getByLabelText('Downloads').props.className).not.toMatch(/min-w|basis-auto/);
+    try {
+      await setFontScale(2);
+      expect(screen.getByText('Downloads').props.numberOfLines).toBeUndefined();
+      // It wraps between words only: a word wider than its slot ends in "..." (French
+      // "Accueil" broke as "Accue/il" at 32 px on a 320 px screen).
+      expect(screen.getByText('Downloads')).toHaveStyle({
+        wordWrap: 'normal',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+      });
+      expect(screen.getByLabelText('Downloads').props.className).toContain('basis-auto');
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   it('jumps to another tab (keeping its stack) and pops the active one to its root', async () => {
     await render(<PhoneTabBar />);
     await fireEvent.press(screen.getByLabelText('Search'));
@@ -165,6 +191,45 @@ describe('PhoneTabBar', () => {
     await fireEvent.press(screen.getByLabelText('Home'));
     expect(mockPressActiveTab).toHaveBeenCalledWith('(home)');
     expect(mockRouter.navigate).not.toHaveBeenCalled();
+  });
+});
+
+describe('Android tab label measurement', () => {
+  it('feeds the translated system-font measurement back into the native bar', async () => {
+    function Labels() {
+      const { probe, labelStyle } = useAndroidTabLabels();
+      return (
+        <>
+          {probe}
+          <Text testID="drawn-size" style={labelStyle} />
+        </>
+      );
+    }
+    try {
+      await act(async () => {
+        await switchLanguage('fr');
+      });
+      await render(<Labels />);
+      const probe = screen.getByText(/Téléchargements/, { includeHiddenElements: true });
+      expect(probe).toHaveProp('allowFontScaling', false);
+      expect(screen.queryByText(/Téléchargements/)).toBeNull();
+      const slot = Dimensions.get('window').width / 5;
+      // Too wide for the slot at 12 sp, narrow enough at the 10 sp floor.
+      const measured = Math.ceil(slot * 1.1);
+      await fireEvent(probe, 'layout', { nativeEvent: { layout: { width: measured } } });
+      // The default text size keeps the system's 12 sp (the name ends in "...").
+      expect(screen.getByTestId('drawn-size').props.style.fontSize).toBeCloseTo(12, 2);
+      await setFontScale(2);
+      const drawn = screen.getByTestId('drawn-size').props.style.fontSize * 2;
+      expect(drawn).toBeLessThan(12);
+      expect(drawn).toBeGreaterThanOrEqual(10);
+      expect((drawn * measured) / 12).toBeLessThan(slot);
+    } finally {
+      await setFontScale(1);
+      await act(async () => {
+        await switchLanguage('en');
+      });
+    }
   });
 });
 
@@ -193,6 +258,12 @@ describe('TopBar', () => {
     expect(screen.getByText('Hearthside + 1 more')).toBeTruthy();
     expect(screen.getByText('chris')).toBeTruthy();
     expect(screen.getByText('upnext-bar')).toBeTruthy();
+  });
+
+  it('is at least 64 tall, so larger text grows it rather than cutting the name', async () => {
+    await render(<TopBar />);
+    expect(screen.getByTestId('top-bar-row').props.className).toContain('min-h-[64px]');
+    expect(screen.getByTestId('top-bar-row').props.className).not.toMatch(/(^| )h-\[64px\]/);
   });
 
   it('drops the destination labels on a tablet', async () => {

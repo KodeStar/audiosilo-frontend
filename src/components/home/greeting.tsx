@@ -155,7 +155,7 @@ export function Greeting({
         <Text
           variant="display"
           accessibilityRole="header"
-          className="text-[38px] web:text-[length:min(2.375rem,76px)] leading-[42px] web:leading-[length:min(2.625rem,84px)]"
+          className="text-display-38 leading-display-42"
         >
           {greeting}
         </Text>

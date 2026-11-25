@@ -8,3 +8,6 @@ import { Platform } from 'react-native';
  */
 export const ACCESSORY_SUPPORTED =
   Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) >= 26;
+
+/** Two lines must share the system's roughly 48 pt accessory, including its progress line. */
+export const ACCESSORY_TEXT_MAX_SCALE = 1.3;

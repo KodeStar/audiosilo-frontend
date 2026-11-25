@@ -1,14 +1,24 @@
 import { useTranslation } from 'react-i18next';
 import { useState } from 'react';
-import { Text as RNText, View } from 'react-native';
+import { Text as RNText, type TextStyle, View } from 'react-native';
 
 import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Icon } from '@/components/ui/icon';
 import { SafeAreaView } from '@/components/ui/safe-area-view';
+import { linesFor, useLargeText } from '@/lib/text-scale';
+import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { PHONE_TABS, useTabPress } from './destinations';
 import { useChromeEdge } from './shell-metrics';
+
+// Under large text a label wraps between words only: react-native-web's Text breaks inside a
+// word ("Accue/il"), so a word wider than its slot ends in "..." on its line instead.
+const LARGE_LABEL_STYLE = {
+  wordWrap: 'normal',
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+} as TextStyle;
 
 /**
  * The phone tab bar on web (iOS and Android use the native tab bar): the five
@@ -18,6 +28,7 @@ import { useChromeEdge } from './shell-metrics';
  */
 export function PhoneTabBar() {
   const { t } = useTranslation();
+  const large = useLargeText();
   const [height, setHeight] = useState<number>();
   useChromeEdge('bar', height);
   const themed = useThemeColors();
@@ -40,18 +51,24 @@ export function PhoneTabBar() {
               accessibilityRole="tab"
               aria-selected={selected}
               accessibilityLabel={label}
-              className="min-h-[44px] flex-1 items-center justify-center gap-0.5 rounded-control py-1"
+              className={cn(
+                'min-h-[44px] flex-1 items-center justify-center gap-0.5 rounded-control py-1',
+                large && 'min-w-[44px] basis-auto px-[2px]',
+              )}
             >
               <Icon
                 name={d.icon}
                 size={22}
                 color={selected ? themed.brand : themed.mutedForeground}
               />
-              {/* The label follows the browser's text size up to 13.5 px (about 1.3x): its slot
-                  is a fifth of the width and cannot grow, and "Downloads" fills it there. */}
+              {/* The label follows the browser's text size up to 13.5 px (about 1.3x). Below
+                  large text its slot is a fifth of the width and a long name ends in "...", so
+                  no tab is pushed off screen; under large text a long label can borrow space
+                  from its neighbours or wrap between words. */}
               <RNText
-                numberOfLines={1}
-                className={`font-sans-semibold text-[10.5px] web:text-[length:min(0.65625rem,13.5px)] ${
+                numberOfLines={linesFor(1, large)}
+                style={large ? LARGE_LABEL_STYLE : undefined}
+                className={`${large ? 'max-w-full text-center ' : ''}font-sans-semibold text-[10.5px] web:text-[length:min(0.65625rem,13.5px)] ${
                   selected ? 'text-foreground' : 'text-muted-foreground'
                 }`}
               >
