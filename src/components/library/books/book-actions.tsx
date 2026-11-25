@@ -34,6 +34,7 @@ import { dismissToast, toast } from '@/components/ui/toast';
 import { playFailedToast } from '@/components/player/play-failed';
 import { useDownloadControls } from '@/downloads/use-download-controls';
 import type { PendingEpisodeFetch } from '@/playback/episode-fetch';
+import type { PlacedProgress } from '@/playback/progress-sync';
 import {
   finishTakesEvent,
   leaveFinishedBook,
@@ -90,7 +91,19 @@ const DOWNLOAD_ACTION = {
   start: { icon: 'download', label: 'library.bookActions.download' },
 } as const satisfies Record<string, { icon: IconName; label: string }>;
 
-type Target = { connectionId: string; libraryId: number; book: Book; progress?: Progress };
+type Target = { connectionId: string; libraryId: number; book: Book; progress?: PlacedProgress };
+
+/** The place a Mark as finished replaces as far as the page knows: the further of its
+ * progress and the server's own row beside it (`PlacedProgress.server`, there when the page
+ * shows this device's newer record), unfinished ones only. Its Undo never goes behind it:
+ * another device's further place, stamped before this device's, is the server's all the
+ * same. */
+function heldPlace(progress: PlacedProgress | undefined): number | undefined {
+  const places = [progress, progress?.server]
+    .filter((p): p is Progress => !!p && !p.finished)
+    .map((p) => p.position);
+  return places.length > 0 ? Math.max(...places) : undefined;
+}
 
 /** The dialogs an action opens, which the menu's owner renders. */
 export type BookActionDialogs = { openCollect: () => void; confirmRemove: () => void };
@@ -262,9 +275,9 @@ export function useBookActions(
     // The loaded book stops first, its place saved before the finish (fe#258). That place is
     // the one Undo goes back to: the page's progress was read before that listening, and with
     // the book unloaded no later save moves an Undo there. A save skipped (another tab played
-    // since) still names the place the store held, never behind the page's (`held`, the
-    // server's as read). The page's progress alone only for a book that was not loaded.
-    const held = progress && !progress.finished ? progress.position : undefined;
+    // since, a guarded resume) still names the place the store held, never behind the one
+    // the server held (`heldPlace`). That place alone for a book that was not loaded.
+    const held = heldPlace(progress);
     const { left, recorded } = await leaveFinishedBook({ ...ref, held })
       .then(async (left) => ({ left, recorded: await recordFinished() }))
       .finally(settled);
@@ -272,7 +285,7 @@ export function useBookActions(
       await reloadLeftBook(ref);
       return;
     }
-    const place = { position: left ?? progress?.position ?? 0, before: recorded.before };
+    const place = { position: left ?? held ?? progress?.position ?? 0, before: recorded.before };
     const undo = () => void unfinish(place, t('library.bookActions.undoUnreachable'), undo);
     toast({
       title: t('library.bookActions.markedFinished'),
