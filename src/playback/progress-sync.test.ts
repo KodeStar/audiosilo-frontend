@@ -632,6 +632,29 @@ describe('progress-sync', () => {
     }
   });
 
+  it('announces the finishes one replay lands together, once', async () => {
+    const delivered = jest.fn();
+    const stop = onFinishDelivered(delivered);
+    const api = fakeApi(() => Promise.resolve());
+    const finish = { ...save, finished: true, position: save.duration };
+    const other = { ...finish, path: 'Other/Book' };
+    routeClients({ c1: api });
+    try {
+      reachable.mockReturnValue(false);
+      await saveProgress(api, finish);
+      await saveProgress(api, other);
+      reachable.mockReturnValue(true);
+      await flushQueue('c1');
+      expect(delivered).toHaveBeenCalledTimes(1);
+      expect(delivered).toHaveBeenCalledWith('c1', [
+        expect.objectContaining({ path: save.path }),
+        expect.objectContaining({ path: 'Other/Book' }),
+      ]);
+    } finally {
+      stop();
+    }
+  });
+
   it('a capture after a no-edit Undo only advances the restored place', async () => {
     const prior = { ...save, position: 40 };
     await writeMirror(prior);

@@ -1419,12 +1419,15 @@ export type SaveOutcome = 'saved' | 'queued' | 'held' | 'dropped';
 
 /** Send a live or replayed capture only through its own sign-in. A guard read can outlast
  * account removal, as can the PUT itself. A guarded save is always checked first, also at a
- * sign-out's last flush: a held one is never PUT (`flushGroup`). */
+ * sign-out's last flush: a held one is never PUT (`flushGroup`). A finish that lands is
+ * announced (`finishDelivered`), or gathered into `delivered` for the caller to announce
+ * once (a replay's group). */
 async function putSave(
   client: ApiClient,
   save: ProgressSave,
   current: () => boolean,
   reuseMs?: number,
+  delivered?: ProgressSave[],
 ): Promise<'held' | 'saved' | 'dropped'> {
   const allowed = await guardPasses(client, save, current, reuseMs);
   if (!current()) return 'dropped';
@@ -1432,7 +1435,10 @@ async function putSave(
   await client.saveProgress(save.libraryId, save.path, putBody(save));
   if (!current()) return 'dropped';
   notePut(save);
-  if (save.finished) finishDelivered(save.connectionId, [save]);
+  if (save.finished) {
+    if (delivered) delivered.push(save);
+    else finishDelivered(save.connectionId, [save]);
+  }
   noteSuccess(save.connectionId);
   return 'saved';
 }
@@ -1549,6 +1555,8 @@ async function flushGroup(
   const current = () => connectionGeneration(cid) === since;
   const client = liveClient(cid) ?? routed;
   const remaining: ProgressSave[] = [];
+  // The finishes this replay landed: the lists, stats and goal read again once for them all.
+  const delivered: ProgressSave[] = [];
   // Stop the group only when the server is UNREACHABLE (no point hammering the rest of
   // it) or asked to wait (a 429: later replays wait out its `Retry-After`, `queuedRoute`); a
   // per-save server error still lets the rest of the group through.
@@ -1572,7 +1580,7 @@ async function flushGroup(
       // server as events, which the server resolves against that place.
       // Checked on a fresh read then, unless the stop's own save just read it.
       const reuseMs = lastChance ? LAST_CHANCE_RECHECK_MS : undefined;
-      const outcome = await putSave(client, save, current, reuseMs);
+      const outcome = await putSave(client, save, current, reuseMs, delivered);
       if (outcome === 'held' && !lastChance) remaining.push(save);
     } catch (e) {
       if (!current() || isRefusedForGood(e)) continue;
@@ -1583,6 +1591,7 @@ async function flushGroup(
       if (stopsReplay(cid, e)) stop = true;
     }
   }
+  if (delivered.length > 0 && current()) finishDelivered(cid, delivered);
   return remaining;
 }
 
