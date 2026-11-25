@@ -74,7 +74,16 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
       await routed;
-      if (!DEV) await installBuild();
+      if (!DEV) {
+        try {
+          await installBuild();
+        } catch (error) {
+          // A failed install keeps the working worker. With none (a first visit), install
+          // anyway: downloaded media plays only through a worker, and the next online page
+          // of this build completes the precache (`repairBuild`).
+          if (self.registration.active) throw error;
+        }
+      }
       await self.skipWaiting();
     })(),
   );

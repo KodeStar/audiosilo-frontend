@@ -37,8 +37,9 @@ class FakeResponse {
 }
 
 /** A worker with its caches and a network that is up (`online`) or down; `served` is what
- * the server answers per url (a 404 for anything else). */
-function worker({ online = true, served = {} as Record<string, string> } = {}) {
+ * the server answers per url (a 404 for anything else); `active`: another worker of the
+ * registration is already working (an update, not a first visit). */
+function worker({ online = true, served = {} as Record<string, string>, active = false } = {}) {
   const handlers = new Map<string, Handler>();
   const stores = new Map<string, Map<string, FakeResponse>>();
   const net = { online };
@@ -73,7 +74,7 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
   };
   const self = {
     location: { href: `${SCOPE}sw.js`, origin: 'https://h' },
-    registration: { scope: SCOPE },
+    registration: { scope: SCOPE, active: active ? {} : null },
     addEventListener: (type: string, fn: Handler) => handlers.set(type, fn),
     skipWaiting: async () => {},
     clients: { claim: async () => {} },
@@ -144,6 +145,18 @@ describe('sw.js', () => {
     sw.net.online = false;
     const res = await sw.navigate(READER, 'iframe');
     expect(res?.body).toBe('<reader>');
+  });
+
+  it('installs on a first visit whose precache fails, so downloaded media still plays', async () => {
+    // The server's root is not this build's shell: nothing is kept, yet the worker installs.
+    const sw = worker({ served: { [SCOPE]: '<p>another build</p>' } });
+    await sw.dispatch('install');
+    expect(sw.cached(SCOPE)).toBeUndefined();
+  });
+
+  it('fails an update whose precache fails, keeping the working worker', async () => {
+    const sw = worker({ served: { [SCOPE]: '<p>another build</p>' }, active: true });
+    await expect(sw.dispatch('install')).rejects.toThrow('does not match build');
   });
 
   it('still installs with the shell when the server has no reader (an older server)', async () => {

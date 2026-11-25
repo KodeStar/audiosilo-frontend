@@ -162,8 +162,9 @@ can never log anyone out (`{ authReset, cacheReset }`):
   resolved non-English language in `?lang=`. The worker's bytes change with the build.
   Installation fetches at most four files at a time, starting with the current catalog and
   startup files. Other catalogs load when used. Fonts and the reader document are optional.
-  A failed required transfer stops the install and leaves the prior worker active. A build
-  cache another worker deleted (the admin console's, scope `/`, on activation) is installed
+  A failed required transfer stops the install and leaves the prior worker active; with no
+  prior worker (a first visit) the worker installs anyway, so downloaded media plays, and its
+  next online page completes the precache. A build cache another worker deleted (the admin console's, scope `/`, on activation) is installed
   again at the next online page of that build (`repairBuild`). Once the new build is complete,
   an open tab can still load the previous build's hashed files. The upgrade from
   `audiosilo-shell-v1` also discards stale pages and the old build record. Downloaded media
