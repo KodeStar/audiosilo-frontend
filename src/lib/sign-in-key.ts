@@ -6,12 +6,15 @@ const SIGN_IN_KEYS = 'audiosilo.signInKeys';
 /** The keys kept, by server address: read from storage once a launch. */
 let kept: Promise<Record<string, string>> | null = null;
 
+async function storedKeys(): Promise<Record<string, string>> {
+  const stored = await getItem<unknown>(SIGN_IN_KEYS);
+  return stored && typeof stored === 'object' && !Array.isArray(stored)
+    ? { ...(stored as Record<string, string>) }
+    : {};
+}
+
 function readKeys(): Promise<Record<string, string>> {
-  kept ??= getItem<unknown>(SIGN_IN_KEYS).then((stored) =>
-    stored && typeof stored === 'object' && !Array.isArray(stored)
-      ? { ...(stored as Record<string, string>) }
-      : {},
-  );
+  kept ??= storedKeys();
   return kept;
 }
 
@@ -29,6 +32,12 @@ export async function getSignInKey(serverUrl: string): Promise<string> {
   const address = serverUrl.replace(/\/+$/, '');
   const known = keys[address];
   if (typeof known === 'string' && known) return known;
+  // Read again before adding one: another tab may have stored keys since this one read
+  // them, and writing this launch's copy back would lose them (a lost exchange's retry
+  // there would then go with a key the server never saw).
+  for (const [at, stored] of Object.entries(await storedKeys())) keys[at] ??= stored;
+  const now = keys[address];
+  if (typeof now === 'string' && now) return now;
   const key = toHex(randomBytes(16));
   keys[address] = key;
   await setItem(SIGN_IN_KEYS, keys);
