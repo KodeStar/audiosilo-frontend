@@ -123,7 +123,7 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
   return { dispatch, navigate, cached, net, fetch };
 }
 
-// The shell names one build chunk, which the install precaches with it.
+// The manifest's one start chunk, which the shell must name for the install to keep it.
 const ENTRY = `${SCOPE}_expo/static/js/web/entry-abc.js`;
 const SHELL_HTML = '<script src="/web/_expo/static/js/web/entry-abc.js"></script>';
 const SHELL_ONLY = { [SCOPE]: SHELL_HTML, [ENTRY]: '' };

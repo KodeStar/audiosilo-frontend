@@ -20,9 +20,12 @@ function setup(readyState: DocumentReadyState, dev: boolean, language = 'en', se
   return register;
 }
 
+/** Let the registration's awaits (the saved language) settle. */
+const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
+
 it('registers even if the export has already fired load', async () => {
   const register = setup('complete', false);
-  await Promise.resolve();
+  await settle();
   expect(register).toHaveBeenCalledWith('/web/sw.js');
 });
 
@@ -30,7 +33,7 @@ it('waits for load, registering with the resolved language for the offline preca
   const register = setup('loading', false, 'fr');
   expect(register).not.toHaveBeenCalled();
   window.dispatchEvent(new Event('load'));
-  await Promise.resolve();
+  await settle();
   expect(register).toHaveBeenCalledWith('/web/sw.js?lang=fr');
 });
 
@@ -40,6 +43,6 @@ it('uses media-only mode in dev, whatever the language', () => {
 
 it('skips registration on an insecure page', async () => {
   const register = setup('complete', false, 'en', false);
-  await Promise.resolve();
+  await settle();
   expect(register).not.toHaveBeenCalled();
 });

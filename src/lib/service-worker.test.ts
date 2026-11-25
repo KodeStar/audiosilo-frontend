@@ -6,8 +6,9 @@ import path from 'node:path';
 import vm from 'node:vm';
 
 // public/sw.js run in a sandbox with an in-memory Cache Storage and a fake network: its
-// precache of the split web build (`precacheBuild`) and the cache-first serving of the
-// build's hashed files (`cacheFirst`).
+// precache of the split web build from its manifest (`installBuild`), the retirement of
+// older builds (`retireBuilds`) and the cache-first serving of the build's hashed files
+// (`cacheFirst`).
 
 const SCOPE = 'https://box.test/web/';
 const SW_SOURCE = fs.readFileSync(path.join(__dirname, '../../public/sw.js'), 'utf8');

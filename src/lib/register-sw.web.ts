@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { FALLBACK_CODE } from '@/i18n';
 import { readLanguagePref, resolveLanguage } from '@/i18n/language-provider';
 
 import { BASE_URL, IS_DEV } from './base-url';
@@ -12,16 +13,21 @@ import { BASE_URL, IS_DEV } from './base-url';
 // only serves downloaded media and leaves the app shell alone - otherwise its
 // asset caching would fight Metro's hot reloading.
 
+/** An installing worker cannot read localStorage. Tell it which catalog to keep for an
+ * offline launch, even when this visit loaded it before a worker took control. The
+ * bundled language has none. */
+async function languageQuery(): Promise<string> {
+  const lang = resolveLanguage(await readLanguagePref());
+  return lang === FALLBACK_CODE ? '' : '?lang=' + encodeURIComponent(lang);
+}
+
 export function registerServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   if (typeof window !== 'undefined' && !window.isSecureContext) return;
 
   const register = async () => {
     try {
-      // An installing worker cannot read localStorage. Tell it which catalog to keep
-      // for an offline launch, even when this visit loaded it before a worker took control.
-      const lang = IS_DEV ? 'en' : resolveLanguage(await readLanguagePref());
-      const query = IS_DEV ? '?dev=1' : lang === 'en' ? '' : '?lang=' + encodeURIComponent(lang);
+      const query = IS_DEV ? '?dev=1' : await languageQuery();
       await navigator.serviceWorker.register(BASE_URL + '/sw.js' + query);
     } catch (err) {
       console.warn('[sw] registration failed', err);

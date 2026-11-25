@@ -118,14 +118,12 @@ self.addEventListener('fetch', (event) => {
 
 // --- app shell -------------------------------------------------------------
 
-/** The ebook reader's document (`<scope>reader.html`, public/reader.html). */
-function readerDocumentUrl() {
-  return new URL('reader.html', self.registration.scope).href;
-}
+/** The ebook reader's document, relative to the scope (public/reader.html). */
+const READER_DOCUMENT = 'reader.html';
 
 /** Whether `url` is the ebook reader's document. */
 function isReaderDocument(url) {
-  return url.pathname === new URL(readerDocumentUrl()).pathname;
+  return url.pathname === new URL(READER_DOCUMENT, self.registration.scope).pathname;
 }
 
 /** Network first, then this page's own cached copy, then (`shellFallback`) the app shell. */
@@ -225,13 +223,14 @@ function otherBuilds(names) {
   );
 }
 
-/** Only immutable, same-scope build files may be served from a previous generation. */
+/** Only immutable, same-scope build files may be served from a previous generation. The
+ * font rule matches the manifest's (scripts/web-precache.cjs `fonts`): keep them in step. */
 function immutableAsset(url) {
   const { href, search } = new URL(url);
   const scope = self.registration.scope;
   return (
     !search &&
-    (href.startsWith(scope + '_expo/static/') ||
+    (href.startsWith(scope + BUILD_ASSETS.slice(1)) ||
       (href.startsWith(scope + 'assets/') && /\.(ttf|otf|woff2?)$/i.test(href)))
   );
 }
@@ -268,7 +267,7 @@ async function installBuild() {
     ...BUILD.start,
     ...BUILD.fonts,
     ...BUILD.routes,
-    'reader.html',
+    READER_DOCUMENT,
   ];
   const fonts = new Set(BUILD.fonts);
   const pending = files.values();
@@ -276,7 +275,7 @@ async function installBuild() {
     for (const file of pending) {
       const url = new URL(file, scope).href;
       const font = fonts.has(file);
-      const reader = file === 'reader.html';
+      const reader = file === READER_DOCUMENT;
       try {
         // Changing language installs another worker over the same build. Only its
         // missing catalog needs fetching; keep the scripts already compiled here.
@@ -329,10 +328,9 @@ async function retireBuilds() {
       continue;
     }
     const cache = await caches.open(name);
-    for (const request of await cache.keys()) {
-      // Also drops the old worker's build record, stale HTML and one-time addresses.
-      if (!immutableAsset(request.url)) await cache.delete(request);
-    }
+    // Also drops the old worker's build record, stale HTML and one-time addresses.
+    const stale = (await cache.keys()).filter((request) => !immutableAsset(request.url));
+    await Promise.all(stale.map((request) => cache.delete(request)));
   }
 }
 
