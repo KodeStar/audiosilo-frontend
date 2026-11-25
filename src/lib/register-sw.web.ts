@@ -21,6 +21,21 @@ async function languageQuery(): Promise<string> {
   return lang === FALLBACK_CODE ? '' : '?lang=' + encodeURIComponent(lang);
 }
 
+/** A worker from before the build manifest (`sw.js?build=`) precached a newer build only when
+ * a page asked. While the new worker cannot install, that old one keeps working: ask it, or
+ * its offline shell mixes this build's pages with only the chunks it happened to fetch. The
+ * new worker has no message handler, so the ask is never sent to it. */
+function askOldWorkerOnFailedInstall(registration: ServiceWorkerRegistration | undefined) {
+  const installing = registration?.installing;
+  if (!registration || !installing) return;
+  installing.addEventListener('statechange', () => {
+    const { active } = registration;
+    if (installing.state !== 'redundant' || !active) return;
+    if (new URL(active.scriptURL).searchParams.has('build'))
+      active.postMessage({ type: 'precache' });
+  });
+}
+
 export function registerServiceWorker() {
   if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return;
   if (typeof window !== 'undefined' && !window.isSecureContext) return;
@@ -28,7 +43,8 @@ export function registerServiceWorker() {
   const register = async () => {
     try {
       const query = IS_DEV ? '?dev=1' : await languageQuery();
-      await navigator.serviceWorker.register(BASE_URL + '/sw.js' + query);
+      const registration = await navigator.serviceWorker.register(BASE_URL + '/sw.js' + query);
+      if (!IS_DEV) askOldWorkerOnFailedInstall(registration);
     } catch (err) {
       console.warn('[sw] registration failed', err);
     }
