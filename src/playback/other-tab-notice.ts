@@ -2,6 +2,7 @@ import { t } from 'i18next';
 import { AppState } from 'react-native';
 
 import { toast } from '@/components/ui/toast';
+import { isAway } from '@/lib/app-activity';
 import { PROGRESS_MIRROR_KEY } from '@/lib/storage-keys';
 import { onStoredChange } from '@/lib/tab-channel';
 import { onForeground, whenActive } from '@/lib/when-active';
@@ -29,7 +30,7 @@ export function startOtherTabNotice(): () => void {
   });
   const stopShowing = onForeground(showOtherTabsPlace);
   const stopWatching = onStoredChange(PROGRESS_MIRROR_KEY, () => {
-    if (AppState.currentState === 'active') showOtherTabsPlace();
+    if (!isAway()) showOtherTabsPlace();
   });
   return () => {
     cancel();

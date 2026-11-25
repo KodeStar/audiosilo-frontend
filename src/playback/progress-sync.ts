@@ -526,9 +526,7 @@ export function resumeLookupOf(
     return {
       kind: 'progress',
       progress: best,
-      ...(filed?.file && typeof filed.file_pos === 'number'
-        ? { file: { path: filed.file, pos: filed.file_pos } }
-        : {}),
+      ...fileFieldOf(filed),
       ...(unchecked ? { unchecked: true as const } : {}),
     };
   }
@@ -669,6 +667,13 @@ function resumePlaceOf(
   return lookup.kind === 'progress' ? placedOf(lookup) : null;
 }
 
+/** A record's file place (fe#188) as a `PlacedProgress` field; none without both halves. */
+function fileFieldOf(save: Pick<ProgressSave, 'file' | 'file_pos'> | null | undefined) {
+  return save?.file && typeof save.file_pos === 'number'
+    ? { file: { path: save.file, pos: save.file_pos } }
+    : {};
+}
+
 /** The displayed place for an undelivered finish, using Resume's ordering even when a
  * newer row has already arrived. No pending finish on this book leaves its reader alone. */
 export function pendingFinishPlace(
@@ -687,9 +692,7 @@ export function pendingFinishPlace(
   const progress = mirrorAsProgress(libraryId, path, save)!;
   return {
     ...progress,
-    ...(save.file && typeof save.file_pos === 'number'
-      ? { file: { path: save.file, pos: save.file_pos } }
-      : {}),
+    ...fileFieldOf(save),
     ...(server ? { server } : {}),
   };
 }

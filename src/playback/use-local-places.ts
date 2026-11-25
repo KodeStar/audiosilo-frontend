@@ -1,7 +1,7 @@
 import { replaceEqualDeep } from '@tanstack/react-query';
 import { useEffect, useMemo, useSyncExternalStore } from 'react';
 
-import type { Progress } from '@/api/types';
+import type { SourcedProgress } from '@/api/hooks';
 import { sameConnection } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
 
@@ -58,7 +58,6 @@ function subscribe(notify: () => void) {
 
 const emptySubscription = () => () => {};
 
-type ListedPlace = Progress & { connectionId: string; connectionName: string };
 type Source = { id: string; name: string };
 const noSources: readonly Source[] = [];
 
@@ -77,14 +76,14 @@ function localSnapshot<T>(initial: T, read: (local: LocalPlaces | null) => T) {
 }
 
 function listedPlaces(
-  rows: readonly ListedPlace[],
+  rows: readonly SourcedProgress[],
   sources: readonly Source[],
   local: LocalPlaces | null,
-): readonly (ListedPlace & PlacedProgress)[] {
+): readonly (SourcedProgress & PlacedProgress)[] {
   const placed = withLocalPlaces(rows, local);
   if (!local?.finishes?.size) return placed;
   const listed = new Set(rows.map((row) => contentKey(row.connectionId, row.library_id, row.path)));
-  const added: ListedPlace[] = [];
+  const added: SourcedProgress[] = [];
   for (const [key, finish] of local.finishes) {
     if (listed.has(key)) continue;
     const source = sources.find((s) => sameConnection(s.id, finish.connectionId));
@@ -93,16 +92,16 @@ function listedPlaces(
     if (place) added.push({ ...place, connectionId: source.id, connectionName: source.name });
   }
   return added.length
-    ? [...placed, ...added].sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+    ? [...placed, ...added].sort((a, b) => (a.updated_at < b.updated_at ? 1 : -1))
     : placed;
 }
 
 /** Keep the scoped server rows and their metadata, with the places Resume uses. A pending
  * finish on a previously unlisted book joins its own connection's list, even after reload. */
 export function useWithLocalPlaces(
-  rows: readonly ListedPlace[],
+  rows: readonly SourcedProgress[],
   sources: readonly Source[] = noSources,
-): readonly (ListedPlace & PlacedProgress)[] {
+): readonly (SourcedProgress & PlacedProgress)[] {
   const active = rows.length > 0 || sources.length > 0;
   useEffect(() => {
     if (active) refreshLocalPlaces();

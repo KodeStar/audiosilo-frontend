@@ -698,7 +698,8 @@ function checkAgainLater(): void {
  * Close a span a kill left open (a stored open span, at its last stored values) into the
  * outbox. Once per launch, before this launch's first span is written: every span write
  * waits on it. On the web a span another tab is still playing is left to it (looked at
- * again once it would be stale).
+ * again once it would be stale). `willSend`: the connections the launch's first caller sends
+ * next, which the recovery leaves to it; a later caller joins the recovery as it is.
  */
 export function recoverOpenSpan(willSend?: (cid: string) => boolean): Promise<void> {
   recovery ??= sweepLeftBehind(true, willSend).catch((e: unknown) =>
@@ -1477,7 +1478,7 @@ const MAX_ROUNDS = 50;
 
 async function flushOnce(connectionId: string): Promise<void> {
   if (!sessionReady()) return;
-  await recoverOpenSpan((id) => id === connectionId);
+  await recoverOpenSpan((id) => sameConnection(id, connectionId));
   // The server asked to wait (a 429 until its `Retry-After`): the events stay, and go once
   // the wait is over (`onRateLimitOver`, below). Not a sign-out's last chance.
   if (rateLimited(connectionId) && !lastChance.has(resolveConnectionId(connectionId))) return;

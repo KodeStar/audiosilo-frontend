@@ -1135,8 +1135,7 @@ async function persist(opts?: {
   if (unnamedOtherHolds() && !opts?.forceFinished) return;
   // Nor a place another tab has played past (`otherTabPlayed`), nor one on its way to that
   // tab's (`catchingUp`): dated now, it would be the newest in the mirror the tabs share.
-  if ((behindOtherTab(nowPlaying) || lateTabSeek?.np === nowPlaying) && !opts?.forceFinished)
-    return;
+  if ((behindOtherTab(nowPlaying) || movingToTabPlace(nowPlaying)) && !opts?.forceFinished) return;
   const forceFinished = opts?.forceFinished ?? false;
   // Held while a reconcile check is out (a finish is the listener's own and still saves).
   // Past its deadline the hold is over even when its timer has not fired (Android pauses
@@ -1606,7 +1605,7 @@ function openListeningSpan(at?: SpanEnd) {
   if (!np || !usesListeningSync(np.connectionId)) return;
   // Not from a place on its way to another tab's (`catchUpPlaying` opens it there), nor while
   // the engine plays another book (`otherBookReported`).
-  if (catchingUp || lateTabSeek?.np === np || engineHoldsAnother()) return;
+  if (catchingUp || movingToTabPlace(np) || engineHoldsAnother()) return;
   if (span) {
     if (sameBook(span, np)) return;
     closeListeningSpan();
@@ -1901,7 +1900,7 @@ function moveListeningSpan(target: SpanEnd | null, opts: { from?: SpanEnd | null
   // A place that is not one (NaN) moves nothing: the span just ends where it was.
   if (!target) return;
   const reason: ListeningStart = before && target.pos < before.pos - 1 ? 'moved_back' : 'jump';
-  if ((closed || lateTabSeek?.np === np) && isPlayingState(usePlayer.getState().snapshot.state)) {
+  if ((closed || movingToTabPlace(np)) && isPlayingState(usePlayer.getState().snapshot.state)) {
     clearLateTabSeek();
     nextStart = reason;
     openListeningSpan(target);
@@ -2409,7 +2408,7 @@ function giveWayTo(claim: PlayingClaim) {
   // `givesWayTo` reads it.
   const ofClaim = (play: { connectionId: string } | null) =>
     play !== null && sameConnection(play.connectionId, claim.connectionId);
-  const wasBehind = catchingUp !== null || lateTabSeek?.np === np || ofClaim(otherTabPlayed);
+  const wasBehind = catchingUp !== null || movingToTabPlace(np) || ofClaim(otherTabPlayed);
   // The play already noted, going on: by its tab and when it was asked for, which only a new
   // play changes (a press, the OS media controls).
   const noted =
@@ -2759,9 +2758,19 @@ function showPlace(np: NowPlaying, trackIndex: number, position: number, faulted
  * server length (`showPlace`, without the fault). */
 function placeShown(np: NowPlaying, trackIndex: number, position: number) {
   const { snapshot } = usePlayer.getState();
-  const engine = trackIndex === snapshot.trackIndex ? snapshot.duration : 0;
-  const duration = fileDurationOf(np.queue, trackIndex, engine);
-  usePlayer.setState({ snapshot: { ...snapshot, trackIndex, position, duration } });
+  usePlayer.setState({ snapshot: { ...snapshot, ...shownAt(np, trackIndex, position, snapshot) } });
+}
+
+/** `(trackIndex, position)` of `np`'s queue at the file's server length, the engine's own
+ * measure when `from` (a snapshot) is on that file. */
+function shownAt(
+  np: NowPlaying,
+  trackIndex: number,
+  position: number,
+  from: Pick<PlaybackSnapshot, 'trackIndex' | 'duration'>,
+) {
+  const engine = trackIndex === from.trackIndex ? from.duration : 0;
+  return { trackIndex, position, duration: fileDurationOf(np.queue, trackIndex, engine) };
 }
 
 /** `np`'s engine faulted from here (`faultedBook`). `pauseOut`: a fault's pause (`faultPause`)
@@ -3140,13 +3149,7 @@ function engineFault(
   return {
     ...s,
     state: 'error',
-    trackIndex: asked.trackIndex,
-    position: asked.position,
-    duration: fileDurationOf(
-      np.queue,
-      asked.trackIndex,
-      s.trackIndex === asked.trackIndex ? s.duration : 0,
-    ),
+    ...shownAt(np, asked.trackIndex, asked.position, s),
   };
 }
 
@@ -3229,6 +3232,9 @@ let lateTabSeek: {
   fail: () => void;
   timer: ReturnType<typeof setTimeout>;
 } | null = null;
+
+/** `np`'s move to another tab's place has not settled yet (`lateTabSeek`). */
+const movingToTabPlace = (np: NowPlaying | null) => lateTabSeek !== null && lateTabSeek.np === np;
 
 function clearLateTabSeek() {
   if (lateTabSeek) clearTimeout(lateTabSeek.timer);
@@ -3408,13 +3414,7 @@ async function moveToTabPlace(svc: PlaybackService, place: TabPlace): Promise<Ta
       snapshot: {
         ...snapshot,
         state: 'error',
-        trackIndex: place.index,
-        position: place.positionInTrack,
-        duration: fileDurationOf(
-          np.queue,
-          place.index,
-          place.index === snapshot.trackIndex ? snapshot.duration : 0,
-        ),
+        ...shownAt(np, place.index, place.positionInTrack, snapshot),
       },
     });
     void persist();
@@ -5164,7 +5164,7 @@ const playerStore = createStore<PlayerState>()((set, get) => ({
       // (the car's, never adopted: `otherBookNotAdopted`; or one being adopted whose report
       // names none, `pausesAnother`), whose play would be that book's: the press reloads the
       // book at its place, as Retry does.
-      if (loadedFaulted() || st === 'error' || lateTabSeek?.np === nowPlaying || pausesAnother()) {
+      if (loadedFaulted() || st === 'error' || movingToTabPlace(nowPlaying) || pausesAnother()) {
         await get().retry(askedAt);
         return;
       }

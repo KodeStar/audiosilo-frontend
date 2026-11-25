@@ -1082,13 +1082,12 @@ function hidesSpoilers(queryKey: readonly unknown[]): boolean {
 /** An invalidation normally joins an initial GET without data, even if that GET began
  * before the finish. Cancel just those reads so the active observer gets a fresh answer. */
 function refreshProgressQuery(qc: QueryClient, queryKey: QueryKey, match?: (q: Query) => boolean) {
-  const filters = { queryKey, ...(match && { predicate: match }) };
   void qc.cancelQueries({
     queryKey,
     fetchStatus: 'fetching',
     predicate: (q) => q.state.data === undefined && (!match || match(q)),
   });
-  void qc.invalidateQueries(filters);
+  void qc.invalidateQueries({ queryKey, predicate: match });
 }
 
 /** Refresh what else a change to a book's progress makes stale: the listening stats
@@ -1122,17 +1121,21 @@ export function invalidateFinishedProgress(
   refreshDeliveredFinishes(qc, cid, [{ libraryId, path }]);
 }
 
-function refreshDeliveredFinishes(
+/** `invalidateFinishedProgress` for several books of one connection: the list, the stats and
+ * the goal read once for all of them. */
+export function refreshDeliveredFinishes(
   qc: QueryClient,
   cid: string,
   books: readonly { libraryId: number; path: string }[],
 ) {
   refreshLocalPlaces();
   refreshProgressQuery(qc, qk.allProgress(cid));
-  for (const [index, { libraryId, path }] of books.entries()) {
+  // The stats and the goal belong to the whole connection: read once for every book.
+  refreshProgressQuery(qc, qk.myStatsAll(cid));
+  refreshProgressQuery(qc, qk.listeningGoal(cid));
+  for (const { libraryId, path } of books) {
     refreshProgressQuery(qc, qk.progress(cid, libraryId, path));
-    // The stats and the goal belong to the whole connection.
-    invalidateProgressDependents(qc, cid, libraryId, path, { finish: index === 0, place: true });
+    invalidateProgressDependents(qc, cid, libraryId, path, { finish: false, place: true });
   }
 }
 
@@ -1572,14 +1575,21 @@ export function useBookProgress(
     networkMode: 'always',
     select,
   });
-  const finish = usePendingFinish(
-    cid,
-    libraryId,
-    path,
-    enabled && !!api && !!path && !(query.error instanceof ApiError),
-    query.data,
-  );
+  const finish = useQueryPendingFinish(cid, libraryId, path, enabled && !!api, query);
   return finish ? { ...query, data: finish } : query;
+}
+
+/** A book's undelivered finish over its progress query's row (`usePendingFinish`). A server
+ * that answered with an error (no such book, no access) shows none. */
+function useQueryPendingFinish(
+  cid: string,
+  libraryId: number,
+  path: string,
+  enabled: boolean,
+  query: { data?: PlacedProgress | null; error: unknown },
+) {
+  const active = enabled && !!path && !(query.error instanceof ApiError);
+  return usePendingFinish(cid, libraryId, path, active, query.data);
 }
 
 /**
@@ -4263,14 +4273,7 @@ export function useSavedProgress(
     select: (rows) => progressIndex(rows).get(`${libraryId}\n${path}`),
     refetchOnMount: false,
   });
-  const finish = usePendingFinish(
-    cid,
-    libraryId,
-    path,
-    enabled && !!client && !!path && !(query.error instanceof ApiError),
-    query.data,
-  );
-  return finish ?? query.data;
+  return useQueryPendingFinish(cid, libraryId, path, enabled && !!client, query) ?? query.data;
 }
 
 /**

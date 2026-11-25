@@ -151,11 +151,12 @@ export async function undoFinish(ref: UndoRef, edit: () => Promise<unknown>): Pr
   // a Mark goes to its own place, no edit either; Mark as not finished takes the edit.
   if (taken.unsent) {
     const restored = await r.restoreBefore(ref, since).catch(() => false);
-    if (restored || !ref.atPosition) {
+    if (!ref.atPosition) {
       if (!restored) await r.unrecord(ref, since).catch(() => undefined);
-      if (!ref.atPosition) await r.capturePlayingUndo(ref, since).catch(() => undefined);
+      await r.capturePlayingUndo(ref, since).catch(() => undefined);
       return 'undone';
     }
+    if (restored) return 'undone';
   }
   const outcome = await runEdit(edit, () => taken.restore().catch(() => undefined));
   if (outcome === 'undone') await r.unrecord(ref, since).catch(() => undefined);
