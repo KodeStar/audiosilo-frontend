@@ -35,6 +35,20 @@ describe('PhoneHeader', () => {
     }
   });
 
+  it('keeps room for the page title beside a long back title at AX5', async () => {
+    const backTitle = 'The Way of Kings (Stormlight Archive)';
+    await render(<PhoneHeader title="Chapters" backTitle={backTitle} onBack={jest.fn()} />);
+    const back = () => screen.getByRole('button', { name: `Back to ${backTitle}` });
+    expect(back().props.className).not.toContain('max-w-');
+    try {
+      await setFontScale(3.12);
+      expect(back().props.className).toContain('max-w-[50%]');
+      expect(screen.getByRole('header', { name: 'Chapters' })).toBeTruthy();
+    } finally {
+      await setFontScale(1);
+    }
+  });
+
   it('gives a tab root its large title, with no back button', async () => {
     await render(<PhoneHeader title="Library" onBack={jest.fn()} />);
     expect(screen.getByRole('header', { name: 'Library' })).toBeTruthy();

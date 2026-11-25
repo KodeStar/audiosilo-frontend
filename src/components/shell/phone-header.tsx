@@ -9,6 +9,7 @@ import { AnimatedPressable } from '@/components/ui/animated-pressable';
 import { Text } from '@/components/ui/text';
 import { UpNextButton } from '@/components/upnext/up-next-button';
 import { linesFor, useLargeText } from '@/lib/text-scale';
+import { cn } from '@/lib/utils';
 import { useThemeColors } from '@/theme/use-theme-colors';
 
 import { BackGlyph } from './back-glyph';
@@ -57,7 +58,12 @@ export function PhoneHeader({
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel={namedBack ? t('nav.backTo', { name: backTitle }) : t('nav.back')}
-            className="min-h-[44px] min-w-[44px] shrink flex-row items-center gap-1 rounded-control px-1.5 active:bg-accent"
+            // Under large text a long back title wraps; beside a page title it takes half
+            // the bar at most, or its one-line width left the title none.
+            className={cn(
+              'min-h-[44px] min-w-[44px] shrink flex-row items-center gap-1 rounded-control px-1.5 active:bg-accent',
+              large && !!title && 'max-w-[50%]',
+            )}
           >
             <BackGlyph size={20} color={themed.foreground} />
             {namedBack ? (
