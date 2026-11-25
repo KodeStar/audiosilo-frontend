@@ -220,6 +220,22 @@ it('outlines the storage track beneath its segments in high contrast', async () 
   );
 });
 
+it('draws no outline or ink edge on the storage track at the normal contrast', async () => {
+  await mountWithPortal(
+    <StorageCard
+      scope="device"
+      estimate={null}
+      bar={{ used: 250, scale: 1000, segments: [{ kind: 'other-apps', bytes: 250 }] }}
+    />,
+  );
+  const track = screen.getByRole('image');
+  expect(screen.queryByTestId('track-outline')).toBeNull();
+  expect(track.children[0]).toHaveProp(
+    'className',
+    expect.not.stringContaining('border-r-primary'),
+  );
+});
+
 describe('DownloadsScreen', () => {
   it('shows the empty state with one way out', async () => {
     await mount();

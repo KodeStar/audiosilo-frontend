@@ -9,6 +9,7 @@ import type { StorageEstimate } from '@/downloads/types';
 import { formatBytes } from '@/lib/format';
 import { cn } from '@/lib/utils';
 import { tabularNums } from '@/theme/tabular-nums';
+import { useThemeScheme } from '@/theme/use-theme-colors';
 
 /** `chart-1..5`, spelled out so the class names exist for the style compiler. */
 const CHART_BG = ['bg-chart-1', 'bg-chart-2', 'bg-chart-3', 'bg-chart-4', 'bg-chart-5'];
@@ -42,6 +43,8 @@ export function StorageCard({
   className?: string;
 }) {
   const { t } = useTranslation();
+  // High contrast ends the used part with an ink edge against the outlined track.
+  const { highContrast } = useThemeScheme();
   const label = (s: StorageSegment) =>
     s.kind === 'server'
       ? s.name || t('downloads.storage.unknownServer')
@@ -87,7 +90,7 @@ export function StorageCard({
                   'h-full',
                   segmentClass(s),
                   i > 0 && 'border-l-2 border-card',
-                  i === bar.segments.length - 1 && 'border-r border-r-primary',
+                  highContrast && i === bar.segments.length - 1 && 'border-r border-r-primary',
                 )}
                 // A sliver stays visible however small its share.
                 style={{ width: `${Math.max(0.8, (s.bytes / bar.scale) * 100)}%` }}
