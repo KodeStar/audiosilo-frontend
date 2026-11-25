@@ -1,7 +1,7 @@
 import { router } from 'expo-router';
 import { useEffect, useState } from 'react';
 
-import type { InviteScan } from '@/lib/pairing';
+import { type InviteScan, inviteKey } from '@/lib/pairing';
 import { type ConnectBook, connectBookParams } from '@/lib/paths';
 import { sameUrl } from '@/lib/server-address';
 import { useSession } from '@/stores/session';
@@ -23,7 +23,8 @@ export function holdInvite(invite: InviteScan): void {
 export function beginInviteSignIn(invite: InviteScan, go: () => void): void {
   // The sign-in route can still be loading when Connect is pressed again. One held
   // invite opens one step, which takes it on mount.
-  if (peekInviteCode(invite.base) === invite.code) return;
+  const pending = peekInviteCode(invite.base);
+  if (pending !== undefined && inviteKey(pending) === inviteKey(invite.code)) return;
   holdInvite(invite);
   void useSession
     .getState()

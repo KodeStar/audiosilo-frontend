@@ -13,7 +13,7 @@ import { SegmentedControl } from '@/components/ui/toggle-group';
 import { onlyOwnServer, productionWebOrigin } from '@/lib/base-url';
 import { getDeviceName } from '@/lib/device';
 import { useLayout } from '@/lib/layout';
-import { hostOf } from '@/lib/pairing';
+import { hostOf, inviteKey } from '@/lib/pairing';
 import type { ConnectBook } from '@/lib/paths';
 import { getSignInKey } from '@/lib/sign-in-key';
 import { useLatest } from '@/lib/use-latest';
@@ -44,17 +44,6 @@ export function emptyField(
   if (mode === 'code') return v.code.trim() ? null : 'code';
   if (!v.username.trim()) return 'username';
   return v.password ? null : 'password';
-}
-
-/** The same invite in the spellings accepted by the server's auth.normalizeCode. */
-function inviteKey(code: string): string {
-  return code
-    .trim()
-    .toUpperCase()
-    .replace(/[ -]/g, '')
-    .replace(/O/g, '0')
-    .replace(/[IL]/g, '1')
-    .replace(/U/g, 'V');
 }
 
 /**
@@ -183,8 +172,9 @@ export function SignInStep({
   // must not redeem the code a second time while one is on its way, which could spend
   // another of the invite's uses.
   const submitting = useRef(false);
-  // The code redeemed last whose exchange got no answer, the server it was redeemed at, and
-  // its pairing token (`signInWithCode`).
+  // The code redeemed last whose exchange got no answer (`inviteKey`), the server it was
+  // redeemed at, and what `signInWithCode` kept: its pairing token, or an old server's
+  // unanswered exchange, which ends the retries.
   const redeemed = useRef<{ server: string; code: string; payload: UnansweredInvite } | null>(null);
   const onSubmit = useLatest(async () => {
     if (!serverRead || submitting.current) return;
@@ -204,18 +194,18 @@ export function SignInStep({
       () => info?.capabilities?.unauthorized_mark,
     );
     try {
+      const deviceId = await getSignInKey(server);
       if (mode === 'code') {
-        const typed = code.trim();
+        const key = inviteKey(code);
         const last = redeemed.current;
-        const kept =
-          last?.server === server && last.code === inviteKey(typed) ? last.payload : null;
+        const kept = last?.server === server && last.code === key ? last.payload : null;
         if (!kept) redeemed.current = null;
         const { payload, session } = await signInWithCode(
           client,
-          typed,
-          await getSignInKey(server),
+          code.trim(),
+          deviceId,
           kept,
-          (p) => (redeemed.current = { server, code: inviteKey(typed), payload: p }),
+          (p) => (redeemed.current = { server, code: key, payload: p }),
           (next) => (stage = next),
         );
         await finishConnect({
@@ -228,12 +218,7 @@ export function SignInStep({
           carried,
         });
       } else {
-        const session = await client.login(
-          username.trim(),
-          password,
-          getDeviceName(),
-          await getSignInKey(server),
-        );
+        const session = await client.login(username.trim(), password, getDeviceName(), deviceId);
         await finishConnect({
           serverUrl: server,
           session,
@@ -252,14 +237,15 @@ export function SignInStep({
 
   // The link signs in once the step knows whether this server marks its 401s. Leave an
   // edited field or a switch to password to the listener's own submit.
+  const inviteUntouched = !!initialCode && mode === 'code' && code === initialCode;
   const autoSubmitted = useRef(false);
   useEffect(() => {
     if (!serverRead || !initialCode || autoSubmitted.current) return;
     autoSubmitted.current = true;
-    if (mode === 'code' && code === initialCode) void onSubmit();
-  }, [serverRead, initialCode, mode, code, onSubmit]);
+    if (inviteUntouched) void onSubmit();
+  }, [serverRead, initialCode, inviteUntouched, onSubmit]);
 
-  const awaitingInvite = !!initialCode && !serverRead && mode === 'code' && code === initialCode;
+  const awaitingInvite = inviteUntouched && !serverRead;
   const name = serverName || reconnecting?.name;
   const host = hostOf(server);
   const known = reconnecting?.addresses;
