@@ -145,7 +145,13 @@ export function ListeningCalendar({
               key={i}
               numberOfLines={1}
               className="font-sans-semibold text-[10.5px] web:text-[0.65625rem] text-subtle-foreground"
-              style={{ height: cell, lineHeight: large ? undefined : cell }}
+              // Centred on its row by a line as tall as a square. Native multiplies a line
+              // height by the font scale, so under large text it keeps the font's own line;
+              // the web's px line height doesn't grow, and stays the square's.
+              style={{
+                height: cell,
+                lineHeight: large && Platform.OS !== 'web' ? undefined : cell,
+              }}
             >
               {d}
             </Text>
