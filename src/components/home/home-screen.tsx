@@ -281,10 +281,9 @@ export function HomeScreen({ modules }: { modules?: readonly PlayerModule[] } = 
           />
           {/* Back on the Now card's book after 12+ days: where they left it. */}
           {nowAt ? <PreviouslyOnCard at={nowAt} saved={nowSaved} /> : null}
-          {/* A desktop too narrow for both stacks This week under the Now card. Both
-              arrangements are one tree: the column's first measure often narrows it, and
-              a This week moved elsewhere would remount, cancelling its reads in flight
-              (the startup gate's included) only to ask them again. */}
+          {/* A desktop too narrow for both stacks This week under the Now card (the
+              column's own gap). One tree either way: the first measure often narrows it,
+              and a remount would cancel This week's reads in flight and ask them again. */}
           {desktop ? (
             <View
               testID={beside ? 'home-hero-beside' : undefined}

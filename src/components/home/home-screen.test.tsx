@@ -75,8 +75,7 @@ jest.mock('@/components/ui/cover', () => {
     },
   };
 });
-// Each mount of This week, the real card still rendering: a remount cancels its reads in
-// flight and asks them again.
+// Each mount of This week, the real card still rendering.
 const mockWeekMounts = jest.fn();
 jest.mock('./this-week-card', () => {
   const actual = jest.requireActual('./this-week-card');
@@ -282,6 +281,7 @@ beforeEach(() => {
   mockCoverUris.clear();
   mockModulesOn = {};
   mockUseActiveModules.mockClear();
+  mockWeekMounts.mockClear();
   mockCaps = {};
   mockProgress = { progress: [], isLoading: false, error: null };
   mockDeviceOnline = true;
@@ -626,7 +626,6 @@ describe('HomeScreen', () => {
   it('keeps This week mounted when the column measures too narrow for it beside the Now card', async () => {
     mockCaps = { user_stats: true };
     mockProgress.progress = [started('Book', '2026-10-04T00:00:00Z')];
-    mockWeekMounts.mockClear();
     await mountHome();
     await fireEvent(screen.getByTestId('home-column'), 'layout', {
       nativeEvent: { layout: { width: 600, height: 900 } },
