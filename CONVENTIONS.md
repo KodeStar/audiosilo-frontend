@@ -5006,7 +5006,9 @@ tokens, type and components; its section 17 maps them onto these files.
     `CONTROL_MAX_SCALE` (1.5) and shrink back to fit the room (`controlScale(size, scale,
     room)`, `transport-controls.tsx`), so the player fits a 320-wide phone at the largest
     size. The full player measures its controls column. The dock reserves the scaled width of its
-    transport and moves it below the book and actions when large text needs the room. A px-sized label inside a fixed control
+    transport and moves it, with the scrubber, to its own row below the book and actions whenever
+    text above the default size leaves the row too little room (`dockLayout`, `SCRUBBER_MIN` plus
+    `SCRUBBER_LABELS`), never shrinking or hiding the scrubber instead. A px-sized label inside a fixed control
     (the skip number) sets `allowFontScaling={false}` and sizes itself with `scaleCapped`
     so the scale is not applied twice; its box takes a min width, never a fixed one.
   - **Text that stops growing**: `display` and `display-xl` titles stop at 2x
