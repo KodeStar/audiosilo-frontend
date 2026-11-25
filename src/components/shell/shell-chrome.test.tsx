@@ -151,15 +151,18 @@ describe('PhoneTabBar', () => {
     mockSegments = ['(app)', '(library)', 'book', '[libraryId]'];
     await render(<PhoneTabBar />);
     for (const label of ['Home', 'Library', 'Search', 'Downloads', 'Me']) {
-      expect(screen.getByLabelText(label).props.className).toContain('px-[2px]');
+      expect(screen.getByLabelText(label)).toBeTruthy();
     }
     expect(screen.getByLabelText('Library')).toBeSelected();
     expect(screen.getByLabelText('Home')).not.toBeSelected();
   });
 
-  it('uses intrinsic web label widths and lets large labels wrap', async () => {
+  it('keeps each label in its fifth below large text and lets large labels wrap', async () => {
     await render(<PhoneTabBar />);
-    expect(screen.getByLabelText('Downloads').props.className).toContain('web:min-w-min');
+    // A label too long for its slot ends in "..." instead of widening the tab: French
+    // "Téléchargements" at a 20 px browser font pushed "Moi" off a 320 px screen.
+    expect(screen.getByText('Downloads').props.numberOfLines).toBe(1);
+    expect(screen.getByLabelText('Downloads').props.className).not.toMatch(/min-w|basis-auto/);
     try {
       await setFontScale(2);
       expect(screen.getByText('Downloads').props.numberOfLines).toBeUndefined();
