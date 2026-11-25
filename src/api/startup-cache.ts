@@ -1,7 +1,8 @@
-import type { InfiniteData, QueryClient } from '@tanstack/react-query';
+import type { InfiniteData, Query, QueryClient } from '@tanstack/react-query';
 import { Platform } from 'react-native';
 
 import type { MyDevice } from './types';
+import { startupMeta } from './startup-reads';
 import { foreignServerAnswer, isServerInfoKey } from '@/lib/auth-failure';
 import { isInProgress } from '@/lib/progress-view';
 import { isRecord, STARTUP_CACHE_KEY } from '@/lib/storage-keys';
@@ -18,7 +19,7 @@ import { APP_VERSION } from '@/lib/version';
  * `refetchOnMount`), so the answer replaces the kept one a moment later. A kept answer
  * whose server now refuses the token goes (`dropOnError`). Saved (`save`) a while after
  * one of these queries succeeds and when the page is hidden, only for the connections
- * signed in (`keep`). Only the queries `isStartupQuery` names are kept, and of the
+ * signed in (`keep`). Only the queries marked `meta.startup` are kept, and of the
  * whole-library list only its first page, each while the document stays under
  * `MAX_CHARS` (about 100 KB for a 1,000-book library). Beside them, the books of each
  * connection's progress rows as their `/item` last named them (`PROGRESS_BOOKS`), so a
@@ -78,44 +79,6 @@ const BOOK_FIELDS = [
   'duration',
 ] as const;
 
-/** The single-key queries kept (their first key element), and the narrower ones below. */
-const KEPT = new Set([
-  PROGRESS_BOOKS,
-  'server',
-  'libraries',
-  'favourites',
-  'queue',
-  'collections',
-  'listeningGoal',
-  'household',
-  'myDevices',
-  'authors',
-  'narrators',
-  'seriesList',
-]);
-
-/** The whole-library list's query: the library in the server's order, nothing narrowed
- * (`useWholeLibrary`; the one the Library grid paints from). */
-function isWholeLibrary(key: readonly unknown[]): boolean {
-  const q = key[3];
-  return (
-    key[0] === 'libraryBooks' && isRecord(q) && Object.keys(q).length === 1 && q.sort === 'recent'
-  );
-}
-
-/** Whether a query (by key) is one the startup cache keeps. */
-export function isStartupQuery(key: readonly unknown[]): boolean {
-  const head = key[0];
-  if (typeof head !== 'string') return false;
-  if (KEPT.has(head)) return true;
-  if (head === 'books') return key[1] === 'recent'; // Home's Recently added
-  if (head === 'progress') return key[1] === 'all'; // Continue listening
-  // Home's ranges only (the Now card, This week), not every year Your year probes.
-  if (head === 'myStats') return key[2] === '30d';
-  if (head === 'myListening') return key[2] === '1y';
-  return isWholeLibrary(key);
-}
-
 function isInfinite(data: unknown): data is InfiniteData<unknown, unknown> {
   return isRecord(data) && Array.isArray(data.pages) && Array.isArray(data.pageParams);
 }
@@ -147,6 +110,12 @@ function pickFields(
   return Object.fromEntries(fields.filter((f) => rec[f] !== undefined).map((f) => [f, rec[f]]));
 }
 
+/** Whether `query` is one the startup cache keeps: marked `meta.startup`, or a manually
+ * seeded one (including a restored one) with no options yet whose key a marked spec emits. */
+function isStartupQuery(query: Query): boolean {
+  return query.meta?.startup === true || (!query.options.queryFn && !!startupMeta(query.queryKey));
+}
+
 /** The kept entries of `client`'s cache: each startup query's last answer (of an infinite
  * one only the first page, the one a reload starts from), of the queries `keep` takes. */
 export function snapshot(
@@ -158,9 +127,9 @@ export function snapshot(
   for (const q of client.getQueryCache().getAll()) {
     // The last answer, also when the latest ask failed (a server down for a moment).
     if (q.state.data === undefined) continue;
-    if (!isStartupQuery(q.queryKey) || !keep(q.queryKey)) continue;
+    if (!isStartupQuery(q) || !keep(q.queryKey)) continue;
     if (q.queryKey[0] === PROGRESS_BOOKS) continue; // rebuilt below
-    // `isStartupQuery` kept only `['progress', 'all', cid]` of the progress queries.
+    // The startup cache keeps only `['progress', 'all', cid]` of the progress queries.
     const cid = q.queryKey[2];
     if (q.queryKey[0] === 'progress' && typeof cid === 'string' && Array.isArray(q.state.data))
       progressLists.push({ cid, rows: q.state.data });
@@ -270,7 +239,8 @@ function readEntries(store: Storage): Entry[] {
       (e): e is Entry =>
         isRecord(e) &&
         Array.isArray(e.key) &&
-        isStartupQuery(e.key) &&
+        (!!startupMeta(e.key) ||
+          (e.key[0] === PROGRESS_BOOKS && e.key.length === 2 && typeof e.key[1] === 'string')) &&
         e.data !== undefined &&
         typeof e.updatedAt === 'number' &&
         // The whole-library list is the one infinite query kept: only ever its first page.
@@ -387,7 +357,9 @@ export function startSaving(
     const key = event.query.queryKey;
     // The kept progress-row books are set by the save itself: never a reason to save again.
     if (key[0] === PROGRESS_BOOKS) return;
-    if (!isStartupQuery(key) && !(key[0] === 'item' && onProgressRow(client, key))) return;
+    const startup =
+      isStartupQuery(event.query) && (event.query.meta?.startup === true || event.action.manual);
+    if (!startup && !(key[0] === 'item' && onProgressRow(client, key))) return;
     dirty = true;
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, SAVE_DELAY_MS);

@@ -112,29 +112,24 @@ can never log anyone out (`{ authReset, cacheReset }`):
   cache schema change: it wipes that cache (it re-downloads / re-syncs from the server)
   while keeping every login intact. A pre-existing install that predates this split adopts
   the cache version silently, without wiping its downloads.
-- **Startup cache (web)** (`src/api/startup-cache.ts`, `STARTUP_CACHE_KEY`): the last answers
-  of the queries the first screens paint from (`isStartupQuery`: `/server`, the libraries, the
-  whole-library list's first page, Home's shelves and cards, Account's signed-in devices) are kept in localStorage and put
-  back into the query cache, invalidated, before anything renders, so a reload paints at once;
-  each is asked again by its first observer, also a `refetchOnMount: false` one (a tile's saved
-  progress), and one whose server refuses the token (401) is cleared, not shown. Only the
-  signed-in connections' answers are written, under `MAX_CHARS` (localStorage's quota is
-  shared with the session and the queues, whose writes fail quietly), and a document of
-  another app version is ignored. One of the scoped keys (a reset wipes it); a removed
-  connection's entries go with it. A new first-screen query joins `isStartupQuery` only if it
-  is small; never keep a book's detail or anything per book. Native keeps none.
+- **Startup cache (web)** (`src/api/startup-cache.ts`, `STARTUP_CACHE_KEY`): a small first-screen
+  query opts in through its query options' `meta.startup`. The cache keeps the signed-in
+  connections' last answers under `MAX_CHARS`, including only the first page of the whole
+  library grid. Signed-in device rows are stripped of addresses. A reload restores the
+  answers before rendering and the first observer refreshes each one, including observers
+  with `refetchOnMount: false`. Refused answers and a signed-out connection's entries are
+  cleared. Storage resets clear the document, and a different app or document version is
+  discarded. Per-book details stay out. The compact copies of books on progress rows let Home
+  title those rows offline. Native uses its in-memory query cache.
 - **Startup queries (web)** (`src/components/shell/startup-queries.ts`,
-  `use-startup-queries{,.web}.ts`): on a start the startup cache can't fill (a first visit, a
-  private window), the gate (`AuthGate`) asks the first page's answers the moment it opens
-  (`startupQueries`: every server's `/server` and libraries; on Home or the Library grid its
-  progress too, plus Home's Recently added and favourites or the selected library's first page
-  of books for the grid) and holds
-  its spinner until they are in, at most `STARTUP_WAIT_MS`, so the screen renders once with
-  them instead of a skeleton then again. Once per page load; only the entries the cache lacks
-  are asked (a reload the startup cache filled waits for nothing). Each entry comes from the
-  screen's own query spec (`serverInfoQuery`, `recentQuery`, `favouritesQuery`,
-  `wholeLibraryQuery`...), so a screen finds it fresh: a new first-screen read joins through
-  its spec, never a hand-built key. Native never waits.
+  `use-startup-queries{,.web}.ts`): once the router selects the first signed-in destination,
+  `AuthGate` asks for the missing queries that page uses. Connect, demo and the profile picker
+  hold the underlying Home until the destination is known. A direct player or reader link
+  warms the shell. Startup query options identify the page
+  and the capability a read needs. Home warms its shelves, This week, stats, the selected
+  queue and household settings. The Library grid waits for the selected library's kind
+  before asking for its first page of books. The wait ends as soon as its reads settle or
+  after `STARTUP_WAIT_MS` (200 ms). Native screens mount without this wait.
 - **Web start (the split build)**: the web export uses Expo Router async routes (`app.json`
   `asyncRoutes: { web: "production", default: false }`; native and `npm run web` stay one
   bundle), so a page's chunk loads when it is first opened and each page's static HTML names
@@ -160,19 +155,25 @@ can never log anyone out (`{ authReset, cacheReset }`):
   P5): the others stay in its one bundle but are `require()`d only when `switchLanguage` asks for
   one, so never `i18n.changeLanguage` directly (tests included: the catalog would not be in). A new module for the first screen keeps a static import; one
   for an overlay or a listener goes behind `deferred` in a web file, never in a shared one
-  (native must not change). `public/sw.js` precaches the whole build (`precacheBuild`: the
-  shell's scripts, its fonts (the `StaticFonts` preloads, read from the shell only, fe#177; one already cached is never fetched again) and
-  every chunk they name, transitively; the shell cached once its own files are in), at install and when the app asks (`askPrecache`, 5 s after load), so a page never
-  opened online still boots offline. Once a build is complete, the one before it stays one
-  deploy longer (a tab still running it opens its pages from those files), older files go, and
-  so does every page an earlier build cached (offline it falls back to the shell); a page whose
-  address carries a one-time value (a pairing link's `token`, a single sign-on return's `flow`)
-  is never cached at all (`UNKEPT_PAGE_PARAMS`). The worker
-  is registered under its build's name (`sw.js?build=`, the entry's and the shared chunk's:
-  `buildId`; the entry does not name `__common`), so each deploy installs a new one: Chrome
-  keeps the compiled code of scripts a worker caches while installing, which is most of a warm
-  start's speed. The build's hashed files (`_expo/static/`) and its fonts (hashed names too)
-  are served cache-first and never rewritten (`serveAsset`). Every POST, PUT, PATCH and DELETE is routed around the worker at install
+  (native must not change).
+  The web export writes its startup scripts and CSS, route chunks, language catalogs and fonts
+  into `sw.js` (`scripts/web-precache.cjs`, through the Metro serializer). A normal
+  `npx expo export -p web` produces the worker. The app registers it at `sw.js` with the
+  resolved non-English language in `?lang=`. The worker's bytes change with the build.
+  Installation fetches at most four files at a time, starting with the current catalog and
+  startup files. Other catalogs load when used. Fonts and the reader document are optional.
+  A failed required transfer (or a redirected root) stops the install and leaves the prior
+  worker active (a worker from before the manifest, `sw.js?build=`, is then asked to
+  precache this build, as its pages always did); with no prior worker (a first visit) the
+  worker installs anyway, so
+  downloaded media plays, and its next online page completes the precache. A newer worker
+  installing defers retiring old builds to its own activation. A build
+  cache another worker deleted (the admin console's, scope `/`, on activation) is installed
+  again at the next online page of that build (`repairBuild`). Once the new build is complete,
+  an open tab can still load the previous build's hashed files. The upgrade from
+  `audiosilo-shell-v1` also discards stale pages and the old build record. Downloaded media
+  keeps its own cache. Pairing and sign-on pages carrying `token` or `flow` stay out of
+  Cache Storage. The build's hashed files and fonts are served cache-first. Every POST, PUT, PATCH and DELETE is routed around the worker at install
   (`addRoutes`, the Static Routing API; elsewhere the fetch handler's early return): in Chrome
   a keepalive POST sent as a controlled page goes away (the listening span on pagehide) went
   to the worker first and its network fallback died with the page (v2.5.1 PLAYER-14).

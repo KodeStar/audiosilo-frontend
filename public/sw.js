@@ -1,23 +1,25 @@
 /*
- * AudioSilo service worker (hand-written, no build step).
+ * AudioSilo service worker. The web export embeds its own precache list.
  *
  * Two jobs:
  *  1. App shell - make the PWA installable and loadable offline: network-first for
  *     navigations (falling back to a cached shell that boots the SPA), cache-first for the
  *     content-hashed Expo build files (`_expo/static/`, `cacheFirst`), and
  *     stale-while-revalidate for other same-origin assets. The web build is split (Expo
- *     Router async routes): a page's chunks load when it is first opened, so every chunk
- *     of the build is precached (`precacheBuild`) for a page never opened online.
+ *     Router async routes): a page's chunks load when it is first opened, so route chunks
+ *     are precached for a page never opened online. Other languages load on use.
  *  2. Offline media - serve downloaded audio/cover files that the web download
  *     engine (src/downloads/engine.web.ts) stored in MEDIA_CACHE under synthetic
  *     `…/_offline/…` urls, honouring HTTP Range so <audio> can seek (and so Safari,
  *     which refuses a 200 for media, will play at all).
  *
- * Expo static export copies public/ verbatim, so this is served at <base>/sw.js
- * and its scope is <base>/.
+ * Metro emits the production worker at <base>/sw.js. Dev serves this file as written.
  */
 
-const SHELL_CACHE = 'audiosilo-shell-v1';
+const BUILD = /* precache manifest */ null;
+const BUILD_PREFIX = 'audiosilo-shell-build-';
+const LEGACY_CACHE = 'audiosilo-shell-v1';
+const SHELL_CACHE = BUILD ? BUILD_PREFIX + BUILD.id : LEGACY_CACHE;
 const MEDIA_CACHE = 'audiosilo-media-v1'; // keep in sync with engine.web.ts
 // The media-auth query param (keep in sync with client.ts `mediaTokenQuery`): its
 // presence marks a token-bearing URL that must never be written into Cache Storage.
@@ -73,16 +75,14 @@ self.addEventListener('install', (event) => {
     (async () => {
       await routed;
       if (!DEV) {
-        // The shell root (offline navigations fall back to it) and the build's chunks,
-        // cached while installing so Chrome keeps their compiled code (see precacheBuild),
-        // and the ebook reader's document, so a downloaded book's EPUB opens offline even
-        // when the reader never opened online. Offline, unreachable or an older server with
-        // no reader: runtime caching covers it, and the app asks again.
-        const cache = await caches.open(SHELL_CACHE);
-        await Promise.all([
-          precacheBuild(true),
-          cache.add(new Request(readerDocumentUrl(), { cache: 'reload' })).catch(() => {}),
-        ]);
+        try {
+          await installBuild();
+        } catch (error) {
+          // A failed install keeps the working worker. With none (a first visit), install
+          // anyway: downloaded media plays only through a worker, and the next online page
+          // of this build completes the precache (`repairBuild`).
+          if (self.registration.active) throw error;
+        }
       }
       await self.skipWaiting();
     })(),
@@ -92,21 +92,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
-      const keep = new Set([SHELL_CACHE, MEDIA_CACHE]);
-      const names = await caches.keys();
-      // Drop old shell versions but never the media cache (downloads must survive).
-      await Promise.all(names.filter((n) => !keep.has(n)).map((n) => caches.delete(n)));
+      if (!DEV) await retireBuilds();
       await self.clients.claim();
     })(),
   );
-});
-
-// The app asks once it has started (`register-sw.web.ts`). Each build registers its own
-// worker (`sw.js?build=<entry>`), so a deploy installs a new one and its install precaches
-// the build; this ask finishes the job when that install could not (offline, or the network
-// went part way), and does nothing for a build already precached.
-self.addEventListener('message', (event) => {
-  if (event.data && event.data.type === 'precache' && !DEV) event.waitUntil(precacheBuild());
 });
 
 self.addEventListener('fetch', (event) => {
@@ -125,46 +114,54 @@ self.addEventListener('fetch', (event) => {
     // The ebook reader's document (Bridge Phase 3b, framed by the reader screen) is its own
     // page under its own CSP: never answer it with the app shell, which would boot the
     // whole app inside the reader's frame.
-    event.respondWith(handleNavigation(request, !isReaderDocument(url)));
+    event.respondWith(handleNavigation(request, !isReaderDocument(url), event));
   } else if (CACHEABLE.has(request.destination)) {
     // Never persist token-bearing media (covers embed ?token=): the session token
     // would be written into Cache Storage, and every entry turns into unreachable
     // garbage the moment the token rotates. Let the browser fetch these directly.
     if (url.searchParams.has(TOKEN_PARAM)) return;
-    event.respondWith(serveAsset(request, url));
+    event.respondWith(serveAsset(request, url, event));
   }
   // else: let the browser handle it (API requests, server-streamed audio, …)
 });
 
 // --- app shell -------------------------------------------------------------
 
-/** The ebook reader's document (`<scope>reader.html`, public/reader.html). */
-function readerDocumentUrl() {
-  return new URL('reader.html', self.registration.scope).href;
-}
+/** The ebook reader's document, relative to the scope (public/reader.html). */
+const READER_DOCUMENT = 'reader.html';
 
 /** Whether `url` is the ebook reader's document. */
 function isReaderDocument(url) {
-  return url.pathname === new URL(readerDocumentUrl()).pathname;
+  return url.pathname === new URL(READER_DOCUMENT, self.registration.scope).pathname;
 }
 
 /** Network first, then this page's own cached copy, then (`shellFallback`) the app shell. */
-async function handleNavigation(request, shellFallback = true) {
-  const cache = await caches.open(SHELL_CACHE);
+async function handleNavigation(request, shellFallback, event) {
+  let fresh;
   try {
-    const fresh = await fetch(request);
-    // Only cache a good response as the app shell - caching a transient 5xx would
-    // then be served for offline navigations instead of the shell fallback - and never
-    // under an address carrying a one-time value (`UNKEPT_PAGE_PARAMS`).
-    if (fresh.ok && !carriesOneTimeValue(request.url)) cache.put(request, fresh.clone());
-    return fresh;
+    fresh = await fetch(request);
   } catch {
+    const cache = await caches.open(SHELL_CACHE);
     return (
       (await cache.match(request)) ||
       (shellFallback ? await cache.match(self.registration.scope) : undefined) ||
       new Response('Offline', { status: 503, headers: { 'Content-Type': 'text/plain' } })
     );
   }
+  if (fresh.ok && !carriesOneTimeValue(request.url)) {
+    // The page can stream to the browser while its copy is checked and saved. A full
+    // cache may lose this offline copy but cannot lose the successful network response.
+    const copy = fresh.clone();
+    const save = async () => {
+      if (shellFallback && !(await matchesBuild(copy.clone()))) return;
+      // The server still serves this build: put its precache back if it went missing.
+      if (shellFallback) await repairBuild();
+      const cache = await caches.open(SHELL_CACHE);
+      await cache.put(request, copy);
+    };
+    event.waitUntil(save().catch(() => {}));
+  }
+  return fresh;
 }
 
 /** Whether a page's address carries a one-time value (`UNKEPT_PAGE_PARAMS`). */
@@ -186,13 +183,13 @@ function cacheable(res) {
  * requests a font, its preload and its `@font-face`: fe#358). Anything else is served from
  * the cache and read again behind it.
  */
-function serveAsset(request, url) {
+function serveAsset(request, url, event) {
   return url.pathname.includes(BUILD_ASSETS) || request.destination === 'font'
-    ? cacheFirst(request)
+    ? cacheFirst(request, event)
     : staleWhileRevalidate(request);
 }
 
-async function cacheFirst(request) {
+async function cacheFirst(request, event) {
   const cache = await caches.open(SHELL_CACHE);
   // A font is precached under the worker's own request, which has no Origin, and the server
   // answers fonts with `Vary: Origin`; the page's font request is CORS mode, so it carries
@@ -200,10 +197,18 @@ async function cacheFirst(request) {
   // whatever asks, so it ignores Vary. Only fonts are precached under a request unlike the
   // page's; everything else keeps to Vary, which costs nothing and serves no varied answer
   // to a request it was not given for.
-  const cached = await cache.match(request, { ignoreVary: request.destination === 'font' });
+  const options = { ignoreVary: request.destination === 'font' };
+  const cached = await cache.match(request, options);
   if (cached) return cached;
+  if (immutableAsset(request.url)) {
+    const previous = await matchPrevious(request, options);
+    if (previous) return previous;
+  }
   const res = await fetch(request);
-  if (cacheable(res)) cache.put(request, res.clone());
+  if (cacheable(res)) {
+    const save = cache.put(request, res.clone()).catch(() => {});
+    event?.waitUntil(save);
+  }
   return res;
 }
 
@@ -221,159 +226,151 @@ async function staleWhileRevalidate(request) {
 
 // --- the build's chunks ------------------------------------------------------
 
-// The cache entry recording the build last precached, as JSON: the shell's own scripts,
-// styles and fonts (`build`), every file of it (`files`) and the build's before it
-// (`previous`).
-const PRECACHED_BUILD = '__precached-build';
-// A build asset named in the HTML or a chunk: `<base>/_expo/static/js/web/<name>-<hash>.js`
-// (the chunk map Expo writes into the entry and into chunks that load others) or a
-// stylesheet under `_expo/static/css/`.
-const ASSET_REF = /["'](\/(?:[^"'\s]*?\/)?_expo\/static\/(?:js|css)\/[^"'\s]+?\.(?:js|css))["']/g;
+const PRECACHE_CONCURRENCY = 4;
 
-// A font file the shell's HTML names: the preload links and `@font-face` rules of the fonts
-// that gate first paint (`StaticFonts`, src/theme/static-fonts.web.tsx), under
-// `<base>/assets/`, not `_expo/static/`. Read from the shell only: a chunk naming a path that
-// is not a file would stop the precache.
-const FONT_REF = /["'](\/[^"'\s]+?\.(?:ttf|otf|woff2?))["']/g;
-
-/** The same-origin build assets `text` names, as absolute URLs. */
-function assetRefs(text) {
-  return refsOf(text, ASSET_REF);
+function otherBuilds(names) {
+  return names.filter(
+    (name) => name !== SHELL_CACHE && (name.startsWith(BUILD_PREFIX) || name === LEGACY_CACHE),
+  );
 }
 
-/** The same-origin font files `text` (the shell) names, as absolute URLs (fe#177). */
-function fontRefs(text) {
-  return refsOf(text, FONT_REF);
+/** Only immutable, same-scope build files may be served from a previous generation. The
+ * font rule matches the manifest's (scripts/web-precache.cjs `fonts`): keep them in step. */
+function immutableAsset(url) {
+  const { href, search } = new URL(url);
+  const scope = self.registration.scope;
+  return (
+    !search &&
+    (href.startsWith(scope + BUILD_ASSETS.slice(1)) ||
+      (href.startsWith(scope + 'assets/') && /\.(ttf|otf|woff2?)$/i.test(href)))
+  );
 }
 
-function refsOf(text, pattern) {
-  const urls = new Set();
-  for (const m of text.matchAll(pattern)) {
-    const url = new URL(m[1], self.location.origin);
-    if (url.origin === self.location.origin) urls.add(url.href);
+async function matchPrevious(request, options) {
+  for (const name of otherBuilds(await caches.keys())) {
+    const previous = await caches.open(name);
+    const hit = await previous.match(request, options);
+    if (hit) return hit;
   }
-  return [...urls];
 }
 
-/**
- * Precache every chunk of the build the shell (the scope's index.html) boots: its scripts,
- * stylesheets and fonts, then every chunk they name, transitively. A route opened for the first
- * time offline then still finds its chunk, and a deep link still boots. The shell is
- * cached once its own files are in, so offline it always boots. Once this build is
- * complete, the build before it stays one deploy longer (a tab still running it, its
- * worker replaced by another tab's new build, opens its pages from these), older files
- * go, and so does every page an earlier build cached (`handleNavigation`): offline such a
- * page would name files no longer kept, and the shell boots this build instead. So does any
- * page kept under an address with a one-time value (`UNKEPT_PAGE_PARAMS`). Offline
- * or failing part way, it stops and leaves the record unwritten, so the next ask finishes
- * it.
- *
- * At install (`fresh`) every file is written again, even one already cached: Chrome
- * compiles a script a worker caches while installing and keeps the code with it, so the
- * next start skips most of its compiling (the app registers the worker under its build's
- * name, so each deploy installs one). A font has no such code, and is never fetched again.
- * Otherwise (the app's ask) a hashed file already cached is not fetched again, and a shell
- * naming the same files as last time is done.
- */
-async function precacheBuild(fresh = false) {
-  try {
-    const cache = await caches.open(SHELL_CACHE);
-    const shell = self.registration.scope;
-    const res = await fetch(new Request(shell, { cache: 'no-cache' }));
-    if (!res.ok) return;
-    const html = await res.clone().text();
-    const scripts = assetRefs(html);
-    if (!scripts.length) return;
-    // The shell's fonts with its own files: offline, a cold start draws its text in them.
-    const fonts = new Set(fontRefs(html));
-    const roots = [...scripts, ...fonts];
-    const build = roots.slice().sort().join('\n');
-    const marker = new URL(PRECACHED_BUILD, shell).href;
-    const last = await readRecord(cache, marker);
-    if (!fresh && last && last.build === build) {
-      await cache.put(shell, res);
-      return;
-    }
+/** The mandatory start scripts and CSS are named in every static route's HTML. A page
+ * from a newer deployment can be shown online, but it cannot replace this offline shell. */
+async function matchesBuild(response) {
+  const html = await response.text();
+  return BUILD.start.length > 0 && BUILD.start.every((file) => html.includes(file));
+}
 
-    // Level by level, each level's files at once: the entry names the route chunks, which
-    // may name more. The shell once its own files (the first level) are in.
-    const seen = new Set();
-    let level = roots;
-    while (level.length) {
-      for (const url of level) seen.add(url);
-      const texts = await Promise.all(
-        level.map((url) => {
-          if (!fonts.has(url)) return precacheAsset(cache, url, fresh);
-          // A font is the look, not the boot: one the server won't give (a proxy refusing
-          // its path) never stops the precache, or the shell would never be cached for
-          // offline. It is left out of the record. Never fetched again once cached (`fresh`
-          // is for scripts, whose compiled code Chrome keeps): its name is its content.
-          return precacheAsset(cache, url, false).catch(() => {
-            seen.delete(url);
-            return '';
-          });
-        }),
-      );
-      if (level === roots) await cache.put(shell, res);
-      level = [...new Set(texts.flatMap(assetRefs))].filter((url) => !seen.has(url));
-    }
+let repairing;
 
-    const previous = !last ? [] : last.build !== build ? last.files : last.previous;
-    const keep = new Set([...seen, ...previous]);
-    // A font an earlier build precached sits outside `_expo/static/`: dropped by its record.
-    const precachedBefore = new Set(last ? [...last.files, ...last.previous] : []);
-    for (const request of await cache.keys()) {
-      const { url } = request;
-      if (url === shell || url === marker) continue;
-      if (url.includes(BUILD_ASSETS) || precachedBefore.has(url)) {
-        if (!keep.has(url)) await cache.delete(request);
-        continue;
-      }
-      const page = await cache.match(request);
-      if (!page || !(page.headers.get('content-type') || '').includes('text/html')) continue;
-      // One kept under a one-time address goes whatever it names: a worker from before that
-      // rule (`UNKEPT_PAGE_PARAMS`) wrote it, the last time as this build's first page load.
-      if (carriesOneTimeValue(url) || assetRefs(await page.text()).some((ref) => !seen.has(ref))) {
-        await cache.delete(request);
+/** Install this build again when its offline root is gone. Another worker on this origin
+ * can delete every cache but its own (the admin console's, scope "/", on activation), and
+ * the same worker bytes never install again until the next deploy. One repair at a time. */
+function repairBuild() {
+  repairing ??= (async () => {
+    if ((await caches.keys()).includes(SHELL_CACHE)) {
+      const cache = await caches.open(SHELL_CACHE);
+      if (await cache.match(self.registration.scope)) return;
+    }
+    await installBuild();
+  })().finally(() => {
+    repairing = undefined;
+  });
+  return repairing;
+}
+
+/** Install in a separate cache. A required file going missing rejects the install, so
+ * the browser keeps its working worker and retries the update on a later visit. */
+async function installBuild() {
+  const scope = self.registration.scope;
+  const shell = await fetch(new Request(scope, { cache: 'no-cache' }));
+  // A redirected root would be refused as the answer to an offline navigation.
+  if (!cacheable(shell) || shell.redirected || !(await matchesBuild(shell.clone()))) {
+    throw new Error('Offline shell does not match build');
+  }
+
+  const existed = (await caches.keys()).includes(SHELL_CACHE);
+  const cache = await caches.open(SHELL_CACHE);
+  const language = new URL(self.location.href).searchParams.get('lang');
+  const files = [
+    ...(Object.hasOwn(BUILD.catalogs, language) ? [BUILD.catalogs[language]] : []),
+    ...BUILD.start,
+    ...BUILD.fonts,
+    ...BUILD.routes,
+    READER_DOCUMENT,
+  ];
+  const fonts = new Set(BUILD.fonts);
+  const pending = files.values();
+  // A required file failed: the install is over, so the other transfers take no more files.
+  let stopped = false;
+  async function takeFiles() {
+    for (const file of pending) {
+      if (stopped) return;
+      const url = new URL(file, scope).href;
+      const font = fonts.has(file);
+      const reader = file === READER_DOCUMENT;
+      try {
+        // Changing language installs another worker over the same build. Only its
+        // missing catalog needs fetching; keep the scripts already compiled here.
+        if (existed && !reader && (await cache.match(url, { ignoreVary: font }))) continue;
+        // A page may already have fetched the font with a different Origin header.
+        // Copy those bytes forward; a script cached at install also keeps Chrome's code.
+        let response;
+        if (font) {
+          response = await matchPrevious(url, { ignoreVary: true });
+        }
+        response ??= await fetch(new Request(url, { cache: reader ? 'reload' : 'default' }));
+        if (!cacheable(response) || response.redirected) throw new Error('Precache failed: ' + url);
+        await cache.put(url, response);
+      } catch (error) {
+        if (!font && !reader) {
+          stopped = true;
+          throw error;
+        }
+        // A book already downloaded keeps opening in the reader if this server cannot
+        // send a new reader document. Its cached response carries the reader's own CSP.
+        if (reader && !(await cache.match(url))) {
+          const previous = await matchPrevious(url);
+          if (previous) await cache.put(url, previous);
+        }
       }
     }
-    await cache.put(marker, new Response(JSON.stringify({ build, files: [...seen], previous })));
-  } catch {
-    // offline or the server gone: the next ask (the app's next start) tries again
   }
-}
-
-/** The precache record (`PRECACHED_BUILD`), or null without a readable one. */
-async function readRecord(cache, marker) {
-  const res = await cache.match(marker);
-  if (!res) return null;
+  // Let all four transfers settle before removing an incomplete cache.
+  const results = await Promise.allSettled(Array.from({ length: PRECACHE_CONCURRENCY }, takeFiles));
+  const failed = results.find((result) => result.status === 'rejected');
   try {
-    const record = JSON.parse(await res.text());
-    return typeof record.build === 'string' &&
-      Array.isArray(record.files) &&
-      Array.isArray(record.previous)
-      ? record
-      : null;
-  } catch {
-    return null;
+    if (failed) throw failed.reason;
+    await cache.put(scope, shell);
+  } catch (error) {
+    if (!existed) await caches.delete(SHELL_CACHE);
+    throw error;
   }
 }
 
-/**
- * One build file into the cache (`fresh`: fetched again even when cached), returning a
- * script's text for the files it names ('' for a stylesheet). Throws when it can't be had,
- * which stops the precache.
- */
-async function precacheAsset(cache, url, fresh) {
-  // Any copy will do, Vary aside: a font the page fetched (`cacheFirst`) is stored
-  // under the page's request, Origin and all, and a build file is the same bytes whoever asked.
-  let asset = fresh ? undefined : await cache.match(url, { ignoreVary: true });
-  if (!asset) {
-    asset = await fetch(url);
-    if (!asset.ok) throw new Error(`precache: ${url} ${asset.status}`);
-    await cache.put(url, asset.clone());
+/** A completed build has its offline root. On activation retain the last such build
+ * for tabs still running it, with only its immutable assets. An update to the worker
+ * alone can reuse its build cache and the already-retired previous one. */
+async function retireBuilds() {
+  // A newer worker may already be installing into its own cache, which has no root yet.
+  // Its activation retires the builds instead, once that cache is complete.
+  if (self.registration.installing) return;
+  const others = otherBuilds(await caches.keys());
+  let previous = others.at(-1);
+  for (const name of others) {
+    const cache = await caches.open(name);
+    if (await cache.match(self.registration.scope)) previous = name;
   }
-  return url.endsWith('.js') ? asset.text() : '';
+  for (const name of others) {
+    if (name !== previous) {
+      await caches.delete(name);
+      continue;
+    }
+    const cache = await caches.open(name);
+    // Also drops the old worker's build record, stale HTML and one-time addresses.
+    const stale = (await cache.keys()).filter((request) => !immutableAsset(request.url));
+    await Promise.all(stale.map((request) => cache.delete(request)));
+  }
 }
 
 // --- offline media ---------------------------------------------------------

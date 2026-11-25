@@ -9,7 +9,7 @@ import { join } from 'node:path';
 
 const SCOPE = 'https://h/web/';
 const READER = `${SCOPE}reader.html`;
-const SHELL = 'audiosilo-shell-v1';
+const SHELL = 'audiosilo-shell-build-test';
 
 type Handler = (event: unknown) => void;
 type FakeRequest = { url: string; method: string; mode: string; destination: string };
@@ -26,6 +26,7 @@ class FakeResponse {
   get status() {
     return this.init.status ?? 200;
   }
+  type = 'basic';
   headers = { get: () => null };
   async text() {
     return this.body;
@@ -36,8 +37,9 @@ class FakeResponse {
 }
 
 /** A worker with its caches and a network that is up (`online`) or down; `served` is what
- * the server answers per url (a 404 for anything else). */
-function worker({ online = true, served = {} as Record<string, string> } = {}) {
+ * the server answers per url (a 404 for anything else); `active`: another worker of the
+ * registration is already working (an update, not a first visit). */
+function worker({ online = true, served = {} as Record<string, string>, active = false } = {}) {
   const handlers = new Map<string, Handler>();
   const stores = new Map<string, Map<string, FakeResponse>>();
   const net = { online };
@@ -72,7 +74,7 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
   };
   const self = {
     location: { href: `${SCOPE}sw.js`, origin: 'https://h' },
-    registration: { scope: SCOPE },
+    registration: { scope: SCOPE, active: active ? {} : null },
     addEventListener: (type: string, fn: Handler) => handlers.set(type, fn),
     skipWaiting: async () => {},
     clients: { claim: async () => {} },
@@ -83,7 +85,16 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
       public init: unknown = {},
     ) {}
   }
-  const source = readFileSync(join(__dirname, '../../public/sw.js'), 'utf8');
+  const source = readFileSync(join(__dirname, '../../public/sw.js'), 'utf8').replace(
+    '/* precache manifest */ null',
+    JSON.stringify({
+      id: 'test',
+      start: [ENTRY.slice(SCOPE.length)],
+      routes: [],
+      fonts: [],
+      catalogs: {},
+    }),
+  );
   new Function('self', 'caches', 'fetch', 'Response', 'Request', source)(
     self,
     caches,
@@ -101,8 +112,9 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
       waitUntil: (p: Promise<unknown>) => waits.push(p),
       respondWith: (p: Promise<FakeResponse>) => (response = p),
     });
+    const answer = await response;
     await Promise.all(waits);
-    return response ? await response : undefined;
+    return answer;
   };
   const navigate = (url: string, destination = 'document') =>
     dispatch('fetch', {
@@ -112,7 +124,7 @@ function worker({ online = true, served = {} as Record<string, string> } = {}) {
   return { dispatch, navigate, cached, net, fetch };
 }
 
-// The shell names one build chunk, which the install precaches with it (`precacheBuild`).
+// The manifest's one start chunk, which the shell must name for the install to keep it.
 const ENTRY = `${SCOPE}_expo/static/js/web/entry-abc.js`;
 const SHELL_HTML = '<script src="/web/_expo/static/js/web/entry-abc.js"></script>';
 const SHELL_ONLY = { [SCOPE]: SHELL_HTML, [ENTRY]: '' };
@@ -133,6 +145,18 @@ describe('sw.js', () => {
     sw.net.online = false;
     const res = await sw.navigate(READER, 'iframe');
     expect(res?.body).toBe('<reader>');
+  });
+
+  it('installs on a first visit whose precache fails, so downloaded media still plays', async () => {
+    // The server's root is not this build's shell: nothing is kept, yet the worker installs.
+    const sw = worker({ served: { [SCOPE]: '<p>another build</p>' } });
+    await sw.dispatch('install');
+    expect(sw.cached(SCOPE)).toBeUndefined();
+  });
+
+  it('fails an update whose precache fails, keeping the working worker', async () => {
+    const sw = worker({ served: { [SCOPE]: '<p>another build</p>' }, active: true });
+    await expect(sw.dispatch('install')).rejects.toThrow('does not match build');
   });
 
   it('still installs with the shell when the server has no reader (an older server)', async () => {

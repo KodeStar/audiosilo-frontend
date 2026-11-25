@@ -7,6 +7,7 @@ import {
   type Query,
   type QueryClient,
   type QueryKey,
+  type UseQueryOptions,
   type UseQueryResult,
   queryOptions,
   skipToken,
@@ -19,17 +20,39 @@ import {
 import { useCallback, useEffect, useMemo } from 'react';
 import { AppState } from 'react-native';
 
+// The playback and provider imports below can reach the hooks while loading. Make the
+// shared query keys and options available to those callers first.
+import { qk } from './query-keys';
+import {
+  allProgressQuery,
+  BOOKS_PAGE_SIZE,
+  favouritesQuery,
+  librariesQuery,
+  libraryBooksQuery,
+  myDevicesQuery,
+  recentQuery,
+  RECENT_LIMIT,
+  serverInfoQuery,
+  authorsQuery,
+  narratorsQuery,
+  seriesListQuery,
+  collectionsQuery,
+  queueQuery,
+  myStatsQuery,
+  myListeningQuery,
+  listeningGoalQuery,
+  householdQuery,
+} from './startup-reads';
+
 import {
   bridgePollInterval,
   estimatePollInterval,
   latestDone,
   librivoxJobPollInterval,
   midRunCheckpoint,
-  READALONG_ALIGN,
   SIDECARS_GENERATE,
 } from '@/lib/bridge-jobs';
 import { afterPaint } from '@/lib/after-paint';
-import { serverInfoKey } from '@/lib/auth-failure';
 import { byPosition } from '@/lib/by-position';
 import { parseConnectionId, serverIdOf } from '@/lib/connection-id';
 import { contentKey } from '@/lib/content-key';
@@ -69,7 +92,6 @@ import {
   progressToSave,
   saveProgress,
   writeMirror,
-  writeMirrors,
 } from '@/playback/progress-sync';
 import {
   refreshLocalPlaces,
@@ -79,7 +101,6 @@ import {
 import { spanRecovered } from '@/playback/span-recovery';
 import type { CheckedReadalongMap } from '@/reader/readalong-map';
 import { lookupReadingPlace } from '@/reader/reading-progress';
-import { rememberLibraryNames } from '@/stores/library-names';
 import { onConnectionRemoved, useSession } from '@/stores/session';
 
 import {
@@ -96,12 +117,12 @@ import { resolveClient } from './connection-clients';
 import { isFavouriteOf } from './favourite-match';
 import { queryClient, useApi, useApis, useCid, useOptionalApi } from './provider';
 import { noteFailure, useReachability } from './reachability';
+
 import type {
   AddMemberBody,
   Book,
   BookMeta,
   Bookmark,
-  BookPage,
   BookmarkLabel,
   BookmarkPatch,
   BookRef,
@@ -150,170 +171,19 @@ import type {
   UpdateMemberBody,
 } from './types';
 
-/** Centralized query keys so mutations can invalidate precisely. Every key leads with
- * the connection id (`cid`) so two servers with the same (libraryId, path) never share
- * a cache entry; the shape is unified with the cross-connection fan-out hooks below so
- * the single- and multi-server views share one cache. */
-export const qk = {
-  server: serverInfoKey,
-  libraries: (cid: string) => ['libraries', cid] as const,
-  /** Every folder listing of a library (a prefix of `browse`: whatever its path). */
-  folders: (cid: string, lib: number) => ['browse', cid, lib] as const,
-  browse: (cid: string, lib: number, path: string) => ['browse', cid, lib, path] as const,
-  item: (cid: string, lib: number, path: string) => ['item', cid, lib, path] as const,
-  chapters: (cid: string, lib: number, path: string) => ['chapters', cid, lib, path] as const,
-  /** A book's /meta envelope. Each request variant (`include=previous`,
-   * `spoilers=hide`) answers differently, so it gets its own entry, under the plain
-   * key as a prefix (invalidating that reaches every variant). */
-  bookMeta: (cid: string, lib: number, path: string, opts?: BookMetaOptions) =>
-    opts?.includePrevious || opts?.hideSpoilers
-      ? ([
-          'bookMeta',
-          cid,
-          lib,
-          path,
-          { previous: !!opts.includePrevious, hide: !!opts.hideSpoilers },
-        ] as const)
-      : (['bookMeta', cid, lib, path] as const),
-  metaWork: (cid: string, workId: string) => ['metaWork', cid, workId] as const,
-  authors: (cid: string, lib: number) => ['authors', cid, lib] as const,
-  narrators: (cid: string, lib: number) => ['narrators', cid, lib] as const,
-  /** Every series list of a library (a prefix of `seriesList`: both variants). */
-  seriesLists: (cid: string, lib: number) => ['seriesList', cid, lib] as const,
-  /** `memberships`: counted in every series a book is in (`series_memberships`). */
-  seriesList: (cid: string, lib: number, memberships: boolean) =>
-    ['seriesList', cid, lib, { memberships }] as const,
-  /** Every book list of a library (a prefix of `libraryBooks`: whatever its query). */
-  libraryBookLists: (cid: string, lib: number) => ['libraryBooks', cid, lib] as const,
-  libraryBooks: (cid: string, lib: number, query: BookListQuery) =>
-    ['libraryBooks', cid, lib, query] as const,
-  nextBook: (cid: string, lib: number, path: string) => ['nextBook', cid, lib, path] as const,
-  allProgress: (cid: string) => ['progress', 'all', cid] as const,
-  progress: (cid: string, lib: number, path: string) => ['progress', cid, lib, path] as const,
-  /** Where the ebook reader opens a book (`useReadingPlace`). */
-  readingPlace: (cid: string, lib: number, path: string) =>
-    ['readingPlace', cid, lib, path] as const,
-  bookmarks: (cid: string, lib: number, path: string) => ['bookmarks', cid, lib, path] as const,
-  notes: (cid: string, lib: number, path: string) => ['notes', cid, lib, path] as const,
-  history: (cid: string, lib: number, path: string) => ['history', cid, lib, path] as const,
-  /** Prefix matching every history key of a connection (invalidation), the
-   * across-books list (`myHistory`) included. */
-  historyAll: (cid: string) => ['history', cid] as const,
-  /** The caller's listening across books (`myHistoryQuery`, an infinite query), under
-   * `historyAll` so a recorded span refreshes it. */
-  myHistory: (cid: string) => ['history', cid, 'me'] as const,
-  /** The caller's bookmarks across books (`myBookmarksQuery`, an infinite query). */
-  myBookmarks: (cid: string) => ['myBookmarks', cid] as const,
-  /** The caller's notes across books (`myNotesQuery`, an infinite query). */
-  myNotes: (cid: string) => ['myNotes', cid] as const,
-  favourites: (connectionId: string) => ['favourites', connectionId] as const,
-  apiKeys: (cid: string) => ['apiKeys', cid] as const,
-  search: (cid: string, q: string) => ['search', cid, q] as const,
-  /** Every recently added list of a connection (a prefix of `recent`: whatever its limit). */
-  recentLists: (cid: string) => ['books', 'recent', cid] as const,
-  recent: (cid: string, limit: number) => ['books', 'recent', cid, limit] as const,
-  copies: (cid: string, key: string) => ['copies', cid, key] as const,
-  // User state (Phase 1b), one capability flag each (see the hooks below).
-  queue: (cid: string) => ['queue', cid] as const,
-  collections: (cid: string) => ['collections', cid] as const,
-  collection: (cid: string, id: number) => ['collection', cid, id] as const,
-  /** Prefix matching every collection detail of a connection (invalidation). */
-  collectionAll: (cid: string) => ['collection', cid] as const,
-  shareTargets: (cid: string) => ['shareTargets', cid] as const,
-  rating: (cid: string, lib: number, path: string) => ['rating', cid, lib, path] as const,
-  myRatings: (cid: string) => ['myRatings', cid] as const,
-  myStats: (cid: string, range: StatsRange) => ['myStats', cid, range] as const,
-  /** Prefix matching every `myStats` range of a connection (invalidation). */
-  myStatsAll: (cid: string) => ['myStats', cid] as const,
-  /** The past years with a story, from the year before `current` back (Year in listening;
-   * outside `myStats` so its invalidation doesn't refetch every probed year). */
-  storyYears: (cid: string, current: number) => ['storyYears', cid, current] as const,
-  myListening: (cid: string, range: StatsRange) => ['myListening', cid, range] as const,
-  listeningGoal: (cid: string) => ['listeningGoal', cid] as const,
-  myDevices: (cid: string) => ['myDevices', cid] as const,
-  // Home and away addresses, capability `addresses`.
-  addresses: (cid: string) => ['addresses', cid] as const,
-  // Listening in the house, capability `household` (player redesign Phase 8).
-  household: (cid: string) => ['household', cid] as const,
-  houseListening: (cid: string) => ['houseListening', cid] as const,
-  // Household members, capability `household_members` (player redesign Phase 8b-1).
-  householdMembers: (cid: string) => ['householdMembers', cid] as const,
-  memberDevices: (cid: string, id: number) => ['memberDevices', cid, id] as const,
-  /** Prefix matching every member's devices on a connection (invalidation). */
-  memberDevicesAll: (cid: string) => ['memberDevices', cid] as const,
-  /** Prefix matching every connection's progress list (refetch on Home). */
-  allProgressAll: () => ['progress', 'all'] as const,
-  /** Prefix matching every connection's recently added list. */
-  recentAll: () => ['books', 'recent'] as const,
-  /** The caller's upcoming releases, capability `upcoming` (Track U2). */
-  upcoming: (cid: string) => ['upcoming', cid] as const,
-  /** Whether the caller has a calendar link, capability `upcoming_calendar` (Track U3). */
-  upcomingCalendar: (cid: string) => ['upcomingCalendar', cid] as const,
-  /** This device's copy of that link (the secure store, never the network: Track U3). */
-  upcomingCalendarLink: (cid: string) => ['upcomingCalendarLink', cid] as const,
-  /** The car's Library tab: a library's newest books, one page (`src/car`). */
-  carLibrary: (cid: string, lib: number) => ['car', 'library', cid, lib] as const,
-  // The Bridge, capability `bridge` (admin only; Bridge Phase 1a).
-  /** A book's Bridge jobs, by its own path (`rel_path`). */
-  bridgeJobs: (cid: string, lib: number, path: string) => ['bridgeJobs', cid, lib, path] as const,
-  /** What generating characters and recaps for a book would take. */
-  bridgeEstimate: (cid: string, lib: number, path: string) =>
-    ['bridgeEstimate', cid, lib, path] as const,
-  /** What making a book's read-along would take (Bridge Phase 3c): under `bridgeEstimate`,
-   * so a refused queue reads both again. */
-  readalongEstimate: (cid: string, lib: number, path: string) =>
-    ['bridgeEstimate', cid, lib, path, READALONG_ALIGN] as const,
-  /** A book's read-along map (capability `readalong`, Bridge Phase 3c), per map: keyed by
-   * its `generated_at` (`Book.readalong`), so a map made again is fetched again. */
-  readalong: (cid: string, lib: number, path: string, generatedAt: string) =>
-    ['readalong', cid, lib, path, generatedAt] as const,
-  /** The read-along map a download keeps (`readalong.json`), read from the device, per map
-   * (its `generated_at`). */
-  readalongLocal: (cid: string, lib: number, path: string, generatedAt: string) =>
-    ['readalongLocal', cid, lib, path, generatedAt] as const,
-  /** One Bridge job by its id: how a job about no book (a `librivox.fetch`) is followed. */
-  bridgeJob: (cid: string, id: number) => ['bridgeJob', cid, id] as const,
-  // Add from LibriVox (LibriVox L6; admin only).
-  /** A LibriVox search, by its trimmed query. */
-  librivoxSearch: (cid: string, q: string) => ['librivoxSearch', cid, q] as const,
-  /** Every LibriVox work of a connection (a prefix: an Add or a job's end asks them again). */
-  librivoxWorks: (cid: string) => ['librivoxWork', cid] as const,
-  /** One work's LibriVox recordings, under `librivoxWorks`. */
-  librivoxWork: (cid: string, id: string) => ['librivoxWork', cid, id] as const,
-  // Podcasts (Bridge Phase 2d-1): reads are core, Follow is capability `podcasts`, the
-  // fetch status `podcast_fetch`.
-  /** A podcast library's shows. */
-  podcastShows: (cid: string, lib: number) => ['podcastShows', cid, lib] as const,
-  /** A show's episodes in one order (`usePodcastEpisodes`, an infinite query). */
-  podcastEpisodes: (cid: string, lib: number, show: string, order: PodcastEpisodeOrder) =>
-    ['podcastEpisodes', cid, lib, show, order] as const,
-  /** Prefix matching every episode list in a podcast library (every show's). */
-  podcastEpisodesOfLibrary: (cid: string, lib: number) => ['podcastEpisodes', cid, lib] as const,
-  /** Prefix matching every episode list of a show (both orders, Home's latest). */
-  podcastEpisodesOfShow: (cid: string, lib: number, show: string) =>
-    ['podcastEpisodes', cid, lib, show] as const,
-  /** A show's newest `limit` episodes, one page (Home's New episodes), under the show's
-   * prefix ('latest' never matches an order's key). */
-  latestEpisodes: (cid: string, lib: number, show: string, limit: number) =>
-    ['podcastEpisodes', cid, lib, show, 'latest', limit] as const,
-  /** The shows the caller follows across the server's podcast libraries. */
-  myPodcasts: (cid: string) => ['myPodcasts', cid] as const,
-  /** An episode's on-demand fetch status (the episode-fetch controller seeds it). */
-  podcastFetch: (cid: string, lib: number, path: string) =>
-    ['podcastFetch', cid, lib, path] as const,
-  // Finding shows (Bridge Phase 2d-2), capability `podcast_discovery`.
-  /** The directories the server can search. */
-  discoveryProviders: (cid: string) => ['discoveryProviders', cid] as const,
-  /** One directory search: its provider, cleaned text, country and limit (the server's
-   * own cache key), so an unchanged repeat reuses the held results. */
-  discoverySearch: (
-    cid: string,
-    provider: string,
-    q: string,
-    country: string | null,
-    limit: number,
-  ) => ['discoverySearch', cid, provider, q, country, limit] as const,
-};
+export { qk } from './query-keys';
+export {
+  allProgressQuery,
+  collectionsQuery,
+  fetchLibraries,
+  librariesQuery,
+  libraryBooksQuery,
+  myStatsQuery,
+  queueQuery,
+  recentQuery,
+  RECENT_LIMIT,
+  serverInfoQuery,
+} from './startup-reads';
 
 /** Whether a query key is a connection's Up next queue (`qk.queue`). */
 export const isQueueKey = (key: readonly unknown[]): boolean => key[0] === 'queue';
@@ -343,23 +213,6 @@ export const isSearchKey = (key: readonly unknown[], q: string): boolean =>
 // the same cache entry with the same freshness. A null client gives no query function.
 
 type MaybeClient = ApiClient | null | undefined;
-
-/** `/server`: the version and flags don't change within a session. Kept while nothing
- * observes it, so a capability-gated hook mounted later starts from the known flags
- * (refreshed in the background once stale) instead of waiting on another round trip. */
-export function serverInfoQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.server(cid),
-    queryFn: client ? ({ signal }) => client.serverInfo(signal) : skipToken,
-    // A dependent screen mounting after a failure must not restart every other gate.
-    // Retry, reconnect and a new sign-in still ask again.
-    retryOnMount: false,
-    // TanStack uses refetchOnMount when a failed re-read holds an older answer.
-    refetchOnMount: (query) => query.state.status !== 'error',
-    staleTime: 5 * 60_000,
-    gcTime: Infinity,
-  });
-}
 
 /**
  * `queryClient.fetchQuery` for a reader outside React that waits on the answer (the play
@@ -432,107 +285,12 @@ export function addressesQuery(cid: string, client: MaybeClient) {
   });
 }
 
-/** The caller's own signed-in devices (`GET /me/devices`). Ask only a server with
- * `my_devices` (pass no client otherwise). Read after a password change by
- * `useReadMyDevicesAgain`; `useMyDevices` reads the same key through `useCapabilityQuery`. */
-export function myDevicesQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.myDevices(cid),
-    queryFn: client ? ({ signal }) => client.myDevices(signal) : skipToken,
-  });
-}
-
-/** A server's libraries, their names kept on the device as they arrive (an offline book
- * page names its library: `useLibraryName`, PLAYER-09). Every read of `qk.libraries` asks
- * through `librariesQuery`. */
-export async function fetchLibraries(cid: string, client: ApiClient): Promise<Library[]> {
-  const libraries = await client.libraries();
-  rememberLibraryNames(cid, libraries);
-  return libraries;
-}
-
-/** A server's libraries. */
-export function librariesQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.libraries(cid),
-    queryFn: client ? () => fetchLibraries(cid, client) : skipToken,
-  });
-}
-
-/** The caller's collections (their own and those shared with them). Ask only a server
- * with `collections`. */
-export function collectionsQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.collections(cid),
-    queryFn: client ? ({ signal }) => client.collections(signal) : skipToken,
-  });
-}
-
 /** One collection with its items. Ask only a server with `collections`. */
 export function collectionQuery(cid: string, client: MaybeClient, id: number) {
   return queryOptions({
     queryKey: qk.collection(cid, id),
     queryFn: client ? ({ signal }) => client.collection(id, signal) : skipToken,
   });
-}
-
-/** The Up next queue. Ask only a server with `queue`. */
-export function queueQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.queue(cid),
-    queryFn: client ? ({ signal }) => client.queue(signal) : skipToken,
-  });
-}
-
-/** How many of a server's newest books Home's Recently added shows. */
-export const RECENT_LIMIT = 48;
-
-/** A server's newest books (Home's Recently added). */
-export function recentQuery(cid: string, client: MaybeClient, limit: number = RECENT_LIMIT) {
-  return queryOptions({
-    queryKey: qk.recent(cid, limit),
-    queryFn: client ? ({ signal }) => client.recentBooks(limit, signal) : skipToken,
-  });
-}
-
-/** The caller's favourites on a server. */
-export function favouritesQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.favourites(cid),
-    queryFn: client ? ({ signal }) => client.favourites(signal) : skipToken,
-  });
-}
-
-/** Every saved progress row of a connection. The rows of books downloaded here go into the
- * durable mirror as they come (`keepDownloadedPlaces`). */
-export function allProgressQuery(cid: string, client: MaybeClient) {
-  return queryOptions({
-    queryKey: qk.allProgress(cid),
-    queryFn: client
-      ? async () => {
-          const rows = await client.allProgress();
-          void keepDownloadedPlaces(cid, rows);
-          return rows;
-        }
-      : skipToken,
-  });
-}
-
-/**
- * Put the server's rows of the books downloaded on this device into the durable mirror, in
- * one write (keep-newest, so a newer save of this device's own stays), as
- * `fetchBookProgress` does for one book: an offline resume of a downloaded book then knows
- * another device's newer place even when its page was not opened before going offline
- * (fe#198). Never fails the list.
- */
-async function keepDownloadedPlaces(cid: string, rows: readonly Progress[]): Promise<void> {
-  try {
-    const kept = rows.filter((r) => isKeptOffline(cid, r.library_id, r.path));
-    if (kept.length === 0) return;
-    await writeMirrors(kept.map((r) => progressToSave(cid, r.library_id, r.path, r)));
-  } catch {
-    // The list stands without it: a downloaded book's page and resume still mirror it.
-  }
 }
 
 /** A book search (the server's search covers title, author, narrator and series); an
@@ -924,18 +682,40 @@ function useCapabilityQuery<T, S = T>(
   queryKey: (cid: string) => readonly unknown[],
   load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
   connectionId?: string,
-  opts: {
-    ready?: boolean;
-    enabled?: boolean;
-    staleTime?: number;
-    retry?: boolean;
-    refetchInterval?: (query: Query<T, Error, T, readonly unknown[]>) => number | false;
-    select?: (data: T) => S;
-    /** React Query's own: false, the caller reads no updates and is no observer of the
-     * query (its page hidden) until it is true again. */
-    subscribed?: boolean;
-    gcTime?: number;
-  } = {},
+  opts: CapabilityOptions<T, S, QueryKey> = {},
+) {
+  return useCapabilitySpec<T, S, QueryKey>(
+    flag,
+    (cid, api) => ({
+      queryKey: queryKey(cid),
+      queryFn: api ? ({ signal }) => load(api, signal) : skipToken,
+    }),
+    connectionId,
+    opts,
+  );
+}
+
+type CapabilityOptions<T, S, K extends QueryKey> = {
+  ready?: boolean;
+  enabled?: boolean;
+  staleTime?: number;
+  retry?: boolean;
+  refetchInterval?: (query: Query<T, Error, T, K>) => number | false;
+  select?: (data: T) => S;
+  /** React Query's own: false, the caller reads no updates and is no observer of the
+   * query (its page hidden) until it is true again. */
+  subscribed?: boolean;
+  gcTime?: number;
+};
+
+function useCapabilitySpec<T, S = T, K extends QueryKey = QueryKey>(
+  flag: keyof Capabilities,
+  spec: (
+    cid: string,
+    api: MaybeClient,
+  ) => Pick<UseQueryOptions<T, Error, T, K>, 'queryKey' | 'queryFn' | 'meta' | 'staleTime'>,
+  connectionId?: string,
+  opts: CapabilityOptions<T, S, K> = {},
 ) {
   const api = useOptionalApi(connectionId);
   const cid = useCid(connectionId);
@@ -944,10 +724,8 @@ function useCapabilityQuery<T, S = T>(
   const gateError = useMemo(() => info.error && new ServerReadError(info.error), [info.error]);
   const caps = info.data?.capabilities;
   const supported = caps?.[flag] === true;
-  const query = useQuery<T, Error, S, readonly unknown[]>({
-    queryKey: queryKey(cid),
-    queryFn:
-      supported && api && opts.ready !== false ? ({ signal }) => load(api, signal) : skipToken,
+  const query = useQuery<T, Error, S, K>({
+    ...spec(cid, supported && opts.ready !== false ? api : null),
     ...(opts.enabled !== undefined ? { enabled: opts.enabled } : {}),
     ...(opts.staleTime !== undefined ? { staleTime: opts.staleTime } : {}),
     ...(opts.retry !== undefined ? { retry: opts.retry } : {}),
@@ -1322,32 +1100,23 @@ export function useMetaWork(workId: string, enabled: boolean) {
  * so they are kept fresh for a while rather than refetched on every mount. */
 const BROWSE_STALE_MS = 5 * 60_000;
 
-/** One browse list (capability `browse_people`). */
-function useBrowseList<T>(
-  queryKey: (cid: string) => readonly unknown[],
-  load: (api: ApiClient, signal: AbortSignal) => Promise<T>,
-  connectionId?: string,
-) {
-  return useCapabilityQuery('browse_people', queryKey, load, connectionId, {
-    staleTime: BROWSE_STALE_MS,
-  });
-}
-
 /** A library's authors with book counts (capability `browse_people`). */
 export function useAuthors(libraryId: number, connectionId?: string) {
-  return useBrowseList(
-    (cid) => qk.authors(cid, libraryId),
-    (api, signal) => api.authors(libraryId, signal),
+  return useCapabilitySpec(
+    'browse_people',
+    (cid, api) => authorsQuery(cid, api, libraryId),
     connectionId,
+    { staleTime: BROWSE_STALE_MS },
   );
 }
 
 /** A library's narrators with book counts (capability `browse_people`). */
 export function useNarrators(libraryId: number, connectionId?: string) {
-  return useBrowseList(
-    (cid) => qk.narrators(cid, libraryId),
-    (api, signal) => api.narrators(libraryId, signal),
+  return useCapabilitySpec(
+    'browse_people',
+    (cid, api) => narratorsQuery(cid, api, libraryId),
     connectionId,
+    { staleTime: BROWSE_STALE_MS },
   );
 }
 
@@ -1356,35 +1125,12 @@ export function useNarrators(libraryId: number, connectionId?: string) {
  * (`series_memberships`). */
 export function useSeriesList(libraryId: number, connectionId?: string) {
   const memberships = useCapability('series_memberships', connectionId) === true;
-  return useBrowseList(
-    (cid) => qk.seriesList(cid, libraryId, memberships),
-    (api, signal) => api.seriesList(libraryId, { memberships }, signal),
+  return useCapabilitySpec(
+    'browse_people',
+    (cid, api) => seriesListQuery(cid, api, libraryId, memberships),
     connectionId,
+    { staleTime: BROWSE_STALE_MS },
   );
-}
-
-/** Page size of `useLibraryBooks` (the server takes 1-200). */
-const BOOKS_PAGE_SIZE = 100;
-
-/** A library list (`useLibraryBooks`), page by page on the server's cursor, through
- * `listBooks`; a page size other than the default is its own cache entry. */
-export function libraryBooksQuery(
-  cid: string,
-  client: MaybeClient,
-  libraryId: number,
-  query: BookListQuery,
-  pageSize: number = BOOKS_PAGE_SIZE,
-) {
-  const key = qk.libraryBooks(cid, libraryId, query);
-  return infiniteQueryOptions({
-    queryKey: pageSize === BOOKS_PAGE_SIZE ? key : [...key, { pageSize }],
-    queryFn: client
-      ? ({ pageParam, signal }) =>
-          client.listBooks(libraryId, { ...query, limit: pageSize, cursor: pageParam }, signal)
-      : skipToken,
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage: BookPage) => lastPage.next_cursor || undefined,
-  });
 }
 
 export type LibraryBooksOptions = {
@@ -1475,7 +1221,12 @@ export function useAllLibraryBooks(
   connectionId?: string,
   opts: LibraryBooksOptions = {},
 ) {
-  const q = useLibraryBooks(libraryId, query, connectionId, opts);
+  return useAllBookPages(useLibraryBooks(libraryId, query, connectionId, opts));
+}
+
+/** Collect the remaining pages after the first one paints, for either a filtered
+ * book list or the Library grid's whole-library read. */
+export function useAllBookPages(q: ReturnType<typeof useLibraryBooks>) {
   const { hasNextPage, isFetching, isFetchNextPageError, fetchNextPage, data, refetch } = q;
   // Keyed on the page count too: a page can arrive within one render of the request
   // that asked for it, leaving the flags as they were and the effect asleep.
@@ -2037,8 +1788,7 @@ export function useFavourites() {
   const api = useApi();
   const cid = useCid();
   return useQuery({
-    queryKey: qk.favourites(cid),
-    queryFn: ({ signal }) => api.favourites(signal),
+    ...favouritesQuery(cid, api),
     enabled: !!cid,
   });
 }
@@ -2225,7 +1975,7 @@ export function useRevokeApiKey(connectionId?: string) {
 
 /** The caller's Up next queue, in order (capability `queue`). */
 export function useQueue(connectionId?: string) {
-  return useCapabilityQuery('queue', qk.queue, (api, signal) => api.queue(signal), connectionId);
+  return useCapabilitySpec('queue', queueQuery, connectionId);
 }
 
 /** Replace the whole queue (capability `queue`). The cache takes the stored queue the
@@ -2303,12 +2053,7 @@ export function removeFromQueue(
 /** The caller's collections: owned first, then shared with them (capability
  * `collections`). */
 export function useCollections(connectionId?: string) {
-  return useCapabilityQuery(
-    'collections',
-    qk.collections,
-    (api, signal) => api.collections(signal),
-    connectionId,
-  );
+  return useCapabilitySpec('collections', collectionsQuery, connectionId);
 }
 
 /** One collection with its items (capability `collections`). Waits for a real id. */
@@ -2594,23 +2339,12 @@ export function useMyStats(
   connectionId?: string,
   opts: StatsQueryOpts = {},
 ) {
-  return useCapabilityQuery(
+  return useCapabilitySpec(
     'user_stats',
-    (cid) => qk.myStats(cid, range),
-    (api, signal) => api.myStats(range, signal),
+    (cid, api) => myStatsQuery(cid, api, range),
     connectionId,
     opts,
   );
-}
-
-/** `/me/stats` for a period as query options, for a reader that fetches it itself (the
- * Year section's search for earlier years): the cache entry `useMyStats` reads. The caller
- * checks `user_stats` first. */
-export function myStatsQuery(cid: string, client: MaybeClient, range: StatsRange) {
-  return queryOptions({
-    queryKey: qk.myStats(cid, range),
-    queryFn: client ? ({ signal }) => client.myStats(range, signal) : skipToken,
-  });
 }
 
 /** The caller's listening day by day for a period, for streaks and calendars
@@ -2620,10 +2354,9 @@ export function useMyListening(
   connectionId?: string,
   opts: StatsQueryOpts = {},
 ) {
-  return useCapabilityQuery(
+  return useCapabilitySpec(
     'user_stats',
-    (cid) => qk.myListening(cid, range),
-    (api, signal) => api.myListening(range, signal),
+    (cid, api) => myListeningQuery(cid, api, range),
     connectionId,
     opts,
   );
@@ -2631,13 +2364,7 @@ export function useMyListening(
 
 /** The caller's yearly goal and this year's finished books (capability `user_stats`). */
 export function useListeningGoal(connectionId?: string, opts: StatsQueryOpts = {}) {
-  return useCapabilityQuery(
-    'user_stats',
-    qk.listeningGoal,
-    (api, signal) => api.listeningGoal(signal),
-    connectionId,
-    opts,
-  );
+  return useCapabilitySpec('user_stats', listeningGoalQuery, connectionId, opts);
 }
 
 /** Set the yearly goal, books finished per year 1-1000 (capability `user_stats`). */
@@ -2667,13 +2394,9 @@ export function useClearListeningGoal(connectionId?: string) {
  * nothing kept, the list takes that read's state (`useCapabilityQuery`), so Account says
  * offline rather than hiding the section (fe#271). */
 export function useMyDevices(connectionId?: string, opts: { enabled?: boolean } = {}) {
-  return useCapabilityQuery(
-    'my_devices',
-    qk.myDevices,
-    (api, signal) => api.myDevices(signal),
-    connectionId,
-    { ready: opts.enabled !== false },
-  );
+  return useCapabilitySpec('my_devices', myDevicesQuery, connectionId, {
+    ready: opts.enabled !== false,
+  });
 }
 
 /** Reads the caller's devices again now (capability `my_devices`), into the list's cache
@@ -2753,13 +2476,7 @@ export type RevokeMyDeviceVars = { id: number; alsoMembers?: boolean };
  * which stores the server's answer (a change made on another device shows on the next
  * launch). */
 export function useHousehold(connectionId?: string) {
-  return useCapabilityQuery(
-    'household',
-    qk.household,
-    (api, signal) => api.household(signal),
-    connectionId,
-    { staleTime: Infinity },
-  );
+  return useCapabilitySpec('household', householdQuery, connectionId);
 }
 
 /** Share (`true`) or stop sharing what the caller is listening to (capability

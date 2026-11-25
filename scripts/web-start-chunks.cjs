@@ -23,6 +23,8 @@
 const { createHash } = require('node:crypto');
 const vm = require('node:vm');
 
+const { buildWorker } = require('./web-precache.cjs');
+
 /** V8's explicit compile hint for a whole script (a comment to anything else). */
 const COMPILE_HINT = '//# allFunctionsCalledOnLoad\n';
 
@@ -164,9 +166,9 @@ function withWebStartChunks(config) {
   if (!serialize) return config;
   const wrapped = async (entryPoint, preModules, graph, options) => {
     const result = await serialize(entryPoint, preModules, graph, options);
-    return isWebExport(result, graph)
-      ? { ...result, artifacts: splitStartScripts(result.artifacts) }
-      : result;
+    if (!isWebExport(result, graph)) return result;
+    const artifacts = splitStartScripts(result.artifacts);
+    return { ...result, artifacts: [...artifacts, buildWorker(artifacts, result.assets)] };
   };
   // Keep the markers Expo reads off its own serializer.
   config.serializer.customSerializer = Object.assign(wrapped, serialize);

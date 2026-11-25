@@ -1,13 +1,14 @@
-import { skipToken, useQueries, useQuery } from '@tanstack/react-query';
+import { useQueries, useQuery } from '@tanstack/react-query';
 
 import {
   allProgressQuery,
   librariesQuery,
-  qk,
+  recentQuery,
   useBook,
   useCapability,
   useChapters,
 } from '@/api/hooks';
+import { authorsQuery } from '@/api/startup-reads';
 import { useOptionalApi } from '@/api/provider';
 import type { Book } from '@/api/types';
 import type { PlayTarget } from '@/components/player/play-route';
@@ -60,13 +61,7 @@ export function useReadySummary(connectionId: string): ReadySummary {
   // Books only: a podcast library's shows are no books (BRIDGE-16).
   const libs = (libraries.data ?? []).filter((l) => !isPodcastLibrary(l));
   const lists = useQueries({
-    queries: libs.map((l) => ({
-      queryKey: qk.authors(connectionId, l.id),
-      queryFn:
-        api && browse
-          ? ({ signal }: { signal: AbortSignal }) => api.authors(l.id, signal)
-          : skipToken,
-    })),
+    queries: libs.map((lib) => authorsQuery(connectionId, browse ? api : null, lib.id)),
   });
   const counted = bookTotal(lists.map((q) => q.data));
   // Counting: the flag isn't known yet, or a list is still on its way. Can't count: no
@@ -78,10 +73,7 @@ export function useReadySummary(connectionId: string): ReadySummary {
         ? null
         : (counted ?? undefined);
 
-  const recent = useQuery({
-    queryKey: qk.recent(connectionId, SHELF_BOOKS),
-    queryFn: api ? ({ signal }) => api.recentBooks(SHELF_BOOKS, signal) : skipToken,
-  });
+  const recent = useQuery(recentQuery(connectionId, api, SHELF_BOOKS));
 
   const progress = useQuery(allProgressQuery(connectionId, api));
   const at = latestPlace(progress.data);
