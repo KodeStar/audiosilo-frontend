@@ -77,10 +77,17 @@ describe('BrowseScreen', () => {
       nativeEvent: { layout: { width: 288 } },
     });
     expect(screen.getByText(folder).props.numberOfLines).toBe(1);
+    expect(screen.getByTestId('breadcrumbs').props.contentContainerClassName).toBe(
+      'flex-row items-center',
+    );
     try {
       await setFontScale(3.1);
       expect(screen.getByText(folder).props.numberOfLines).toBeUndefined();
       expect(screen.getByRole('link', { name: folder })).toHaveStyle({ maxWidth: 288 });
+      // The one-line crumbs stretch to the wrapped one's height: one contiguous strip.
+      expect(screen.getByTestId('breadcrumbs').props.contentContainerClassName).toContain(
+        'items-stretch',
+      );
     } finally {
       await setFontScale(1);
     }

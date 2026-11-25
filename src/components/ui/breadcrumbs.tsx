@@ -58,7 +58,9 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
       onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
       style={HORIZONTAL_SCROLLER}
       showsHorizontalScrollIndicator={false}
-      contentContainerClassName="flex-row items-center"
+      // Under large text a crumb can wrap: the others stretch to its height, so the pills
+      // stay one contiguous strip.
+      contentContainerClassName={large ? 'flex-row items-stretch' : 'flex-row items-center'}
     >
       {crumbs.map((c, i) => (
         <Pressable
@@ -69,7 +71,7 @@ export function BreadCrumbs({ crumbs }: { crumbs: Crumb[] }) {
           accessibilityRole={c.onPress ? 'link' : 'text'}
           aria-current={c.active ? 'page' : undefined}
           style={large && width > 0 ? { maxWidth: width } : undefined}
-          className={`bg-muted px-3 py-1.5 active:opacity-80 ${
+          className={`justify-center bg-muted px-3 py-1.5 active:opacity-80 ${
             i === 0 ? 'rounded-l-md' : ''
           } ${i === last ? 'rounded-r-md' : 'border-r border-border'}`}
         >
